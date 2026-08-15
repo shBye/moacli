@@ -1,0 +1,55 @@
+[
+  {
+    "id": "powershell",
+    "label": "PowerShell",
+    "color": "#7DD3FC",
+    "bin": "powershell.exe",
+    "args_new": ["-NoLogo"],
+    "args_resume": [],
+    "version_cmd": ["-NoLogo", "-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"],
+    "env": {}
+  },
+  {
+    "id": "claude",
+    "label": "Claude Code",
+    "color": "#E58B68",
+    "bin": "claude",
+    "args_new": [],
+    "args_name": ["--name", "{title}"],
+    "args_login": ["auth", "login"],
+    "args_resume": ["--resume", "{id}"],
+    "version_cmd": ["--version"],
+    "env": {}
+  },
+  {
+    "id": "codex",
+    "label": "Codex",
+    "color": "#34D399",
+    "bin": "codex",
+    "args_new": [],
+    "args_login": ["login"],
+    "args_resume": ["resume", "{id}"],
+    "version_cmd": ["--version"],
+    "env": {}
+  },
+  {
+    "id": "gemini",
+    "label": "Gemini CLI",
+    "color": "#A78BFA",
+    "bin": "gemini",
+    "args_new": [],
+    "args_resume": ["--resume", "{id}"],
+    "version_cmd": ["--version"],
+    "env": {}
+  },
+  {
+    "id": "opencode",
+    "label": "OpenCode",
+    "color": "#F4C95D",
+    "bin": "opencode",
+    "args_new": [],
+    "args_resume": ["--session", "{id}"],
+    "version_cmd": ["--version"],
+    "env": {}
+  }
+]

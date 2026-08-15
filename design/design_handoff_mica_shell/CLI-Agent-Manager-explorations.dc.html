@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--acc:#E9B45C;--acc-ink:#1a1409;--bg-grad:linear-gradient(140deg,#20304a 0%,#3a3050 42%,#5a3a44 72%,#2a2233 100%);--blob1:rgba(120,170,255,.45);--blob2:rgba(255,170,120,.34)}
+*{box-sizing:border-box}
+body{margin:0;background:#e8e6e1;font-family:Inter,system-ui,sans-serif}
+a{color:#2a78d6}a:hover{color:#1b5aa8}
+.dv-turn{padding:44px 48px 36px;border-bottom:1px solid rgba(0,0,0,.09);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 22px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 13px/1.2 Inter,system-ui,sans-serif;color:#1a1a1a}
+.dv-opts{display:flex;flex-wrap:wrap;gap:34px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.09);color:#1a1a1a;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 Inter,system-ui,sans-serif;color:rgba(0,0,0,.55);max-width:600px}
+.dv-card{max-width:100%;border-radius:10px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.10)}
+.dv-opt:target .dv-oid{background:#2a78d6;color:#fff}
+.dv-next{margin:26px 0 0;font:12px/1.6 Inter,system-ui,sans-serif;color:rgba(0,0,0,.5)}
+.sbz{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.16) transparent}
+.sbz::-webkit-scrollbar{width:9px;height:9px}
+.sbz::-webkit-scrollbar-track{background:transparent}
+.sbz::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:99px;border:3px solid transparent;background-clip:content-box}
+.sbz::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3);background-clip:content-box}
+.old-sb{scrollbar-width:auto;scrollbar-color:#3c4449 transparent}
+</style>
+</helmet>
+
+<section class="dv-turn" id="t3" style="--acc: {{ accentColor }}; --acc-ink: {{ accentInk }}; --bg-grad: {{ bgGrad }}; --blob1: {{ blob1 }}; --blob2: {{ blob2 }}">
+<div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">통합본 — 2a 셸 + 2b 런처, 앰버 액센트로 통일</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="3a">
+<div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a>빈 상태. 툴바 폼을 없애고 중앙 런처가 그 역할을 맡습니다. 사이드바·타이틀바·상태바는 <a class="dv-oid" href="#2a">2a</a>와 동일.</div>
+<div class="dv-card" style="width:1180px">
+  <div style="position:relative;padding:26px;background:var(--bg-grad);overflow:hidden">
+    <div style="position:absolute;top:-90px;left:120px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,var(--blob1),transparent 70%);filter:blur(30px)"></div>
+    <div style="position:absolute;bottom:-140px;right:60px;width:520px;height:420px;border-radius:50%;background:radial-gradient(circle,var(--blob2),transparent 70%);filter:blur(40px)"></div>
+    <div style="position:absolute;left:26px;bottom:8px;font:500 9px/1 Inter,sans-serif;color:rgba(255,255,255,.35);letter-spacing:.08em;text-transform:uppercase">바탕화면 플레이스홀더</div>
+
+    <div style="position:relative;display:grid;grid-template-rows:38px minmax(0,1fr);height:700px;border-radius:11px;border:1px solid rgba(255,255,255,.13);box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 1px rgba(0,0,0,.4);overflow:hidden;background:rgba(16,18,22,.62);backdrop-filter:blur(44px) saturate(1.5);-webkit-backdrop-filter:blur(44px) saturate(1.5);color:#e7e9ea">
+
+      <div style="display:flex;align-items:center;gap:10px;padding:0 0 0 14px;border-bottom:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.025)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:14px;height:14px;border-radius:4px;background:var(--acc);opacity:.9"></div>
+          <span style="font:600 11.5px/1 Inter,sans-serif;color:#dfe3e6">CLI Agent Manager</span>
+          <span style="font:500 9px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.32);padding:3px 6px;border:1px solid rgba(255,255,255,.12);border-radius:4px">prototype</span>
+        </div>
+        <div style="margin-left:auto;display:flex">
+          <div style="width:44px;height:37px;display:grid;place-items:center;color:rgba(255,255,255,.5);font:400 12px/1 Inter,sans-serif">—</div>
+          <div style="width:44px;height:37px;display:grid;place-items:center;color:rgba(255,255,255,.5);font:400 11px/1 Inter,sans-serif">▢</div>
+          <div style="width:44px;height:37px;display:grid;place-items:center;color:rgba(255,255,255,.5);font:400 12px/1 Inter,sans-serif">✕</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0">
+
+        <div class="sbz" style="display:flex;flex-direction:column;min-height:0;overflow-y:auto;border-right:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.022)">
+          <div style="padding:14px 14px 10px">
+            <div style="display:flex;align-items:center;gap:9px;height:34px;padding:0 11px;border-radius:8px;border:1px solid rgba(255,255,255,.09);background:rgba(0,0,0,.22)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.42)" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <span style="font:400 12px/1 Inter,sans-serif;color:rgba(255,255,255,.35)">세션 검색</span>
+              <span style="margin-left:auto;font:500 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:3px 5px">⌘K</span>
+            </div>
+          </div>
+          <div style="padding:0 8px">
+            <div style="display:flex;align-items:center;gap:6px;height:30px;padding:0 6px;color:rgba(255,255,255,.42);font:700 9.5px/1 Inter,sans-serif;letter-spacing:.11em;text-transform:uppercase"><span style="width:9px">▾</span>Folders<span style="margin-left:auto;font:500 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">2</span><span style="width:20px;height:20px;display:grid;place-items:center;border-radius:5px;background:rgba(255,255,255,.06);font:400 12px/1 Inter,sans-serif;color:rgba(255,255,255,.5)">+</span></div>
+            <div style="display:flex;flex-direction:column;gap:2px;padding-bottom:8px">
+              <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:7px;background:rgba(255,255,255,.07);font:500 12px/1 Inter,sans-serif;color:#e4e7e9">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Prototype
+              </div>
+              <div style="padding:6px 8px 8px 32px;font:400 10.5px/1.5 Inter,sans-serif;color:rgba(255,255,255,.3)">열려 있는 세션 없음</div>
+              <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:7px;font:400 12px/1 Inter,sans-serif;color:rgba(255,255,255,.55)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Unsorted
+              </div>
+            </div>
+          </div>
+          <div style="padding:0 8px;margin-top:6px">
+            <div style="display:flex;align-items:center;gap:6px;height:30px;padding:0 6px;color:rgba(255,255,255,.42);font:700 9.5px/1 Inter,sans-serif;letter-spacing:.11em;text-transform:uppercase"><span style="width:9px">▾</span>Recent<span style="margin-left:auto;font:500 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">14</span></div>
+            <div style="display:flex;flex-direction:column;gap:1px;padding-bottom:6px">
+              <sc-for list="{{ recent }}" as="r" hint-placeholder-count="5">
+                <div style="display:flex;gap:9px;padding:8px;border-radius:7px">
+                  <div style="flex:none;width:20px;height:20px;border-radius:5px;display:grid;place-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);font:700 9px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.55)">{{ r.mark }}</div>
+                  <div style="min-width:0;flex:1;display:flex;flex-direction:column;gap:3px">
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 11.5px/1.25 Inter,sans-serif;color:#c2c8cc">{{ r.title }}</span>
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 9.5px/1.3 'JetBrains Mono',monospace;color:rgba(255,255,255,.28)">{{ r.meta }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="margin-top:auto;padding:8px">
+            <div style="display:flex;align-items:center;gap:6px;height:30px;padding:0 6px;color:rgba(255,255,255,.42);font:700 9.5px/1 Inter,sans-serif;letter-spacing:.11em;text-transform:uppercase"><span style="width:9px">▾</span>Agents<span style="margin-left:auto;font:500 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">4/5</span></div>
+            <div style="display:flex;flex-direction:column;gap:1px">
+              <sc-for list="{{ agents }}" as="a" hint-placeholder-count="5">
+                <div style="display:grid;grid-template-columns:20px minmax(0,1fr) auto;align-items:center;gap:9px;height:28px;padding:0 8px;border-radius:6px">
+                  <div style="width:18px;height:18px;border-radius:5px;display:grid;place-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);font:700 8.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.6)">{{ a.mark }}</div>
+                  <span style="font:400 11px/1 Inter,sans-serif;color:rgba(255,255,255,.68)">{{ a.label }}</span>
+                  <span style="font:400 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">{{ a.version }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-rows:minmax(0,1fr) 30px;min-width:0;min-height:0">
+          <div style="display:grid;place-items:center;padding:32px;min-height:0">
+            <div style="width:100%;max-width:520px;display:flex;flex-direction:column;gap:22px">
+              <div style="display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+                <div style="width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:color-mix(in oklch, var(--acc) 16%, transparent);border:1px solid color-mix(in oklch, var(--acc) 34%, transparent)">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="1.8"><path d="m5 8 4 4-4 4"/><path d="M13 16h6"/></svg>
+                </div>
+                <div style="font:600 17px/1.3 Inter,sans-serif;color:#eef0f2">새 세션 시작</div>
+                <div style="font:400 11.5px/1.5 Inter,sans-serif;color:rgba(255,255,255,.42)">에이전트와 작업 경로를 고르면 바로 실행됩니다.</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:12px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035)">
+                <div style="display:flex;gap:7px">
+                  <sc-for list="{{ agents }}" as="a" hint-placeholder-count="5">
+                    <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:6px;padding:11px 4px;border-radius:9px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.2)">
+                      <div style="width:22px;height:22px;border-radius:6px;display:grid;place-items:center;background:rgba(255,255,255,.06);font:700 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.62)">{{ a.mark }}</div>
+                      <span style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 9.5px/1.2 Inter,sans-serif;color:rgba(255,255,255,.55)">{{ a.short }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 12px;border-radius:9px;border:1px solid color-mix(in oklch, var(--acc) 36%, transparent);background:rgba(0,0,0,.28)">
+                  <span style="font:600 9.5px/1 Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.34)">제목</span>
+                  <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 12.5px/1.5 Inter,sans-serif;color:#e7e9ea">refactor pty manager</span>
+                  <span style="flex:none;width:1px;height:15px;background:var(--acc)"></span>
+                  <span style="margin-left:auto;flex:none;font:400 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.28)">21/40</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 12px;border-radius:9px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.2)">
+                  <svg style="flex:none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                  <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 11.5px/1.5 'JetBrains Mono',monospace;color:rgba(255,255,255,.62)">C:\git_workspace\cli-agent-manager</span>
+                  <span style="flex:none;font:500 10px/1 Inter,sans-serif;color:var(--acc)">변경</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 12px;border-radius:9px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.2)">
+                  <span style="flex:none;width:16px;height:16px;border-radius:4px;background:rgba(229,139,104,.2);border:1px solid rgba(229,139,104,.35)"></span>
+                  <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 11.5px/1.5 Inter,sans-serif;color:rgba(255,255,255,.62)">nowon@gmail.com</span>
+                  <span style="margin-left:auto;flex:none;font:400 10px/1 Inter,sans-serif;color:rgba(255,255,255,.3)">Prototype 폴더에 저장</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:9px;height:42px;border-radius:10px;background:linear-gradient(180deg,color-mix(in oklch, var(--acc) 82%, white),var(--acc));color:var(--acc-ink);font:700 13px/1 Inter,sans-serif;box-shadow:0 6px 20px color-mix(in oklch, var(--acc) 32%, transparent)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>Start
+                </div>
+                <span style="font:400 10px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">⌘↵</span>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;padding:0 16px;border-top:1px solid rgba(255,255,255,.07);font:400 10px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.38)">
+            <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.3)"></span>idle</span>
+            <span>세션 없음</span>
+            <span>0/10 open</span>
+            <span style="margin-left:auto">claude 1.0.44 · codex 0.9.2</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">다음 시도: "런처를 <a class="dv-oid" href="#2c">2c</a> 카드 그리드로 바꿔줘" · "액센트를 청록으로" · "대화 전문 탭 화면도 만들어줘"</p>
+</section>
+
+<section class="dv-turn" id="t2" style="--acc: {{ accentColor }}; --acc-ink: {{ accentInk }}; --bg-grad: {{ bgGrad }}; --blob1: {{ blob1 }}; --blob2: {{ blob2 }}">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">새 방향 — 마이카 블러 셸, 여백 정리, Start 재설계</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a">
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>전체 셸 · 활성 세션. 창 전체가 반투명 마이카(바탕화면이 은은히 비침), 사이드바 섹션 접기/펼치기, 얇은 오버레이 스크롤바, 제목 최대 길이 축소. 에이전트 색은 모노그램 타일로 빼고 초록은 "실행 중" 상태 전용으로 예약.</div>
+<div class="dv-card" style="width:1180px">
+  <div style="position:relative;padding:26px;background:var(--bg-grad);overflow:hidden">
+    <div style="position:absolute;top:-90px;left:120px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,var(--blob1),transparent 70%);filter:blur(30px)"></div>
+    <div style="position:absolute;bottom:-140px;right:60px;width:520px;height:420px;border-radius:50%;background:radial-gradient(circle,var(--blob2),transparent 70%);filter:blur(40px)"></div>
+    <div style="position:absolute;left:26px;bottom:8px;font:500 9px/1 Inter,sans-serif;color:rgba(255,255,255,.35);letter-spacing:.08em;text-transform:uppercase">바탕화면 플레이스홀더</div>
+
+    <div style="position:relative;display:grid;grid-template-rows:38px minmax(0,1fr);height:700px;border-radius:11px;border:1px solid rgba(255,255,255,.13);box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 1px rgba(0,0,0,.4);overflow:hidden;background:rgba(16,18,22,.62);backdrop-filter:blur(44px) saturate(1.5);-webkit-backdrop-filter:blur(44px) saturate(1.5);color:#e7e9ea">
+
+      <div style="display:flex;align-items:center;gap:10px;padding:0 0 0 14px;border-bottom:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.025)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:14px;height:14px;border-radius:4px;background:var(--acc);opacity:.9"></div>
+          <span style="font:600 11.5px/1 Inter,sans-serif;color:#dfe3e6">CLI Agent Manager</span>
+          <span style="font:500 9px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.32);padding:3px 6px;border:1px solid rgba(255,255,255,.12);border-radius:4px">prototype</span>
+        </div>
+        <div style="margin-left:auto;display:flex">
+          <div style="width:44px;height:37px;display:grid;place-items:center;color:rgba(255,255,255,.5);font:400 12px/1 Inter,sans-serif">—</div>
+          <div style="width:44px;height:37px;display:grid;place-items:center;color:rgba(255,255,255,.5);font:400 11px/1 Inter,sans-serif">▢</div>
+          <div style="width:44px;height:37px;display:grid;place-items:center;color:rgba(255,255,255,.5);font:400 12px/1 Inter,sans-serif">✕</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:272px minmax(0,1fr);min-height:0">
+
+        <div class="sbz" style="display:flex;flex-direction:column;min-height:0;overflow-y:auto;border-right:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.022)">
+          <div style="padding:14px 14px 10px">
+            <div style="display:flex;align-items:center;gap:9px;height:34px;padding:0 11px;border-radius:8px;border:1px solid rgba(255,255,255,.09);background:rgba(0,0,0,.22)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.42)" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <span style="font:400 12px/1 Inter,sans-serif;color:rgba(255,255,255,.35)">세션 검색</span>
+              <span style="margin-left:auto;font:500 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:3px 5px">⌘K</span>
+            </div>
+          </div>
+
+          <div style="padding:0 8px">
+            <div onClick="{{ toggleFolders }}" style="display:flex;align-items:center;gap:6px;height:30px;padding:0 6px;cursor:pointer;color:rgba(255,255,255,.42);font:700 9.5px/1 Inter,sans-serif;letter-spacing:.11em;text-transform:uppercase">
+              <span style="display:inline-block;width:9px;transition:transform .18s">{{ foldersCaret }}</span>
+              <span>Folders</span>
+              <span style="margin-left:auto;font:500 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">2</span>
+              <span style="width:20px;height:20px;display:grid;place-items:center;border-radius:5px;background:rgba(255,255,255,.06);font:400 12px/1 Inter,sans-serif;color:rgba(255,255,255,.5)">+</span>
+            </div>
+            <sc-if value="{{ foldersOpen }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:2px;padding-bottom:8px">
+              <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:7px;background:rgba(255,255,255,.07);font:500 12px/1 Inter,sans-serif;color:#e4e7e9">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                Prototype
+              </div>
+              <div style="display:flex;flex-direction:column;gap:3px;padding:3px 0 0 10px">
+                <div style="position:relative;display:flex;gap:9px;padding:9px 8px 9px 10px;border-radius:7px;background:color-mix(in oklch, var(--acc) 12%, transparent);box-shadow:inset 2px 0 0 var(--acc)">
+                  <div style="flex:none;width:20px;height:20px;border-radius:5px;display:grid;place-items:center;background:rgba(229,139,104,.18);border:1px solid rgba(229,139,104,.35);font:700 9px/1 'JetBrains Mono',monospace;color:#E58B68">C</div>
+                  <div style="min-width:0;flex:1;display:flex;flex-direction:column;gap:3px">
+                    <div style="display:flex;align-items:center;gap:6px">
+                      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 11.5px/1.25 Inter,sans-serif;color:#f0f2f3">refactor pty ma…</span>
+                      <span style="flex:none;width:6px;height:6px;border-radius:50%;background:#3ED598;box-shadow:0 0 0 3px rgba(62,213,152,.18)"></span>
+                    </div>
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 9.5px/1.3 'JetBrains Mono',monospace;color:rgba(255,255,255,.36)">~\git_workspace\cli-agent</span>
+                  </div>
+                  <span style="flex:none;align-self:center;width:20px;height:20px;display:grid;place-items:center;border-radius:5px;color:rgba(255,255,255,.35);font:400 11px/1 Inter,sans-serif">✕</span>
+                </div>
+                <div style="display:flex;gap:9px;padding:9px 8px 9px 10px;border-radius:7px">
+                  <div style="flex:none;width:20px;height:20px;border-radius:5px;display:grid;place-items:center;background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.3);font:700 9px/1 'JetBrains Mono',monospace;color:#34D399">X</div>
+                  <div style="min-width:0;flex:1;display:flex;flex-direction:column;gap:3px">
+                    <div style="display:flex;align-items:center;gap:6px">
+                      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 11.5px/1.25 Inter,sans-serif;color:#c9ced2">codex review sw…</span>
+                      <span style="flex:none;width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.22)"></span>
+                    </div>
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 9.5px/1.3 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">~\git_workspace\api</span>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:7px;font:400 12px/1 Inter,sans-serif;color:rgba(255,255,255,.55)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                Unsorted
+              </div>
+            </div>
+            </sc-if>
+          </div>
+
+          <div style="padding:0 8px;margin-top:6px">
+            <div onClick="{{ toggleRecent }}" style="display:flex;align-items:center;gap:6px;height:30px;padding:0 6px;cursor:pointer;color:rgba(255,255,255,.42);font:700 9.5px/1 Inter,sans-serif;letter-spacing:.11em;text-transform:uppercase">
+              <span style="display:inline-block;width:9px">{{ recentCaret }}</span>
+              <span>Recent</span>
+              <span style="margin-left:auto;font:500 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">14</span>
+            </div>
+            <sc-if value="{{ recentOpen }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:1px;padding-bottom:6px">
+              <sc-for list="{{ recent }}" as="r" hint-placeholder-count="5">
+                <div style="display:flex;gap:9px;padding:8px;border-radius:7px">
+                  <div style="flex:none;width:20px;height:20px;border-radius:5px;display:grid;place-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);font:700 9px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.55)">{{ r.mark }}</div>
+                  <div style="min-width:0;flex:1;display:flex;flex-direction:column;gap:3px">
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 11.5px/1.25 Inter,sans-serif;color:#c2c8cc">{{ r.title }}</span>
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 9.5px/1.3 'JetBrains Mono',monospace;color:rgba(255,255,255,.28)">{{ r.meta }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            </sc-if>
+          </div>
+
+          <div style="margin-top:auto;padding:8px">
+            <div onClick="{{ toggleHealth }}" style="display:flex;align-items:center;gap:6px;height:30px;padding:0 6px;cursor:pointer;color:rgba(255,255,255,.42);font:700 9.5px/1 Inter,sans-serif;letter-spacing:.11em;text-transform:uppercase">
+              <span style="display:inline-block;width:9px">{{ healthCaret }}</span>
+              <span>Agents</span>
+              <span style="margin-left:auto;font:500 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">4/5</span>
+            </div>
+            <sc-if value="{{ healthOpen }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:1px">
+              <sc-for list="{{ agents }}" as="a" hint-placeholder-count="5">
+                <div style="display:grid;grid-template-columns:20px minmax(0,1fr) auto;align-items:center;gap:9px;height:28px;padding:0 8px;border-radius:6px">
+                  <div style="width:18px;height:18px;border-radius:5px;display:grid;place-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);font:700 8.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.6)">{{ a.mark }}</div>
+                  <span style="font:400 11px/1 Inter,sans-serif;color:rgba(255,255,255,.68)">{{ a.label }}</span>
+                  <span style="font:400 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">{{ a.version }}</span>
+                </div>
+              </sc-for>
+            </div>
+            </sc-if>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-rows:auto minmax(0,1fr) 30px;min-width:0;min-height:0">
+
+          <div style="display:flex;align-items:flex-start;gap:20px;padding:16px 20px 0;border-bottom:1px solid rgba(255,255,255,.07)">
+            <div style="min-width:0;flex:1;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="flex:none;width:24px;height:24px;border-radius:6px;display:grid;place-items:center;background:rgba(229,139,104,.16);border:1px solid rgba(229,139,104,.34);font:700 10px/1 'JetBrains Mono',monospace;color:#E58B68">C</div>
+                <h1 style="margin:0;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 15px/1.2 Inter,sans-serif;color:#f2f4f5">refactor pty manager</h1>
+                <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:99px;background:rgba(62,213,152,.12);border:1px solid rgba(62,213,152,.26);font:600 10px/1 Inter,sans-serif;color:#3ED598">
+                  <span style="width:5px;height:5px;border-radius:50%;background:#3ED598"></span>실행 중
+                </span>
+                <span style="font:400 10px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.34)">nowon@gmail.com</span>
+                <span style="margin-left:auto;font:400 10px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px">C:\git_workspace\cli-agent-manager</span>
+                <span style="flex:none;width:24px;height:24px;display:grid;place-items:center;border-radius:6px;color:rgba(255,255,255,.4);font:400 12px/1 Inter,sans-serif">✕</span>
+              </div>
+              <div style="display:flex;gap:22px">
+                <div onClick="{{ setCli }}" style="cursor:pointer;padding:0 1px 9px;border-bottom:2px solid var(--acc);font:600 11px/1 Inter,sans-serif;color:#f0f2f3">CLI</div>
+                <div onClick="{{ setConv }}" style="cursor:pointer;padding:0 1px 9px;border-bottom:2px solid transparent;font:500 11px/1 Inter,sans-serif;color:rgba(255,255,255,.42)">대화 전문 <span style="font:400 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.28)">142</span></div>
+                <div style="margin-left:auto;display:flex;align-items:center;gap:8px;padding-bottom:7px">
+                  <span style="font:500 9.5px/1 Inter,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.3)">투명도</span>
+                  <span style="width:56px;height:3px;border-radius:99px;background:rgba(255,255,255,.12);position:relative"><span style="position:absolute;left:0;top:0;bottom:0;width:62%;border-radius:99px;background:var(--acc)"></span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sbz" style="min-height:0;overflow:auto;padding:16px 20px;background:rgba(0,0,0,.24);font:400 12px/1.75 'JetBrains Mono',monospace;color:#c9d0d4;white-space:pre-wrap">{{ cliText }}</div>
+
+          <div style="display:flex;align-items:center;gap:16px;padding:0 16px;border-top:1px solid rgba(255,255,255,.07);font:400 10px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.38)">
+            <span style="display:inline-flex;align-items:center;gap:6px;color:#3ED598"><span style="width:5px;height:5px;border-radius:50%;background:#3ED598"></span>running</span>
+            <span>claude 1.0.44</span>
+            <span>2/10 open</span>
+            <span style="margin-left:auto">idle 00:12 · 자동 종료까지 29분</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="2b">
+<div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>Start A — 중앙 런처. 툴바 폼을 없애고 빈 상태 자체를 컴포저로. 기존 세션을 눌러도 값이 섞이지 않음(런처는 항상 비어 있는 새 세션 전용).</div>
+<div class="dv-card" style="width:760px">
+  <div style="position:relative;padding:20px;background:linear-gradient(140deg,#20304a,#3a3050 55%,#2a2233);overflow:hidden">
+    <div style="position:absolute;top:-60px;right:80px;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(140,160,255,.4),transparent 70%);filter:blur(34px)"></div>
+    <div style="position:relative;height:520px;border-radius:11px;border:1px solid rgba(255,255,255,.13);overflow:hidden;background:rgba(16,18,22,.62);backdrop-filter:blur(44px) saturate(1.5);-webkit-backdrop-filter:blur(44px) saturate(1.5);display:grid;place-items:center;padding:28px">
+      <div style="width:100%;max-width:520px;display:flex;flex-direction:column;gap:22px">
+        <div style="display:flex;flex-direction:column;gap:7px;align-items:center;text-align:center">
+          <div style="width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:rgba(138,160,255,.14);border:1px solid rgba(138,160,255,.3)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8AA0FF" stroke-width="1.8"><path d="m5 8 4 4-4 4"/><path d="M13 16h6"/></svg>
+          </div>
+          <div style="font:600 17px/1.3 Inter,sans-serif;color:#eef0f2">새 세션 시작</div>
+          <div style="font:400 11.5px/1.5 Inter,sans-serif;color:rgba(255,255,255,.42)">에이전트와 작업 경로를 고르면 바로 실행됩니다.</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:12px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035)">
+          <div style="display:flex;gap:7px">
+            <sc-for list="{{ agents }}" as="a" hint-placeholder-count="5">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:11px 4px;border-radius:9px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.2);cursor:pointer">
+                <div style="width:22px;height:22px;border-radius:6px;display:grid;place-items:center;background:rgba(255,255,255,.06);font:700 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.62)">{{ a.mark }}</div>
+                <span style="font:500 9.5px/1.2 Inter,sans-serif;color:rgba(255,255,255,.55);text-align:center">{{ a.short }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 12px;border-radius:9px;border:1px solid rgba(138,160,255,.34);background:rgba(0,0,0,.28)">
+            <span style="font:600 9.5px/1 Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.34)">제목</span>
+            <span style="font:400 12.5px/1 Inter,sans-serif;color:#e7e9ea">refactor pty manager</span>
+            <span style="width:1px;height:15px;background:#8AA0FF;margin-left:1px"></span>
+            <span style="margin-left:auto;font:400 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.28)">21/40</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 12px;border-radius:9px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.2)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            <span style="font:400 11.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.62)">C:\git_workspace\cli-agent-manager</span>
+            <span style="margin-left:auto;font:500 10px/1 Inter,sans-serif;color:#8AA0FF">변경</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 12px;border-radius:9px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.2)">
+            <span style="width:16px;height:16px;border-radius:4px;background:rgba(229,139,104,.2);border:1px solid rgba(229,139,104,.35)"></span>
+            <span style="font:400 11.5px/1 Inter,sans-serif;color:rgba(255,255,255,.62)">nowon@gmail.com</span>
+            <span style="margin-left:auto;font:400 10px/1 Inter,sans-serif;color:rgba(255,255,255,.3)">Prototype 폴더에 저장</span>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:9px;height:42px;border-radius:10px;background:linear-gradient(180deg,#9AAEFF,#7A8CF0);color:#0e1226;font:700 13px/1 Inter,sans-serif;box-shadow:0 6px 20px rgba(122,140,240,.35);cursor:pointer">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>
+            Start
+          </div>
+          <span style="font:400 10px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">⌘↵</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="2c">
+<div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a>Start B — 에이전트 카드 그리드. 무엇을 실행할지 먼저 고르는 방식. 사용 불가 CLI는 흐리게, 최근 경로가 카드 안에 바로 노출.</div>
+<div class="dv-card" style="width:760px">
+  <div style="position:relative;padding:20px;background:linear-gradient(140deg,#16283a,#1d3a44 50%,#2b2438);overflow:hidden">
+    <div style="position:absolute;bottom:-100px;left:60px;width:400px;height:360px;border-radius:50%;background:radial-gradient(circle,rgba(110,220,220,.34),transparent 70%);filter:blur(38px)"></div>
+    <div style="position:relative;height:520px;border-radius:11px;border:1px solid rgba(255,255,255,.13);overflow:hidden;background:rgba(15,19,21,.62);backdrop-filter:blur(44px) saturate(1.5);-webkit-backdrop-filter:blur(44px) saturate(1.5);padding:34px 38px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:baseline;gap:12px">
+        <div style="font:600 18px/1.2 Inter,sans-serif;color:#eef1f2">무엇을 실행할까요</div>
+        <div style="font:400 11.5px/1.4 Inter,sans-serif;color:rgba(255,255,255,.38)">C:\git_workspace\cli-agent-manager</div>
+        <span style="margin-left:auto;font:500 10px/1 Inter,sans-serif;color:#6FD8D8;border-bottom:1px dashed rgba(111,216,216,.5);cursor:pointer">경로 변경</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+        <sc-for list="{{ agentCards }}" as="a" hint-placeholder-count="6">
+          <div style="display:flex;flex-direction:column;gap:9px;padding:15px;border-radius:11px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);cursor:pointer;min-height:104px">
+            <div style="display:flex;align-items:center;gap:9px">
+              <div style="width:24px;height:24px;border-radius:6px;display:grid;place-items:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);font:700 10px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.66)">{{ a.mark }}</div>
+              <span style="font:600 12.5px/1 Inter,sans-serif;color:#e5e8ea">{{ a.label }}</span>
+              <span style="margin-left:auto;width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.2)"></span>
+            </div>
+            <div style="font:400 10px/1.45 'JetBrains Mono',monospace;color:rgba(255,255,255,.32)">{{ a.version }}</div>
+            <div style="margin-top:auto;font:400 10px/1.4 Inter,sans-serif;color:rgba(255,255,255,.42)">{{ a.hint }}</div>
+          </div>
+        </sc-for>
+        <div style="display:grid;place-items:center;padding:15px;border-radius:11px;border:1px dashed rgba(255,255,255,.14);min-height:104px;gap:7px;color:rgba(255,255,255,.36);font:500 11px/1 Inter,sans-serif">
+          <span style="font-size:17px;line-height:1">+</span>계정 추가
+        </div>
+      </div>
+      <div style="margin-top:auto;display:flex;align-items:center;gap:10px;padding-top:16px;border-top:1px solid rgba(255,255,255,.07)">
+        <span style="font:500 9.5px/1 Inter,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.3)">이어서 하기</span>
+        <div style="display:flex;gap:7px">
+          <span style="padding:6px 11px;border-radius:99px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);font:400 10.5px/1 Inter,sans-serif;color:rgba(255,255,255,.6)">refactor pty ma…</span>
+          <span style="padding:6px 11px;border-radius:99px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);font:400 10.5px/1 Inter,sans-serif;color:rgba(255,255,255,.6)">codex review sw…</span>
+          <span style="padding:6px 11px;border-radius:99px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);font:400 10.5px/1 Inter,sans-serif;color:rgba(255,255,255,.6)">gemini docs pas…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="2d">
+<div class="dv-olabel"><a class="dv-oid" href="#2d">2d</a>Start C — 상단 인라인 컴포저. 지금 툴바에 가장 가깝지만, 접었다 펼 수 있고 세션을 클릭해도 값이 바뀌지 않음(세션 컨텍스트는 아래 별도 줄).</div>
+<div class="dv-card" style="width:760px">
+  <div style="position:relative;padding:20px;background:linear-gradient(140deg,#2a2333,#3a2c3c 50%,#1e2530);overflow:hidden">
+    <div style="position:absolute;top:-70px;left:180px;width:340px;height:320px;border-radius:50%;background:radial-gradient(circle,rgba(233,180,92,.3),transparent 70%);filter:blur(36px)"></div>
+    <div style="position:relative;height:340px;border-radius:11px;border:1px solid rgba(255,255,255,.13);overflow:hidden;background:rgba(16,18,22,.62);backdrop-filter:blur(44px) saturate(1.5);-webkit-backdrop-filter:blur(44px) saturate(1.5);padding:20px">
+      <div style="display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:12px;border:1px solid rgba(233,180,92,.22);background:rgba(233,180,92,.05)">
+        <div style="display:flex;align-items:center;gap:9px">
+          <span style="font:700 9.5px/1 Inter,sans-serif;letter-spacing:.11em;text-transform:uppercase;color:var(--acc)">새 세션</span>
+          <span style="font:400 10.5px/1 Inter,sans-serif;color:rgba(255,255,255,.34)">기존 세션을 열어도 이 값은 유지됩니다</span>
+          <span style="margin-left:auto;font:400 11px/1 Inter,sans-serif;color:rgba(255,255,255,.4);cursor:pointer">접기 ⌃</span>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.9fr) minmax(0,1fr) minmax(0,1.7fr) auto;gap:9px;align-items:end">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font:600 9px/1 Inter,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.34)">Title</span>
+            <div style="height:34px;display:flex;align-items:center;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.24);font:400 11.5px/1 Inter,sans-serif;color:#e2e5e7;overflow:hidden;white-space:nowrap">refactor pty ma…</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font:600 9px/1 Inter,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.34)">Agent</span>
+            <div style="height:34px;display:flex;align-items:center;gap:7px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.24)">
+              <span style="width:15px;height:15px;border-radius:4px;background:rgba(229,139,104,.18);border:1px solid rgba(229,139,104,.34);font:700 8px/15px 'JetBrains Mono',monospace;color:#E58B68;text-align:center">C</span>
+              <span style="font:400 11.5px/1 Inter,sans-serif;color:#e2e5e7">Claude</span>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font:600 9px/1 Inter,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.34)">Account</span>
+            <div style="height:34px;display:flex;align-items:center;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.24);font:400 11px/1 Inter,sans-serif;color:#c8ccd0;overflow:hidden;white-space:nowrap">nowon@gmail…</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font:600 9px/1 Inter,sans-serif;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.34)">Working directory</span>
+            <div style="height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.24)">
+              <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 10.5px/1.6 'JetBrains Mono',monospace;color:#c8ccd0">C:\git_workspace\cli-agent-manager</span>
+              <svg style="flex:none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 18px;border-radius:8px;background:var(--acc);color:var(--acc-ink);font:700 12px/1 Inter,sans-serif;box-shadow:0 5px 16px rgba(233,180,92,.28);cursor:pointer">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>Start
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:18px;display:flex;align-items:center;gap:12px;padding:0 4px">
+        <span style="font:600 9.5px/1 Inter,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.3)">보고 있는 세션</span>
+        <span style="font:600 12px/1 Inter,sans-serif;color:#e9ebec;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">codex review sweep</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:99px;background:rgba(255,255,255,.06);font:600 9.5px/1 Inter,sans-serif;color:rgba(255,255,255,.5)"><span style="width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.35)"></span>대기</span>
+        <span style="font:400 10px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">C:\git_workspace\api</span>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="2e">
+<div class="dv-olabel"><a class="dv-oid" href="#2e">2e</a>계정 설정 모달 — 행 그리드를 카드로 풀고 검증 상태를 라벨로. 배경도 블러로 창 뒤가 비침.</div>
+<div class="dv-card" style="width:760px">
+  <div style="position:relative;padding:20px;background:linear-gradient(140deg,#20304a,#3a3050 55%,#2a2233);overflow:hidden">
+    <div style="position:relative;height:470px;border-radius:11px;border:1px solid rgba(255,255,255,.12);overflow:hidden;background:rgba(10,12,15,.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);display:grid;place-items:center;padding:26px">
+      <div style="width:100%;max-width:600px;border-radius:13px;border:1px solid rgba(255,255,255,.11);background:rgba(22,25,29,.86);backdrop-filter:blur(40px) saturate(1.4);-webkit-backdrop-filter:blur(40px) saturate(1.4);box-shadow:0 30px 70px rgba(0,0,0,.55);overflow:hidden">
+        <div style="display:flex;align-items:flex-start;gap:16px;padding:18px 20px 16px">
+          <div style="min-width:0;display:flex;flex-direction:column;gap:5px">
+            <div style="font:600 14.5px/1.2 Inter,sans-serif;color:#f0f2f3">에이전트 계정</div>
+            <div style="font:400 11px/1.5 Inter,sans-serif;color:rgba(255,255,255,.4)">계정이 확인된 에이전트만 히스토리를 불러옵니다.</div>
+          </div>
+          <span style="margin-left:auto;width:26px;height:26px;display:grid;place-items:center;border-radius:7px;color:rgba(255,255,255,.42);font:400 13px/1 Inter,sans-serif">✕</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px;padding:0 20px 4px">
+          <sc-for list="{{ accounts }}" as="ac" hint-placeholder-count="3">
+            <div style="display:grid;grid-template-columns:26px 1fr auto;align-items:center;gap:12px;padding:12px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035)">
+              <div style="width:26px;height:26px;border-radius:7px;display:grid;place-items:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);font:700 10px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.66)">{{ ac.mark }}</div>
+              <div style="min-width:0;display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font:600 12px/1 Inter,sans-serif;color:#e6e9eb">{{ ac.email }}</span>
+                  <span style="padding:3px 7px;border-radius:5px;font:600 9px/1 Inter,sans-serif;letter-spacing:.05em;text-transform:uppercase;background:rgba(255,255,255,.06);color:rgba(255,255,255,.45)">{{ ac.tag }}</span>
+                </div>
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 10px/1.3 'JetBrains Mono',monospace;color:rgba(255,255,255,.32)">{{ ac.dir }}</span>
+              </div>
+              <div style="display:flex;gap:6px">
+                <span style="padding:7px 11px;border-radius:7px;border:1px solid rgba(255,255,255,.11);font:600 10.5px/1 Inter,sans-serif;color:rgba(255,255,255,.62)">로그인</span>
+                <span style="width:30px;height:29px;display:grid;place-items:center;border-radius:7px;color:rgba(255,255,255,.35);font:400 12px/1 Inter,sans-serif">✕</span>
+              </div>
+            </div>
+          </sc-for>
+          <div style="display:flex;align-items:center;justify-content:center;gap:7px;padding:11px;border-radius:10px;border:1px dashed rgba(255,255,255,.14);font:500 11px/1 Inter,sans-serif;color:rgba(255,255,255,.42)"><span style="font-size:15px;line-height:1">+</span>계정 추가</div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:9px;padding:16px 20px 18px">
+          <span style="padding:9px 15px;border-radius:8px;border:1px solid rgba(255,255,255,.11);font:600 11.5px/1 Inter,sans-serif;color:rgba(255,255,255,.62)">취소</span>
+          <span style="padding:9px 19px;border-radius:8px;background:var(--acc);color:var(--acc-ink);font:700 11.5px/1 Inter,sans-serif">저장</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="2f">
+<div class="dv-olabel"><a class="dv-oid" href="#2f">2f</a>사이드바 디테일 — 접힘 상태, 얇은 오버레이 스크롤바, 상태색(초록=실행 중)과 에이전트 색(모노그램) 분리, 제목 최대 20자 말줄임.</div>
+<div class="dv-card" style="width:340px">
+  <div style="position:relative;padding:16px;background:linear-gradient(150deg,#20304a,#3a3050 60%,#2a2233)">
+    <div class="sbz" style="height:560px;overflow-y:auto;border-radius:11px;border:1px solid rgba(255,255,255,.12);background:rgba(16,18,22,.66);backdrop-filter:blur(40px) saturate(1.5);-webkit-backdrop-filter:blur(40px) saturate(1.5);padding:12px 8px">
+      <div style="display:flex;align-items:center;gap:6px;height:30px;padding:0 6px;color:rgba(255,255,255,.42);font:700 9.5px/1 Inter,sans-serif;letter-spacing:.11em;text-transform:uppercase"><span style="width:9px">▾</span>Folders<span style="margin-left:auto;font:500 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">2</span></div>
+      <div style="display:flex;flex-direction:column;gap:3px;padding:2px 0 10px 10px">
+        <sc-for list="{{ sidebarSessions }}" as="s" hint-placeholder-count="4">
+          <div style="display:flex;gap:9px;padding:9px 8px 9px 10px;border-radius:7px">
+            <div style="flex:none;width:20px;height:20px;border-radius:5px;display:grid;place-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);font:700 9px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.6)">{{ s.mark }}</div>
+            <div style="min-width:0;flex:1;display:flex;flex-direction:column;gap:3px">
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 11.5px/1.25 Inter,sans-serif;color:#cdd2d6">{{ s.title }}</span>
+                <span style="flex:none;font:500 8.5px/1 Inter,sans-serif;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.34)">{{ s.state }}</span>
+              </div>
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 9.5px/1.3 'JetBrains Mono',monospace;color:rgba(255,255,255,.28)">{{ s.cwd }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;height:30px;padding:0 6px;color:rgba(255,255,255,.42);font:700 9.5px/1 Inter,sans-serif;letter-spacing:.11em;text-transform:uppercase;border-top:1px solid rgba(255,255,255,.06)"><span style="width:9px">▸</span>Recent<span style="margin-left:auto;font:500 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">14</span></div>
+      <div style="display:flex;align-items:center;gap:6px;height:30px;padding:0 6px;color:rgba(255,255,255,.42);font:700 9.5px/1 Inter,sans-serif;letter-spacing:.11em;text-transform:uppercase;border-top:1px solid rgba(255,255,255,.06)"><span style="width:9px">▾</span>Agents<span style="margin-left:auto;font:500 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">4/5</span></div>
+      <div style="display:flex;flex-direction:column;gap:1px;padding-bottom:8px">
+        <sc-for list="{{ agents }}" as="a" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:20px minmax(0,1fr) auto;align-items:center;gap:9px;height:28px;padding:0 8px;border-radius:6px">
+            <div style="width:18px;height:18px;border-radius:5px;display:grid;place-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);font:700 8.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.6)">{{ a.mark }}</div>
+            <span style="font:400 11px/1 Inter,sans-serif;color:rgba(255,255,255,.68)">{{ a.label }}</span>
+            <span style="font:400 9.5px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3)">{{ a.version }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="height:220px"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">다음 시도: "<a class="dv-oid" href="#2b">2b</a>를 <a class="dv-oid" href="#2a">2a</a> 셸 안에 넣어줘" · "액센트를 <a class="dv-oid" href="#2c">2c</a>의 청록으로 통일" · "사이드바를 완전히 접는 상태도 보여줘"</p>
+</section>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">현재 UI 재현 (styles.css 값 그대로)</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>지금 화면 — 불투명 #111315, 사이드바 고정 264px, 툴바 5칸 폼, 기본 스크롤바.</div>
+<div class="dv-card" style="width:1100px">
+  <div style="display:grid;grid-template-columns:264px minmax(0,1fr);height:660px;background:#111315;color:#e7e9ea;font-family:Inter,'Segoe UI',sans-serif">
+    <div class="old-sb" style="display:flex;flex-direction:column;overflow-y:auto;border-right:1px solid #2a2e31;background:#181b1e">
+      <div style="display:flex;align-items:center;gap:9px;height:54px;padding:0 14px;border-bottom:1px solid #2a2e31">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#e7e9ea" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
+        <strong style="font-size:13px;font-weight:650">CLI Agent Manager</strong>
+        <span style="margin-left:auto;color:#8e969c;font:10px/1 Consolas,monospace;text-transform:uppercase">prototype</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;height:34px;margin:12px;padding:0 10px;border:1px solid #30363a;border-radius:5px;color:#7e878d;background:#131619">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span style="color:#7e878d;font-size:12px">Search sessions</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;height:30px;padding:0 12px;color:#899197;font-size:10px;font-weight:700;text-transform:uppercase"><span>Logical folders</span><span style="color:#aeb4b8">+</span></div>
+      <div>
+        <div style="display:flex;align-items:center;gap:7px;height:32px;padding:0 12px;color:#c7cccf;background:#23282b;font-size:12px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          <span>Prototype</span>
+        </div>
+        <div style="display:flex;min-height:52px;padding-left:32px;border-left:2px solid #f3b33d;background:#202528">
+          <div style="display:flex;min-width:0;flex:1;align-items:flex-start;gap:9px;padding:8px 2px 8px 0">
+            <span style="flex:none;width:7px;height:7px;margin-top:5px;border-radius:50%;background:#34d399;box-shadow:0 0 0 2px #234438"></span>
+            <span style="display:flex;min-width:0;flex:1;flex-direction:column;gap:4px">
+              <strong style="font-size:12px;font-weight:600">refactor pty manager</strong>
+              <small style="overflow:hidden;color:#858e94;font-size:10px;text-overflow:ellipsis;white-space:nowrap">Claude Code - C:\git_workspace\cli-agent-manager</small>
+            </span>
+          </div>
+          <div style="display:grid;width:30px;flex:none;place-items:center;color:#727b81">✕</div>
+        </div>
+        <div style="display:flex;min-height:52px;padding-left:32px;border-left:2px solid transparent;background:#202528">
+          <div style="display:flex;min-width:0;flex:1;align-items:flex-start;gap:9px;padding:8px 2px 8px 0">
+            <span style="flex:none;width:7px;height:7px;margin-top:5px;border-radius:50%;background:#596168"></span>
+            <span style="display:flex;min-width:0;flex:1;flex-direction:column;gap:4px">
+              <strong style="font-size:12px;font-weight:600">codex review sweep</strong>
+              <small style="overflow:hidden;color:#858e94;font-size:10px;text-overflow:ellipsis;white-space:nowrap">Codex - C:\git_workspace\api</small>
+            </span>
+          </div>
+          <div style="display:grid;width:30px;flex:none;place-items:center;color:#727b81">✕</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;height:32px;padding:0 12px;color:#c7cccf;font-size:12px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          <span>Unsorted</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;height:30px;padding:0 12px;border-top:1px solid #2a2e31;color:#899197;font-size:10px;font-weight:700;text-transform:uppercase"><span>Recent conversations</span><span style="color:#aeb4b8">⟳</span></div>
+      <div class="old-sb" style="flex:1;overflow-y:auto">
+        <sc-for list="{{ oldHistory }}" as="h" hint-placeholder-count="5">
+          <div style="display:flex;width:100%;min-height:49px;align-items:flex-start;gap:9px;padding:8px 11px;border-left:2px solid transparent;color:#cbd0d3">
+            <span style="width:7px;height:7px;flex:none;margin-top:5px;border-radius:2px;background:{{ h.color }}"></span>
+            <span style="display:flex;min-width:0;flex:1;flex-direction:column;gap:4px">
+              <strong style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ h.title }}</strong>
+              <small style="overflow:hidden;color:#858e94;font-size:10px;text-overflow:ellipsis;white-space:nowrap">{{ h.meta }}</small>
+            </span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="padding:6px 0 10px;border-top:1px solid #2a2e31">
+        <div style="display:flex;align-items:center;justify-content:space-between;height:30px;padding:0 12px;color:#899197;font-size:10px;font-weight:700;text-transform:uppercase"><span>Agent health</span><span style="color:#aeb4b8">⟳</span></div>
+        <sc-for list="{{ oldHealth }}" as="p" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:10px 88px minmax(0,1fr);align-items:center;gap:6px;height:27px;padding:0 12px;font-size:11px">
+            <span style="width:6px;height:6px;border-radius:50%;background:{{ p.dot }}"></span>
+            <span>{{ p.label }}</span>
+            <small style="overflow:hidden;color:#7e878d;font:9px/1.2 Consolas,monospace;text-overflow:ellipsis;white-space:nowrap">{{ p.version }}</small>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:grid;min-width:0;grid-template-rows:58px minmax(0,1fr) 28px">
+      <div style="display:flex;align-items:center;gap:12px;padding:7px 12px;border-bottom:1px solid #2a2e31;background:#1b1e21">
+        <div style="display:grid;min-width:0;flex:1;grid-template-columns:150px 125px 180px minmax(200px,1fr) 72px;gap:8px">
+          <label style="display:flex;min-width:0;flex-direction:column;gap:3px;color:#858e94;font-size:9px;font-weight:650;text-transform:uppercase"><span>Title</span>
+            <div style="width:100%;height:29px;display:flex;align-items:center;padding:0 9px;border:1px solid #343a3e;border-radius:4px;color:#e0e3e5;background:#121517;font-size:12px;text-transform:none">refactor pty manag…</div></label>
+          <label style="display:flex;min-width:0;flex-direction:column;gap:3px;color:#858e94;font-size:9px;font-weight:650;text-transform:uppercase"><span>Agent</span>
+            <div style="width:100%;height:29px;display:flex;align-items:center;padding:0 6px;border:1px solid #343a3e;border-radius:4px;color:#e0e3e5;background:#121517;font-size:12px;text-transform:none">Claude Code</div></label>
+          <label style="display:flex;min-width:0;flex-direction:column;gap:3px;color:#858e94;font-size:9px;font-weight:650;text-transform:uppercase"><span>Account</span>
+            <div style="width:100%;height:29px;display:flex;align-items:center;padding:0 6px;border:1px solid #343a3e;border-radius:4px;color:#e0e3e5;background:#121517;font-size:12px;text-transform:none">nowon@gmail.com</div></label>
+          <label style="display:flex;min-width:0;flex-direction:column;gap:3px;color:#858e94;font-size:9px;font-weight:650;text-transform:uppercase"><span>Working directory</span>
+            <span style="display:flex;min-width:0;height:29px">
+              <span style="min-width:0;flex:1;display:flex;align-items:center;padding:0 9px;border:1px solid #343a3e;border-radius:4px 0 0 4px;color:#e0e3e5;background:#121517;font-size:12px;text-transform:none;overflow:hidden;white-space:nowrap">C:\git_workspace\cli-agent-manager</span>
+              <span style="display:grid;width:31px;height:29px;place-items:center;border:1px solid #343a3e;border-left:0;border-radius:0 4px 4px 0;color:#aeb4b8;background:#252a2d">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              </span>
+            </span></label>
+          <div style="display:flex;align-self:end;align-items:center;justify-content:center;gap:6px;height:29px;border:1px solid #d89c2b;border-radius:4px;color:#17130b;background:#f3b33d;font-size:12px;font-weight:700">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>Start
+          </div>
+        </div>
+        <div style="display:grid;width:28px;height:28px;flex:none;align-self:flex-end;place-items:center;border-radius:4px;color:#aeb4b8">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>
+        </div>
+      </div>
+
+      <div style="position:relative;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;background:#111315">
+        <div style="position:relative;display:flex;min-height:80px;align-items:flex-start;justify-content:space-between;gap:24px;padding:13px 18px 29px;border-bottom:1px solid #292e31;background:#121517">
+          <div style="min-width:0">
+            <h1 style="margin:0 0 5px;overflow:hidden;color:#f0f2f3;font-size:16px;font-weight:650;text-overflow:ellipsis;white-space:nowrap">refactor pty manager</h1>
+            <p style="margin:0;overflow:hidden;color:#7f888e;font:10px/1.4 Consolas,monospace;text-overflow:ellipsis;white-space:nowrap">C:\git_workspace\cli-agent-manager</p>
+          </div>
+          <dl style="display:flex;flex:none;gap:18px;margin:0 36px 0 0">
+            <div style="display:flex;flex-direction:column;gap:4px"><dt style="color:#737c82;font-size:9px;font-weight:700;text-transform:uppercase">Agent</dt><dd style="margin:0;color:#cbd0d3;font-size:11px">claude</dd></div>
+            <div style="display:flex;flex-direction:column;gap:4px"><dt style="color:#737c82;font-size:9px;font-weight:700;text-transform:uppercase">Account</dt><dd style="margin:0;color:#cbd0d3;font-size:11px">nowon@gmail.com</dd></div>
+            <div style="display:flex;flex-direction:column;gap:4px"><dt style="color:#737c82;font-size:9px;font-weight:700;text-transform:uppercase">Open</dt><dd style="margin:0;color:#cbd0d3;font-size:11px">2/10</dd></div>
+          </dl>
+          <div style="position:absolute;top:10px;right:10px;color:#aeb4b8;font-size:13px">✕</div>
+          <div style="position:absolute;bottom:0;left:14px;display:flex;height:25px;gap:2px">
+            <div style="min-width:54px;padding:0 8px;border-bottom:2px solid #f3b33d;color:#f0f2f3;font-size:10px;display:grid;place-items:center">CLI</div>
+            <div style="min-width:54px;padding:0 8px;border-bottom:2px solid transparent;color:#858e94;font-size:10px;display:grid;place-items:center;opacity:.35">Conversation</div>
+          </div>
+        </div>
+        <div class="old-sb" style="min-height:0;overflow:auto;padding:8px 4px 4px 8px">
+          <div style="height:100%;padding:4px 6px;font:12px/1.5 Consolas,monospace;color:#c9d0d4;white-space:pre-wrap">{{ cliText }}</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px;padding:0 10px;border-top:1px solid #272c2f;color:#7f888e;background:#171a1c;font:10px/1 Consolas,monospace">
+        <span style="display:inline-flex;align-items:center;gap:5px;color:#62dba9">◉ running</span>
+        <span>C:\git_workspace\cli-agent-manager</span>
+        <span>2/10 open</span>
+        <span style="overflow:hidden;margin-left:auto;text-overflow:ellipsis;white-space:nowrap">1.0.44</span>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>지금 빈 상태와 계정 설정 모달.</div>
+<div class="dv-card" style="width:560px">
+  <div style="display:grid;grid-template-rows:1fr 1fr;height:660px;background:#111315;color:#e7e9ea;font-family:Inter,'Segoe UI',sans-serif">
+    <div style="display:grid;place-content:center;justify-items:center;color:#697278">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
+      <h1 style="margin:15px 0 6px;color:#cbd0d3;font-size:18px;font-weight:580">Start a local CLI session</h1>
+      <p style="margin:0;font-size:12px">Choose an available agent and working directory above.</p>
+    </div>
+    <div style="display:grid;place-items:center;padding:24px;background:rgba(5,7,8,.72)">
+      <div style="width:100%;border:1px solid #353b3f;border-radius:6px;background:#1b1f21;box-shadow:0 20px 60px rgba(0,0,0,.45)">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:17px 18px;border-bottom:1px solid #303538">
+          <div><h2 style="margin:0;font-size:16px">Agent accounts</h2><p style="margin:6px 0 0;color:#858e94;font-size:11px">History is loaded only for agents with a verified or fixed account.</p></div>
+          <span style="color:#aeb4b8">✕</span>
+        </div>
+        <div style="display:grid;gap:9px;padding:18px">
+          <sc-for list="{{ oldAccounts }}" as="ac" hint-placeholder-count="2">
+            <div style="display:grid;grid-template-columns:8px 96px 145px minmax(90px,1fr) 28px 28px;align-items:center;gap:6px">
+              <span style="width:7px;height:7px;border-radius:2px;background:{{ ac.color }}"></span>
+              <span style="height:31px;display:flex;align-items:center;padding:0 8px;border:1px solid #343a3e;border-radius:4px;color:#e0e3e5;background:#111416;font-size:11px;overflow:hidden;white-space:nowrap">{{ ac.label }}</span>
+              <span style="height:31px;display:flex;align-items:center;padding:0 8px;border:1px solid #343a3e;border-radius:4px;color:#929a9f;background:#202427;font-size:11px;overflow:hidden;white-space:nowrap">{{ ac.email }}</span>
+              <span style="height:31px;display:flex;align-items:center;padding:0 8px;border:1px solid #343a3e;border-radius:4px;color:#929a9f;background:#202427;font-size:11px;overflow:hidden;white-space:nowrap">{{ ac.dir }}</span>
+              <span style="display:grid;width:28px;height:28px;place-items:center;border-radius:4px;color:#aeb4b8;font-size:12px">→</span>
+              <span style="display:grid;width:28px;height:28px;place-items:center;border-radius:4px;color:#aeb4b8"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/></svg></span>
+            </div>
+          </sc-for>
+          <div style="display:flex;width:max-content;align-items:center;gap:6px;margin-top:3px;padding:6px 9px;border-radius:4px;color:#9da5aa;font-size:11px">+ Add account</div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid #303538">
+          <span style="height:29px;display:grid;place-items:center;padding:0 13px;border:1px solid #3a4044;border-radius:4px;color:#c7cccf;background:#262b2e;font-size:12px">Cancel</span>
+          <span style="width:72px;height:29px;display:grid;place-items:center;border:1px solid #d89c2b;border-radius:4px;color:#17130b;background:#f3b33d;font-size:12px;font-weight:700">Save</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+</div>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Amber&quot;,&quot;Periwinkle&quot;],&quot;default&quot;:&quot;Amber&quot;,&quot;tsType&quot;:&quot;'Amber' | 'Periwinkle'&quot;,&quot;section&quot;:&quot;테마&quot;}}">
+class Component extends DCLogic {
+  state = { foldersOpen: true, recentOpen: true, healthOpen: true };
+  renderVals() {
+    const t = (k) => () => this.setState((s) => ({ [k]: !s[k] }));
+    const theme = this.props.accent ?? 'Amber';
+    const accents = {
+      Amber: {
+        accentColor: '#E9B45C', accentInk: '#1a1409',
+        bgGrad: 'linear-gradient(140deg,#20304a 0%,#3a3050 42%,#5a3a44 72%,#2a2233 100%)',
+        blob1: 'rgba(120,170,255,.45)', blob2: 'rgba(255,170,120,.34)',
+      },
+      Periwinkle: {
+        accentColor: '#8AA0FF', accentInk: '#0e1226',
+        bgGrad: 'linear-gradient(140deg,#182647 0%,#28306a 42%,#3f3f84 72%,#1b2038 100%)',
+        blob1: 'rgba(138,160,255,.5)', blob2: 'rgba(110,200,240,.3)',
+      },
+    };
+    const t2 = accents[theme] ?? accents.Amber;
+    return {
+      accentColor: t2.accentColor, accentInk: t2.accentInk,
+      bgGrad: t2.bgGrad, blob1: t2.blob1, blob2: t2.blob2,
+      foldersOpen: this.state.foldersOpen,
+      recentOpen: this.state.recentOpen,
+      healthOpen: this.state.healthOpen,
+      foldersCaret: this.state.foldersOpen ? '▾' : '▸',
+      recentCaret: this.state.recentOpen ? '▾' : '▸',
+      healthCaret: this.state.healthOpen ? '▾' : '▸',
+      toggleFolders: t('foldersOpen'),
+      toggleRecent: t('recentOpen'),
+      toggleHealth: t('healthOpen'),
+      setCli: () => {}, setConv: () => {},
+      agents: [
+        { mark: 'PS', short: 'PowerShell', label: 'PowerShell', version: '7.4.5' },
+        { mark: 'C', short: 'Claude', label: 'Claude Code', version: '1.0.44' },
+        { mark: 'X', short: 'Codex', label: 'Codex', version: '0.9.2' },
+        { mark: 'G', short: 'Gemini', label: 'Gemini CLI', version: '0.4.1' },
+        { mark: 'O', short: 'OpenCode', label: 'OpenCode', version: 'not found' },
+      ],
+      agentCards: [
+        { mark: 'C', label: 'Claude Code', version: '1.0.44', hint: 'nowon@gmail.com' },
+        { mark: 'X', label: 'Codex', version: '0.9.2', hint: 'nowon@openai' },
+        { mark: 'G', label: 'Gemini CLI', version: '0.4.1', hint: '계정 필요' },
+        { mark: 'O', label: 'OpenCode', version: '찾을 수 없음', hint: '경로 설정' },
+        { mark: 'PS', label: 'PowerShell', version: '7.4.5', hint: '로컬 셸' },
+      ],
+      recent: [
+        { mark: 'C', title: 'ime overlay 정리', meta: 'claude · 8월 12일' },
+        { mark: 'X', title: 'pty resume 버그', meta: 'codex · 8월 11일' },
+        { mark: 'G', title: 'docs pass', meta: 'gemini · 8월 9일' },
+        { mark: 'C', title: 'session sweep 로직', meta: 'claude · 8월 8일' },
+        { mark: 'X', title: 'health check 개선', meta: 'codex · 8월 5일' },
+      ],
+      sidebarSessions: [
+        { mark: 'C', title: 'refactor pty ma…', state: '실행 중', cwd: '~\\git_workspace\\cli-agent' },
+        { mark: 'X', title: 'codex review sw…', state: '대기', cwd: '~\\git_workspace\\api' },
+        { mark: 'G', title: 'gemini docs pass', state: '중지', cwd: '~\\docs' },
+        { mark: 'PS', title: 'build check', state: '대기', cwd: '~\\git_workspace' },
+      ],
+      accounts: [
+        { mark: 'C', email: 'nowon@gmail.com', tag: '자동 감지', dir: '%USERPROFILE%\\.claude' },
+        { mark: 'X', email: 'nowon@openai.com', tag: '수동', dir: 'D:\\cli-config\\codex-nowon' },
+        { mark: 'G', email: 'team@studio.dev', tag: '확인 필요', dir: '—' },
+      ],
+      oldHistory: [
+        { color: '#E58B68', title: 'ime overlay 정리', meta: 'claude - 2026. 8. 12.' },
+        { color: '#34D399', title: 'pty resume 버그', meta: 'codex - 2026. 8. 11.' },
+        { color: '#A78BFA', title: 'docs pass', meta: 'gemini - 2026. 8. 9.' },
+        { color: '#E58B68', title: 'session sweep 로직', meta: 'claude - 2026. 8. 8.' },
+        { color: '#34D399', title: 'health check 개선', meta: 'codex - 2026. 8. 5.' },
+      ],
+      oldHealth: [
+        { dot: '#34d399', label: 'PowerShell', version: '7.4.5' },
+        { dot: '#34d399', label: 'Claude Code', version: '1.0.44' },
+        { dot: '#34d399', label: 'Codex', version: '0.9.2' },
+        { dot: '#34d399', label: 'Gemini CLI', version: '0.4.1' },
+        { dot: '#ef6464', label: 'OpenCode', version: 'not found' },
+      ],
+      oldAccounts: [
+        { color: '#E58B68', label: 'Claude Code', email: 'nowon@gmail.com', dir: '%USERPROFILE%\\.claude' },
+        { color: '#34D399', label: 'Codex', email: 'nowon@openai.com', dir: 'D:\\cli-config\\codex-nowon' },
+      ],
+      cliText: [
+        '╭──────────────────────────────────────────────╮',
+        '│  Claude Code v1.0.44                         │',
+        '│  cwd: C:\\git_workspace\\cli-agent-manager     │',
+        '╰──────────────────────────────────────────────╯',
+        '',
+        '> pty-manager.ts 의 세션 종료 로직을 정리해줘',
+        '',
+        '● Read  electron/pty-manager.ts  (214 lines)',
+        '● Edit  electron/pty-manager.ts',
+        '    - dispose() 에서 리스너 해제 누락 수정',
+        '    - idle sweep 을 30분 상수로 통일',
+        '',
+        '  변경 2건을 적용했습니다. 빌드를 실행할까요?',
+        '',
+        '> ',
+      ].join('\n'),
+    };
+  }
+}
+</script>
+</body>
+</html>

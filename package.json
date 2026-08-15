@@ -1,0 +1,36 @@
+{
+  "name": "moacli",
+  "productName": "MoaCLI",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A desktop workspace that brings CLI coding agents, accounts, sessions, and conversations together",
+  "main": "./dist/main/main.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron .",
+    "start:lean": "node_modules\\electron\\dist\\electron.exe .",
+    "start:low-memory": "node_modules\\electron\\dist\\electron.exe --disable-gpu .",
+    "build": "npm run typecheck && electron-vite build",
+    "typecheck": "tsc --noEmit",
+    "package": "npm run build && electron-builder --publish never"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "0.10.0",
+    "@xterm/xterm": "5.5.0",
+    "lucide-react": "^0.468.0",
+    "node-pty": "1.1.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "33.3.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.0"
+  }
+}
