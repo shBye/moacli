@@ -9,6 +9,26 @@ extraResources:
   - from: profiles
     to: profiles
 win:
-  target: nsis
+  target:
+    - target: nsis
+      arch:
+        - x64
   icon: build/icon.ico
-npmRebuild: true
+  executableName: MoaCLI
+nsis:
+  artifactName: MoaCLI-Setup.${ext}
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: MoaCLI
+  runAfterFinish: true
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  installerLanguages: en_US
+  language: "1033"
+  multiLanguageInstaller: false
+npmRebuild: false

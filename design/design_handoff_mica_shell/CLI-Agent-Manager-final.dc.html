@@ -140,12 +140,12 @@ a{color:#2a78d6}a:hover{color:#1b5aa8}
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 12px;border-radius:9px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.2)">
                   <svg style="flex:none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-                  <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 11.5px/1.5 'JetBrains Mono',monospace;color:rgba(255,255,255,.62)">C:\git_workspace\cli-agent-manager</span>
+                  <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 11.5px/1.5 'JetBrains Mono',monospace;color:rgba(255,255,255,.62)">C:\workspace\moacli</span>
                   <span style="flex:none;font:500 10px/1 Inter,sans-serif;color:var(--acc)">변경</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;height:38px;padding:0 12px;border-radius:9px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.2)">
                   <span style="flex:none;width:16px;height:16px;border-radius:4px;background:rgba(229,139,104,.2);border:1px solid rgba(229,139,104,.35)"></span>
-                  <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 11.5px/1.5 Inter,sans-serif;color:rgba(255,255,255,.62)">nowon@gmail.com</span>
+                  <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 11.5px/1.5 Inter,sans-serif;color:rgba(255,255,255,.62)">developer@example.com</span>
                   <span style="margin-left:auto;flex:none;font:400 10px/1 Inter,sans-serif;color:rgba(255,255,255,.3)">Prototype 폴더에 저장</span>
                 </div>
               </div>
@@ -307,8 +307,8 @@ a{color:#2a78d6}a:hover{color:#1b5aa8}
                 <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:99px;background:rgba(62,213,152,.12);border:1px solid rgba(62,213,152,.26);font:600 10px/1 Inter,sans-serif;color:#3ED598">
                   <span style="width:5px;height:5px;border-radius:50%;background:#3ED598"></span>실행 중
                 </span>
-                <span style="font:400 10px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.34)">nowon@gmail.com</span>
-                <span style="margin-left:auto;font:400 10px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px">C:\git_workspace\cli-agent-manager</span>
+                <span style="font:400 10px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.34)">developer@example.com</span>
+                <span style="margin-left:auto;font:400 10px/1 'JetBrains Mono',monospace;color:rgba(255,255,255,.3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px">C:\workspace\moacli</span>
                 <span style="flex:none;width:24px;height:24px;display:grid;place-items:center;border-radius:6px;color:rgba(255,255,255,.4);font:400 12px/1 Inter,sans-serif">✕</span>
               </div>
               <div style="display:flex;gap:22px">
@@ -383,7 +383,7 @@ class Component extends DCLogic {
         { mark: 'O', short: 'OpenCode', label: 'OpenCode', version: 'not found' },
       ],
       agentCards: [
-        { mark: 'C', label: 'Claude Code', version: '1.0.44', hint: 'nowon@gmail.com' },
+        { mark: 'C', label: 'Claude Code', version: '1.0.44', hint: 'developer@example.com' },
         { mark: 'X', label: 'Codex', version: '0.9.2', hint: 'nowon@openai' },
         { mark: 'G', label: 'Gemini CLI', version: '0.4.1', hint: '계정 필요' },
         { mark: 'O', label: 'OpenCode', version: '찾을 수 없음', hint: '경로 설정' },
@@ -403,9 +403,9 @@ class Component extends DCLogic {
         { mark: 'PS', title: 'build check', state: '대기', cwd: '~\\git_workspace' },
       ],
       accounts: [
-        { mark: 'C', email: 'nowon@gmail.com', tag: '자동 감지', dir: '%USERPROFILE%\\.claude' },
-        { mark: 'X', email: 'nowon@openai.com', tag: '수동', dir: 'D:\\cli-config\\codex-nowon' },
-        { mark: 'G', email: 'team@studio.dev', tag: '확인 필요', dir: '—' },
+        { mark: 'C', email: 'developer@example.com', tag: '자동 감지', dir: '%USERPROFILE%\\.claude' },
+        { mark: 'X', email: 'codex@example.com', tag: '수동', dir: 'D:\\cli-config\\codex-nowon' },
+        { mark: 'G', email: 'team@example.com', tag: '확인 필요', dir: '—' },
       ],
       oldHistory: [
         { color: '#E58B68', title: 'ime overlay 정리', meta: 'claude - 2026. 8. 12.' },
@@ -422,8 +422,8 @@ class Component extends DCLogic {
         { dot: '#ef6464', label: 'OpenCode', version: 'not found' },
       ],
       oldAccounts: [
-        { color: '#E58B68', label: 'Claude Code', email: 'nowon@gmail.com', dir: '%USERPROFILE%\\.claude' },
-        { color: '#34D399', label: 'Codex', email: 'nowon@openai.com', dir: 'D:\\cli-config\\codex-nowon' },
+        { color: '#E58B68', label: 'Claude Code', email: 'developer@example.com', dir: '%USERPROFILE%\\.claude' },
+        { color: '#34D399', label: 'Codex', email: 'codex@example.com', dir: 'D:\\cli-config\\codex-nowon' },
       ],
       cliText: [
         '╭──────────────────────────────────────────────╮',

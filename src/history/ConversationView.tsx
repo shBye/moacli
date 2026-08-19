@@ -11,7 +11,7 @@ export function ConversationView({ conversation, loading, error }: ConversationV
   if (loading) return (
     <div className="history-placeholder history-loading" role="status">
       <span className="history-loading-track"><span /></span>
-      <span>대화 불러오는 중</span>
+      <span>Loading conversation</span>
     </div>
   )
   if (error) return <div className="history-placeholder error">{error}</div>

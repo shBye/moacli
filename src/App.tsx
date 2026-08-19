@@ -291,10 +291,10 @@ function AgentAvatar({ agentId, className, color, preference }: AgentAvatarProps
 }
 
 function stateLabel(state: SessionState): string {
-  if (state === 'running') return '실행 중'
-  if (state === 'starting') return '시작 중'
-  if (state === 'stopped') return '중지됨'
-  return '대기'
+  if (state === 'running') return 'Running'
+  if (state === 'starting') return 'Starting'
+  if (state === 'stopped') return 'Stopped'
+  return 'Idle'
 }
 
 function formatElapsed(milliseconds: number): string {
@@ -309,7 +309,7 @@ function SessionClock({ session }: { session: RuntimeSession }) {
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [])
-  return <span>idle {formatElapsed(now - session.lastActivityAt)} · 백그라운드 전환 후 30분</span>
+  return <span>idle {formatElapsed(now - session.lastActivityAt)} · closes after 30 min in background</span>
 }
 
 interface SectionHeadingProps {
@@ -1006,13 +1006,13 @@ export function App() {
       return false
     })
     if (duplicate) {
-      setAccountSaveNotice({ kind: 'error', text: '같은 서비스와 설정 폴더는 한 계정에서만 사용할 수 있습니다.' })
+      setAccountSaveNotice({ kind: 'error', text: 'Each agent and configuration directory can be used by only one account.' })
       return
     }
     localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(cleaned))
     setAccounts(cleaned)
     setDraftAccounts(cleaned)
-    setAccountSaveNotice({ kind: 'success', text: '저장되었습니다.' })
+    setAccountSaveNotice({ kind: 'success', text: 'Saved.' })
     refreshHistory(cleaned)
   }
 
@@ -1059,7 +1059,7 @@ export function App() {
     setLoginAccountRefreshing(session.id)
     void window.cliAgent.inspectAccount(session.account).then((inspected) => {
       if (!inspected) {
-        updateSession(session.id, { statusDetail: '인증 계정 정보를 아직 확인할 수 없습니다.' })
+        updateSession(session.id, { statusDetail: 'Unable to verify the signed-in account yet.' })
         return
       }
       const identity = accountIdentity(inspected)
@@ -1080,7 +1080,7 @@ export function App() {
       updateSession(session.id, {
         account: refreshed,
         title: `Sign in - ${refreshed.email}`,
-        statusDetail: `인증 확인: ${refreshed.email}`,
+        statusDetail: `Verified account: ${refreshed.email}`,
       })
       refreshHistory(nextAccounts)
     }).finally(() => setLoginAccountRefreshing(''))
@@ -1097,9 +1097,9 @@ export function App() {
           <strong>MoaCLI</strong>
         </div>
         <div className="window-controls" onDoubleClick={(event) => event.stopPropagation()}>
-          <button title="최소화" onClick={() => window.cliAgent.minimizeWindow()}><Minus size={16} /></button>
-          <button title="최대화" onClick={() => window.cliAgent.toggleMaximizeWindow()}><Square size={12} /></button>
-          <button className="window-close" title="닫기" onClick={() => window.cliAgent.closeWindow()}><X size={16} /></button>
+          <button title="Minimize" onClick={() => window.cliAgent.minimizeWindow()}><Minus size={16} /></button>
+          <button title="Maximize or restore" onClick={() => window.cliAgent.toggleMaximizeWindow()}><Square size={12} /></button>
+          <button className="window-close" title="Close" onClick={() => window.cliAgent.closeWindow()}><X size={16} /></button>
         </div>
       </header>
 
@@ -1107,7 +1107,7 @@ export function App() {
         <aside className="sidebar scroll">
           <div className="search-box">
             <Search size={14} aria-hidden="true" />
-            <input ref={searchRef} aria-label="세션 검색" placeholder="세션 검색" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} />
+            <input ref={searchRef} aria-label="Search sessions" placeholder="Search sessions" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} />
             <kbd>Ctrl K</kbd>
           </div>
 
@@ -1118,13 +1118,13 @@ export function App() {
             onToggle={() => toggleSection('folders')}
             actions={(
               <span className="heading-actions">
-                <button className="mini-icon-button" title="새 폴더" onClick={() => setNewFolderName('')}><FolderPlus size={13} /></button>
-                <button className="mini-icon-button" title="새 세션" onClick={() => setActiveSessionId('')}><Plus size={14} /></button>
+                <button className="mini-icon-button" title="New folder" onClick={() => setNewFolderName('')}><FolderPlus size={13} /></button>
+                <button className="mini-icon-button" title="New session" onClick={() => setActiveSessionId('')}><Plus size={14} /></button>
               </span>
             )}
           />
           {sectionOpen.folders && (
-            <nav className="folder-tree" aria-label="논리 폴더" style={{ height: `${folderPaneHeight}px` }}>
+            <nav className="folder-tree" aria-label="Folders" style={{ height: `${folderPaneHeight}px` }}>
               {folders.map((folder) => {
                 const folderSessions = sessions.filter((session) => session.folderId === folder.id)
                 const sessionHistoryKeys = new Set(folderSessions.map((session) => session.historyKey).filter(Boolean))
@@ -1201,7 +1201,7 @@ export function App() {
                                 <small>{session.cwd}</small>
                               </span>
                             </button>
-                            <button className="session-close" title="폴더에서 제거하고 세션 닫기" draggable={false} onClick={() => closeFolderSession(session)}><X size={13} /></button>
+                            <button className="session-close" title="Remove from folder and close session" draggable={false} onClick={() => closeFolderSession(session)}><X size={13} /></button>
                           </div>
                         )
                       }
@@ -1222,14 +1222,14 @@ export function App() {
                             <AgentAvatar agentId={historySession.agentId} className="tinted" color={profile?.color ?? '#7e878d'} preference={resolvedAgentIcon(historySession.agentId)} />
                             <span className="session-copy">
                               <strong title={historySession.title}>{historySession.title}</strong>
-                              <small>{historySession.agentId} · {new Date(historySession.updatedAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}</small>
+                              <small>{historySession.agentId} · {new Date(historySession.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</small>
                             </span>
                           </button>
-                          <button className="session-close" title="폴더에서 제거" draggable={false} onClick={() => removeHistoryFromFolder(historySession.key)}><X size={13} /></button>
+                          <button className="session-close" title="Remove from folder" draggable={false} onClick={() => removeHistoryFromFolder(historySession.key)}><X size={13} /></button>
                         </div>
                       )
                     })}
-                    {!folderSessions.length && !assignedHistory.length && <p className="folder-empty">대화 없음</p>}
+                    {!folderSessions.length && !assignedHistory.length && <p className="folder-empty">No conversations</p>}
                       </div>
                     </div>
                   </div>
@@ -1238,7 +1238,7 @@ export function App() {
               {newFolderName !== null && (
                 <div className="new-folder-row">
                   <Folder size={15} />
-                  <input autoFocus aria-label="폴더 이름" value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} onBlur={addFolder} onKeyDown={(event) => {
+                  <input autoFocus aria-label="Folder name" value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} onBlur={addFolder} onKeyDown={(event) => {
                     if (event.key === 'Enter') addFolder()
                     if (event.key === 'Escape') setNewFolderName(null)
                   }} />
@@ -1251,7 +1251,7 @@ export function App() {
             <div
               className="folder-pane-resizer"
               role="separator"
-              aria-label="Folders와 Recent 높이 조절"
+              aria-label="Resize Folders and Recent"
               aria-orientation="horizontal"
               aria-valuemin={MIN_FOLDER_PANE_HEIGHT}
               aria-valuemax={MAX_FOLDER_PANE_HEIGHT}
@@ -1268,10 +1268,10 @@ export function App() {
             count={filteredHistory.length}
             open={sectionOpen.recent}
             onToggle={() => toggleSection('recent')}
-            actions={<button className="mini-icon-button" title="대화 새로고침" onClick={() => refreshHistory()}><RefreshCw size={13} /></button>}
+            actions={<button className="mini-icon-button" title="Refresh conversations" onClick={() => refreshHistory()}><RefreshCw size={13} /></button>}
           />
           {sectionOpen.recent && (
-            <nav className="history-list" aria-label="최근 대화">
+            <nav className="history-list" aria-label="Recent conversations">
               {filteredHistory.map((historySession) => (
                 <button
                   className={`history-session ${activeSession?.historyKey === historySession.key ? 'active' : ''} ${draggedSidebarItem?.kind === 'history' && draggedSidebarItem.key === historySession.key ? 'dragging' : ''}`}
@@ -1285,13 +1285,13 @@ export function App() {
                   <span className="session-copy">
                     <strong title={historySession.title}>{historySession.title}</strong>
                     <small>
-                      {historySession.agentId} · {new Date(historySession.updatedAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                      {historySession.agentId} · {new Date(historySession.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       {folderAssignments[historySession.key] && <span className="history-folder-label"> · {folders.find((folder) => folder.id === folderAssignments[historySession.key])?.name}</span>}
                     </small>
                   </span>
                 </button>
               ))}
-              {!filteredHistory.length && <p className="no-history">연결된 계정의 대화가 없습니다</p>}
+              {!filteredHistory.length && <p className="no-history">No conversations found for connected accounts</p>}
             </nav>
           )}
 
@@ -1301,7 +1301,7 @@ export function App() {
               count={`${profiles.filter((profile) => profile.available).length}/${profiles.length}`}
               open={sectionOpen.agents}
               onToggle={() => toggleSection('agents')}
-              actions={<button className="mini-icon-button" title="CLI 버전 새로고침" disabled={profilesRefreshing} onClick={refreshProfiles}><RefreshCw size={13} /></button>}
+              actions={<button className="mini-icon-button" title="Refresh CLI versions" disabled={profilesRefreshing} onClick={refreshProfiles}><RefreshCw size={13} /></button>}
             />
             {sectionOpen.agents && profiles.map((profile) => (
               <div className="health-row" key={profile.id} title={profile.resolvedPath ?? 'Not found'}>
@@ -1314,7 +1314,7 @@ export function App() {
           <div
             className="sidebar-resizer"
             role="separator"
-            aria-label="사이드바 너비 조절"
+            aria-label="Resize sidebar"
             aria-orientation="vertical"
             aria-valuemin={MIN_SIDEBAR_WIDTH}
             aria-valuemax={MAX_SIDEBAR_WIDTH}
@@ -1339,22 +1339,22 @@ export function App() {
                     {activeSession.purpose === 'login' && (
                       <button
                         className="icon-button context-account-refresh"
-                        title={activeSession.statusDetail.startsWith('인증 확인:') ? activeSession.statusDetail : '로그인 계정 정보 새로고침'}
+                        title={activeSession.statusDetail.startsWith('Verified account:') ? activeSession.statusDetail : 'Refresh signed-in account'}
                         disabled={loginAccountRefreshing === activeSession.id}
                         onClick={() => refreshLoginAccount(activeSession)}
                       >
-                        {activeSession.statusDetail.startsWith('인증 확인:')
+                        {activeSession.statusDetail.startsWith('Verified account:')
                           ? <Check size={15} />
                           : <RefreshCw className={loginAccountRefreshing === activeSession.id ? 'spinning' : ''} size={15} />}
                       </button>
                     )}
-                    <button className="icon-button context-close" title="세션 닫기" onClick={() => closeSession(activeSession.id)}><X size={15} /></button>
+                    <button className="icon-button context-close" title="Close session" onClick={() => closeSession(activeSession.id)}><X size={15} /></button>
                   </div>
                   <div className="session-subnav">
-                    <nav className="view-tabs" aria-label="세션 보기">
+                    <nav className="view-tabs" aria-label="Session views">
                       <button className={activeSession.view === 'cli' ? 'active' : ''} onClick={() => updateSession(activeSession.id, { view: 'cli' })}>CLI</button>
                       <button className={activeSession.view === 'conversation' ? 'active' : ''} disabled={!activeSession.historyKey} onClick={() => showConversation(activeSession.id)}>
-                        대화 전문 {activeSession.conversation?.messages.length ?? ''}
+                        Conversation {activeSession.conversation?.messages.length ?? ''}
                       </button>
                     </nav>
                   </div>
@@ -1365,11 +1365,11 @@ export function App() {
                 <div className="launcher-inner">
                   <div className="launcher-heading">
                     <span className="launcher-icon"><img src={moaCliIcon} alt="" draggable={false} /></span>
-                    <h1>새 세션 시작</h1>
-                    <p>에이전트와 작업 경로를 고르면 바로 실행됩니다.</p>
+                    <h1>Start a new session</h1>
+                    <p>Choose an agent and working directory to begin.</p>
                   </div>
                   <div className="launcher-card">
-                    <div className="agent-picker" role="radiogroup" aria-label="에이전트 선택">
+                    <div className="agent-picker" role="radiogroup" aria-label="Select an agent">
                       {profiles.map((profile) => (
                         <button key={profile.id} role="radio" aria-checked={agentId === profile.id} className={agentId === profile.id ? 'active' : ''} disabled={!profile.available} onClick={() => setAgentId(profile.id)} title={profile.available ? profile.label : `${profile.label} not found`}>
                           <AgentAvatar agentId={profile.id} className="picker" preference={resolvedAgentIcon(profile.id)} />
@@ -1378,14 +1378,14 @@ export function App() {
                       ))}
                     </div>
                     <label className="launcher-field title-field">
-                      <span>제목</span>
-                      <input autoFocus maxLength={40} value={title} placeholder="세션 제목" onChange={(event) => setTitle(event.target.value)} />
+                      <span>Title</span>
+                      <input autoFocus maxLength={40} value={title} placeholder="Session title" onChange={(event) => setTitle(event.target.value)} />
                       <small>{title.length}/40</small>
                     </label>
                     <button className="launcher-field path-field" onClick={selectWorkingDirectory}>
                       <Folder size={15} />
                       <span>{cwd}</span>
-                      <strong>변경</strong>
+                      <strong>Change</strong>
                     </button>
                     <label className="launcher-field account-field">
                       <span className="account-color" style={{ '--agent': selectedProfile?.color ?? '#7e878d' } as CSSProperties} />
@@ -1394,10 +1394,10 @@ export function App() {
                       ) : (
                         <select value={accountId} onChange={(event) => setAccountId(event.target.value)}>
                           {agentAccounts.map((account) => <option key={account.id} value={account.id}>{account.email}</option>)}
-                          {!agentAccounts.length && <option value="">계정 설정 필요</option>}
+                          {!agentAccounts.length && <option value="">Account setup required</option>}
                         </select>
                       )}
-                      <small>{folders.find((folder) => folder.id === selectedFolderId)?.name ?? 'Unsorted'} 폴더에 저장</small>
+                      <small>Save in {folders.find((folder) => folder.id === selectedFolderId)?.name ?? 'Unsorted'}</small>
                     </label>
                   </div>
                   <div className="start-row">
@@ -1425,9 +1425,9 @@ export function App() {
                       onStateChange={(state, detail) => updateSession(session.id, { state, statusDetail: detail ?? '' })}
                     />
                     {(session.state === 'idle' || session.state === 'starting') && (
-                      <div className="session-starting" role="status" aria-label="CLI 세션 연결 중">
+                      <div className="session-starting" role="status" aria-label="Connecting to CLI session">
                         <span className="session-starting-bar" />
-                        <span className="session-starting-label">CLI 세션 연결 중</span>
+                        <span className="session-starting-label">Connecting to CLI session</span>
                       </div>
                     )}
                   </div>
@@ -1441,14 +1441,14 @@ export function App() {
 
           <footer className="status-bar">
             <span className={`status-pill ${activeSession?.state ?? 'idle'}`}><span className="status-dot" />{activeSession?.state ?? 'idle'}</span>
-            <span>{activeSession ? activeProfile?.version ?? activeSession.agentId : '세션 없음'}</span>
+            <span>{activeSession ? activeProfile?.version ?? activeSession.agentId : 'No session'}</span>
             <span>{sessions.length}/{MAX_RUNTIME_SESSIONS} open</span>
             <span className="status-right">{activeSession ? <SessionClock session={activeSession} /> : detectedVersions}</span>
           </footer>
         </section>
       </div>
 
-      <button className="floating-settings" title="계정 및 테마 설정" onClick={() => {
+      <button className="floating-settings" title="Account and theme settings" onClick={() => {
         setDraftAccounts(accounts)
         setAccountSaveNotice(null)
         setSettingsOpen(true)
@@ -1460,8 +1460,8 @@ export function App() {
         }}>
           <section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="account-settings-title">
             <header>
-              <div><h2 id="account-settings-title">설정</h2><p>에이전트 계정과 화면 테마를 관리합니다.</p></div>
-              <button className="icon-button" title="닫기" onClick={() => setSettingsOpen(false)}><X size={16} /></button>
+              <div><h2 id="account-settings-title">Settings</h2><p>Manage agent accounts, icons, and the interface theme.</p></div>
+              <button className="icon-button" title="Close" onClick={() => setSettingsOpen(false)}><X size={16} /></button>
             </header>
             <div className="settings-content scroll">
               <div className="theme-setting">
@@ -1482,11 +1482,11 @@ export function App() {
                         <span>{profile.label}</span>
                       </div>
                       <div className="agent-icon-controls">
-                        <div className="agent-icon-choices" role="radiogroup" aria-label={`${profile.label} 아이콘`}>
-                          <button className={mode === 'monogram' ? 'active' : ''} role="radio" aria-checked={mode === 'monogram'} title="기본 문자 아이콘" onClick={() => changeAgentIcon(profile.id, { mode: 'monogram' })}>
+                        <div className="agent-icon-choices" role="radiogroup" aria-label={`${profile.label} icon`}>
+                          <button className={mode === 'monogram' ? 'active' : ''} role="radio" aria-checked={mode === 'monogram'} title="Default monogram" onClick={() => changeAgentIcon(profile.id, { mode: 'monogram' })}>
                             <span>{agentMonogram(profile.id)}</span>
                           </button>
-                          <button className={mode === 'lucide' ? 'active' : ''} role="radio" aria-checked={mode === 'lucide'} title="Lucide 아이콘 모음 열기" onClick={() => {
+                          <button className={mode === 'lucide' ? 'active' : ''} role="radio" aria-checked={mode === 'lucide'} title="Choose a Lucide icon" onClick={() => {
                             setIconPickerAgentId(profile.id)
                             setLucideIconQuery('')
                             setLucideIconPage(0)
@@ -1495,9 +1495,9 @@ export function App() {
                             ? <DynamicLucideIcon name={agentIcons[profile.id].iconName as LucideIconName} size={14} />
                             : <Shapes size={14} />}
                           </button>
-                          <label className={`agent-icon-upload ${mode === 'custom' ? 'active' : ''}`} role="radio" aria-checked={mode === 'custom'} title="사용자 이미지 선택">
+                          <label className={`agent-icon-upload ${mode === 'custom' ? 'active' : ''}`} role="radio" aria-checked={mode === 'custom'} title="Choose a custom image">
                             <ImagePlus size={14} />
-                            <input type="file" aria-label={`${profile.label} 사용자 이미지 선택`} accept="image/png,image/jpeg,image/webp" onChange={(event) => {
+                            <input type="file" aria-label={`Choose a custom image for ${profile.label}`} accept="image/png,image/jpeg,image/webp" onChange={(event) => {
                               importAgentIcon(profile.id, event.target.files?.[0])
                               event.target.value = ''
                             }} />
@@ -1505,8 +1505,8 @@ export function App() {
                         </div>
                         <button
                           className="agent-background-picker"
-                          title="아이콘 배경색"
-                          aria-label={`${profile.label} 아이콘 배경색 선택`}
+                          title="Icon background color"
+                          aria-label={`Choose an icon background color for ${profile.label}`}
                           aria-haspopup="dialog"
                           onClick={(event) => openAgentColorPicker(event, profile.id, agentIcons[profile.id]?.backgroundColor ?? profile.color)}
                         >
@@ -1540,21 +1540,21 @@ export function App() {
                       }} />
                     </div>
                     <span className={`account-status ${account.detected ? 'verified' : ''}`}>{account.detected ? 'Verified' : 'Fixed'}</span>
-                    <button className="icon-button" title="공식 CLI로 로그인" disabled={!['claude', 'codex'].includes(account.agentId) || !account.email.trim() || !account.configDir.trim()} onClick={() => authenticateAccount(account)}><LogIn size={15} /></button>
-                    <button className="icon-button" title={account.detected ? '자동 감지 계정은 공식 CLI 인증에서 관리됩니다' : '계정 삭제'} disabled={account.detected} onClick={() => {
+                    <button className="icon-button" title="Sign in with the official CLI" disabled={!['claude', 'codex'].includes(account.agentId) || !account.email.trim() || !account.configDir.trim()} onClick={() => authenticateAccount(account)}><LogIn size={15} /></button>
+                    <button className="icon-button" title={account.detected ? 'Auto-detected accounts are managed by the official CLI' : 'Delete account'} disabled={account.detected} onClick={() => {
                       setAccountSaveNotice(null)
                       setDraftAccounts((current) => current.filter((_, itemIndex) => itemIndex !== index))
                     }}><Trash2 size={15} /></button>
                   </div>
                 )
               })}
-              <button className="add-account-button" onClick={addAccount}><Plus size={14} />계정 추가</button>
+              <button className="add-account-button" onClick={addAccount}><Plus size={14} />Add account</button>
               </div>
             </div>
             <footer>
               {accountSaveNotice && <span className={`account-save-notice ${accountSaveNotice.kind}`}>{accountSaveNotice.text}</span>}
-              <button className="secondary-button" onClick={() => setSettingsOpen(false)}>닫기</button>
-              <button className="modal-save" onClick={saveAccounts}>저장</button>
+              <button className="secondary-button" onClick={() => setSettingsOpen(false)}>Close</button>
+              <button className="modal-save" onClick={saveAccounts}>Save</button>
             </footer>
           </section>
         </div>
@@ -1570,11 +1570,11 @@ export function App() {
                 <h2 id="lucide-picker-title">Lucide icons</h2>
                 <p>{profiles.find((profile) => profile.id === iconPickerAgentId)?.label ?? iconPickerAgentId}</p>
               </div>
-              <button className="icon-button" title="닫기" onClick={() => setIconPickerAgentId('')}><X size={16} /></button>
+              <button className="icon-button" title="Close" onClick={() => setIconPickerAgentId('')}><X size={16} /></button>
             </header>
             <label className="icon-picker-search">
               <Search size={14} aria-hidden="true" />
-              <input autoFocus value={lucideIconQuery} placeholder="아이콘 이름 검색" onChange={(event) => {
+              <input autoFocus value={lucideIconQuery} placeholder="Search icon names" onChange={(event) => {
                 setLucideIconQuery(event.target.value)
                 setLucideIconPage(0)
               }} />
@@ -1593,14 +1593,14 @@ export function App() {
                   <DynamicLucideIcon name={name} size={18} />
                 </button>
               ))}
-              {!visibleLucideIconNames.length && <p className="icon-picker-empty">검색 결과 없음</p>}
+              {!visibleLucideIconNames.length && <p className="icon-picker-empty">No matching icons</p>}
             </div>
             <footer>
               <span>{filteredLucideIconNames.length.toLocaleString()} icons</span>
               <div className="icon-picker-pagination">
-                <button title="이전 페이지" disabled={lucideIconPage === 0} onClick={() => setLucideIconPage((current) => Math.max(0, current - 1))}><ChevronLeft size={15} /></button>
+                <button title="Previous page" disabled={lucideIconPage === 0} onClick={() => setLucideIconPage((current) => Math.max(0, current - 1))}><ChevronLeft size={15} /></button>
                 <span>{Math.min(lucideIconPage + 1, lucideIconPageCount)} / {lucideIconPageCount}</span>
-                <button title="다음 페이지" disabled={lucideIconPage >= lucideIconPageCount - 1} onClick={() => setLucideIconPage((current) => Math.min(lucideIconPageCount - 1, current + 1))}><ChevronRight size={15} /></button>
+                <button title="Next page" disabled={lucideIconPage >= lucideIconPageCount - 1} onClick={() => setLucideIconPage((current) => Math.min(lucideIconPageCount - 1, current + 1))}><ChevronRight size={15} /></button>
               </div>
             </footer>
           </section>
@@ -1614,7 +1614,7 @@ export function App() {
           <section
             className="agent-color-popover"
             role="dialog"
-            aria-label={`${colorPickerProfile?.label ?? agentColorPicker.agentId} 아이콘 배경색`}
+            aria-label={`${colorPickerProfile?.label ?? agentColorPicker.agentId} icon background color`}
             style={{ left: agentColorPicker.left, top: agentColorPicker.top }}
             onMouseDown={(event) => event.stopPropagation()}
           >
@@ -1625,7 +1625,7 @@ export function App() {
               </div>
               <button
                 className="agent-color-reset"
-                title="기본 배경색으로 복원"
+                title="Restore the default background color"
                 disabled={!agentIcons[agentColorPicker.agentId]?.backgroundColor}
                 onClick={() => {
                   changeAgentIconBackground(agentColorPicker.agentId)
@@ -1643,7 +1643,7 @@ export function App() {
                   value={agentColorDraft.replace(/^#/, '')}
                   maxLength={6}
                   spellCheck={false}
-                  aria-label="HEX 색상"
+                  aria-label="HEX color"
                   onChange={(event) => {
                     const raw = event.target.value.replace(/[^0-9a-f]/gi, '').slice(0, 6).toUpperCase()
                     setAgentColorDraft(`#${raw}`)
@@ -1652,7 +1652,7 @@ export function App() {
                 />
               </label>
             </div>
-            <div className="agent-color-swatches" aria-label="추천 색상">
+            <div className="agent-color-swatches" aria-label="Recommended colors">
               {AGENT_COLOR_SWATCHES.map((color) => {
                 const selected = activeAgentColor.toLocaleLowerCase() === color.toLocaleLowerCase()
                 return (
@@ -1674,7 +1674,7 @@ export function App() {
               <label className="agent-color-more">
                 <Palette size={14} />
                 <span>More colors</span>
-                <input type="color" aria-label="전체 색상 선택" value={activeAgentColor} onChange={(event) => selectAgentColor(event.target.value)} />
+                <input type="color" aria-label="Open the full color picker" value={activeAgentColor} onChange={(event) => selectAgentColor(event.target.value)} />
               </label>
               <button className="agent-color-done" onClick={() => setAgentColorPicker(null)}>Done</button>
             </footer>

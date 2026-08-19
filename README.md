@@ -16,6 +16,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/shBye/moacli/releases/latest/download/MoaCLI-Setup.exe">
+    <img alt="Download MoaCLI for Windows" src="https://img.shields.io/badge/Download-Windows%20installer-ff7eb6?style=for-the-badge&logo=windows" />
+  </a>
+</p>
+
+<p align="center">
   <img src="./docs/assets/moacli-brand.png" width="720" alt="MoaCLI brand system" />
 </p>
 
@@ -49,13 +55,21 @@ MoaCLI uses each agent's installed executable and native resume command. It does
 
 ## Quick Start
 
-### Requirements
+### Windows installer
+
+[Download the latest MoaCLI installer](https://github.com/shBye/moacli/releases/latest/download/MoaCLI-Setup.exe), run it, and choose the installation directory. The installer creates Start menu and desktop shortcuts with the MoaCLI icon.
+
+The first public build is not code-signed, so Windows SmartScreen may display an `Unknown publisher` warning.
+
+### Run from source
+
+Requirements:
 
 - Windows 10 or Windows 11
 - Node.js and npm
 - At least one supported CLI installed and available on `PATH`
 
-### Install and run
+#### Install and run
 
 ```powershell
 git clone https://github.com/shBye/moacli.git
@@ -66,7 +80,7 @@ npm.cmd run dev
 
 The renderer development server uses port `5187`.
 
-### Build and run locally
+#### Build and run locally
 
 ```powershell
 npm.cmd run build
