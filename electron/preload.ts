@@ -4,6 +4,7 @@ import type { CliAgentApi, PtyDataEvent, PtyExitEvent, StartPtyRequest } from '.
 const api: CliAgentApi = {
   getProfiles: () => ipcRenderer.invoke('profiles:list'),
   detectAccounts: () => ipcRenderer.invoke('accounts:detect'),
+  inspectAccount: (account) => ipcRenderer.invoke('accounts:inspect', account),
   selectDirectory: (defaultPath?: string) => ipcRenderer.invoke('directory:select', defaultPath),
   listHistory: (accounts) => ipcRenderer.invoke('history:list', accounts),
   getConversation: (key: string) => ipcRenderer.invoke('history:get', key),

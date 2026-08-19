@@ -129,6 +129,7 @@ function createWindow(): void {
 
 ipcMain.handle('profiles:list', () => getAgentHealth())
 ipcMain.handle('accounts:detect', () => sessionHistory.detectAccounts())
+ipcMain.handle('accounts:inspect', (_event, account: AgentAccount) => sessionHistory.inspectAccount(account))
 ipcMain.handle('history:list', (_event, accounts: AgentAccount[]) => {
   configureHistoryWatchers(accounts)
   return sessionHistory.list(accounts)

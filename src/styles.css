@@ -67,7 +67,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .titlebar-brand { display: flex; min-width: 0; align-items: center; gap: 10px; padding-left: 14px; }
 .brand-logo { width: 18px; height: 18px; flex: none; object-fit: contain; }
 .titlebar-brand strong { overflow: hidden; color: #dfe3e6; font-size: 11.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.prototype-label { padding: 3px 6px; border: 1px solid rgba(255,255,255,.12); border-radius: 4px; color: rgba(255,255,255,.42); font: 500 9px/1 'JetBrains Mono', monospace; text-transform: uppercase; }
 .window-controls { display: flex; height: 37px; app-region: no-drag; -webkit-app-region: no-drag; }
 .window-controls button { display: grid; width: 44px; height: 37px; padding: 0; place-items: center; border: 0; color: rgba(255,255,255,.54); background: transparent; cursor: pointer; }
 .window-controls button:hover { color: #f2f4f5; background: rgba(255,255,255,.07); }
@@ -91,6 +90,7 @@ body.sidebar-resizing, body.sidebar-resizing * { cursor: col-resize !important; 
 .heading-actions { display: flex; align-items: center; gap: 1px; }
 .mini-icon-button { display: grid; width: 25px; height: 25px; padding: 0; place-items: center; border: 0; border-radius: 6px; color: rgba(255,255,255,.42); background: transparent; cursor: pointer; }
 .mini-icon-button:hover { color: #fff; background: rgba(255,255,255,.07); }
+.mini-icon-button:disabled { opacity: .3; cursor: default; }
 
 .folder-tree { flex: none; padding: 0 0 8px 7px; overflow-y: auto; transition: height 160ms ease; }
 .folder-tree > div { padding-right: 7px; }
@@ -229,7 +229,9 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .icon-button { display: grid; width: 28px; height: 28px; flex: none; padding: 0; place-items: center; border: 0; border-radius: 6px; color: rgba(255,255,255,.5); background: transparent; cursor: pointer; }
 .icon-button:hover:not(:disabled) { color: #fff; background: rgba(255,255,255,.07); }
 .icon-button:disabled { opacity: .3; cursor: default; }
-.context-close { width: 24px; height: 24px; }
+.context-account-refresh, .context-close { width: 24px; height: 24px; }
+.spinning { animation: spin 700ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .session-subnav { display: flex; min-width: 0; align-items: flex-end; justify-content: space-between; margin-top: 11px; }
 .view-tabs { display: flex; align-items: flex-end; gap: 22px; }
 .view-tabs button { height: 29px; padding: 0 1px 9px; border: 0; border-bottom: 2px solid transparent; color: rgba(255,255,255,.42); background: transparent; font-size: 11px; font-weight: 500; cursor: pointer; }
@@ -318,6 +320,9 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .add-account-button { display: flex; width: max-content; align-items: center; gap: 6px; padding: 7px 9px; border: 0; border-radius: 6px; color: rgba(255,255,255,.46); background: transparent; font-size: 10.5px; cursor: pointer; }
 .add-account-button:hover { color: #fff; background: rgba(255,255,255,.06); }
 .settings-modal > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid rgba(255,255,255,.07); }
+.account-save-notice { align-self: center; margin-right: auto; color: rgba(255,255,255,.58); font-size: 11px; }
+.account-save-notice.success { color: #3ed598; }
+.account-save-notice.error { color: #ff7e86; }
 .secondary-button, .modal-save { height: 30px; padding: 0 14px; border-radius: 8px; font-size: 11px; cursor: pointer; }
 .secondary-button { border: 1px solid rgba(255,255,255,.1); color: rgba(255,255,255,.62); background: rgba(255,255,255,.04); }
 .modal-save { border: 0; color: var(--acc-ink); background: var(--acc); font-weight: 700; }

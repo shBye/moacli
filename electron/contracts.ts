@@ -80,6 +80,7 @@ export interface TerminalClipboardContent {
 export interface CliAgentApi {
   getProfiles: () => Promise<AgentHealth[]>
   detectAccounts: () => Promise<AgentAccount[]>
+  inspectAccount: (account: AgentAccount) => Promise<AgentAccount | null>
   selectDirectory: (defaultPath?: string) => Promise<string | null>
   listHistory: (accounts: AgentAccount[]) => Promise<HistorySession[]>
   getConversation: (key: string) => Promise<ConversationHistory>

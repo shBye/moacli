@@ -386,6 +386,14 @@ export class SessionHistoryService {
     return accounts
   }
 
+  async inspectAccount(account: AgentAccount): Promise<AgentAccount | null> {
+    let email: string | undefined
+    if (account.agentId === 'claude') email = await claudeEmail(account.configDir)
+    if (account.agentId === 'codex') email = codexEmail(account.configDir)
+    if (account.agentId === 'gemini') email = geminiEmail(account.configDir)
+    return email ? { ...account, email } : null
+  }
+
   async list(accounts: AgentAccount[]): Promise<HistorySession[]> {
     const validAccounts = accounts.filter((account) => account.id && account.email.trim() && account.configDir && existsSync(account.configDir))
     const local: Array<{ summary: HistorySession | null; source: HistorySource }> = []

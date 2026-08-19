@@ -616,3 +616,61 @@ GPU 비활성화는 안정화 기준 약 102MB(44%)를 추가 절감했지만 so
 - Connected the icon to Electron Builder, the development BrowserWindow, the title bar, and the new-session launcher.
 - Unified Windows and in-app icon exports on the transparent symbol-only asset; the navy tile is no longer shown in the title bar or launcher.
 - Enlarged the Windows symbol from roughly 56% to 84% of the canvas width so it remains prominent in the 16px and 32px taskbar slots.
+### CLI version refresh (2026-08-19)
+
+**Detection rule**
+
+- Each agent profile declares a binary name and version command. Codex uses `bin: codex` and `--version`.
+- On Windows, MoaCLI checks `%APPDATA%\npm` before the inherited PATH, then checks bundled Codex fallback locations.
+- The selected `%APPDATA%\npm\codex.cmd` currently reports `codex-cli 0.148.0`; sandbox and plugin fallbacks remain on older builds but are not selected.
+
+**Refresh behavior**
+
+- Previously agent versions were read only during renderer startup.
+- Profiles now refresh when the MoaCLI window regains focus, when it becomes visible, and every 60 seconds while visible.
+- Added an explicit refresh action to the AGENTS section for immediate verification after updating a CLI inside MoaCLI.
+- Concurrent refresh calls are coalesced so multiple focus/visibility events do not spawn duplicate version checks.
+### Title bar cleanup (2026-08-19)
+
+- Removed the static `PROTOTYPE` badge from the MoaCLI title bar.
+- The badge was an early design-stage label and was unrelated to the selected logical folder or workspace directory.
+
+### Account identity and settings save behavior (2026-08-19)
+
+**Identity rule**
+
+- Accounts are identified by the combination of agent type and normalized configuration directory, not by email address.
+- Claude and Codex may therefore display the same email without colliding: their default roots are `.claude` and `.codex`, and their agent types also differ.
+- Configuration paths are compared case-insensitively and without trailing slashes.
+- Saving two accounts for the same agent with the same configuration directory is rejected with an inline error.
+
+**Editing and authentication**
+
+- Manually added accounts remain editable and removable in MoaCLI.
+- Auto-detected accounts remain read-only because their email and authentication state come from the official CLI configuration.
+- The email field is display metadata; changing it does not switch the credentials stored in the configuration directory.
+- A configuration directory holds one active credential state for a given CLI. Signing into another identity in that same directory replaces that state rather than creating a second isolated account.
+
+**Modal behavior**
+
+- Saving account settings no longer closes the settings modal.
+- Trimmed values are reflected back into the open form and an inline success message confirms persistence.
+- Editing, adding, or removing an account clears the previous save message.
+- The footer action is now labeled `Close` to match the persistent-modal save flow.
+
+### Login account refresh (2026-08-19)
+
+**Issue**
+
+- A browser-based CLI login could finish successfully while the isolated login terminal remained open.
+- Unlike a normal command prompt, the login PTY has no parent shell prompt to return to, so the stopped terminal did not provide an obvious next action.
+- Account labels were not re-read from the selected configuration directory after authentication.
+
+**Resolution**
+
+- Added an account refresh action immediately to the left of the login session close button.
+- The action inspects the exact account configuration directory used for the login, including custom Claude and Codex account roots.
+- On success, the verified email updates the stored account, current login header, draft settings, and conversation history source.
+- The refresh icon spins while checking and changes to a check icon after successful verification.
+- The login terminal remains open until the user closes it; completing authentication does not force a conversation to start or reopen settings.
+- Added an IPC boundary for account inspection that returns only the verified email and existing account metadata, not credentials or token contents.

@@ -18,7 +18,7 @@ Claude Code, Codex, Gemini CLI, OpenCode와 PowerShell을 한 Electron 앱에서
 - 논리 폴더와 실제 작업 디렉터리를 분리한 UI 골격
 - CLI 실행 파일 탐색, 버전 확인, 상태 표시
 
-상세 구현 현황과 해결한 이슈는 [PROGRESS.md](./PROGRESS.md)를 참고합니다.
+상세 구현 현황과 해결한 이슈는 [PROGRESS.md](./PROGRESS.md), 다음 개발 기능의 설계와 우선순위는 [ROADMAP.md](./ROADMAP.md)를 참고합니다.
 
 ## 실행
 

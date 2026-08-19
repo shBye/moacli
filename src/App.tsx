@@ -153,6 +153,11 @@ function savedAccounts(): AgentAccount[] {
   return Array.isArray(accounts) ? accounts as AgentAccount[] : []
 }
 
+function accountIdentity(account: Pick<AgentAccount, 'agentId' | 'configDir'>): string {
+  const configDir = account.configDir.trim().replace(/[\\/]+$/, '').toLocaleLowerCase()
+  return `${account.agentId}:${configDir}`
+}
+
 function savedTheme(): AccentTheme {
   return localStorage.getItem(THEME_STORAGE_KEY) === 'periwinkle' ? 'periwinkle' : 'amber'
 }
@@ -330,10 +335,13 @@ function SectionHeading({ label, count, open, onToggle, actions }: SectionHeadin
 
 export function App() {
   const [profiles, setProfiles] = useState<AgentHealth[]>([])
+  const [profilesRefreshing, setProfilesRefreshing] = useState(false)
   const [history, setHistory] = useState<HistorySession[]>([])
   const [historyQuery, setHistoryQuery] = useState('')
   const [accounts, setAccounts] = useState<AgentAccount[]>(savedAccounts)
   const [draftAccounts, setDraftAccounts] = useState<AgentAccount[]>(accounts)
+  const [accountSaveNotice, setAccountSaveNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
+  const [loginAccountRefreshing, setLoginAccountRefreshing] = useState('')
   const [accountId, setAccountId] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [folders, setFolders] = useState<LogicalFolder[]>(savedFolders)
@@ -362,6 +370,7 @@ export function App() {
   const [lucideIconPage, setLucideIconPage] = useState(0)
   const searchRef = useRef<HTMLInputElement>(null)
   const accountsRef = useRef(accounts)
+  const profileRefreshInFlight = useRef(false)
   const historyRefreshInFlight = useRef(false)
   const historyRefreshQueued = useRef(false)
   accountsRef.current = accounts
@@ -386,11 +395,17 @@ export function App() {
     : '#56616B'
 
   const refreshProfiles = (): void => {
+    if (profileRefreshInFlight.current) return
+    profileRefreshInFlight.current = true
+    setProfilesRefreshing(true)
     void window.cliAgent.getProfiles().then((items) => {
       setProfiles(items)
-      if (!items.some((profile) => profile.id === agentId && profile.available)) {
-        setAgentId(items.find((profile) => profile.available)?.id ?? items[0]?.id ?? '')
-      }
+      setAgentId((current) => items.some((profile) => profile.id === current && profile.available)
+        ? current
+        : items.find((profile) => profile.available)?.id ?? items[0]?.id ?? '')
+    }).finally(() => {
+      profileRefreshInFlight.current = false
+      setProfilesRefreshing(false)
     })
   }
 
@@ -427,7 +442,7 @@ export function App() {
       const manual = savedAccounts()
       const merged = [...detected]
       for (const account of manual) {
-        if (!merged.some((item) => item.agentId === account.agentId && item.configDir.toLocaleLowerCase() === account.configDir.toLocaleLowerCase())) {
+        if (!merged.some((item) => accountIdentity(item) === accountIdentity(account))) {
           merged.push(account)
         }
       }
@@ -435,6 +450,20 @@ export function App() {
       setDraftAccounts(merged)
       refreshHistory(merged)
     })
+  }, [])
+
+  useEffect(() => {
+    const reconcileProfiles = (): void => {
+      if (document.visibilityState === 'visible') refreshProfiles()
+    }
+    const timer = window.setInterval(reconcileProfiles, 60_000)
+    window.addEventListener('focus', reconcileProfiles)
+    document.addEventListener('visibilitychange', reconcileProfiles)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', reconcileProfiles)
+      document.removeEventListener('visibilitychange', reconcileProfiles)
+    }
   }, [])
 
   useEffect(() => {
@@ -969,14 +998,27 @@ export function App() {
     const cleaned = draftAccounts
       .map((account) => ({ ...account, email: account.email.trim(), configDir: account.configDir.trim() }))
       .filter((account) => account.email && account.configDir)
+    const identities = new Set<string>()
+    const duplicate = cleaned.find((account) => {
+      const identity = accountIdentity(account)
+      if (identities.has(identity)) return true
+      identities.add(identity)
+      return false
+    })
+    if (duplicate) {
+      setAccountSaveNotice({ kind: 'error', text: '같은 서비스와 설정 폴더는 한 계정에서만 사용할 수 있습니다.' })
+      return
+    }
     localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(cleaned))
     setAccounts(cleaned)
-    setSettingsOpen(false)
+    setDraftAccounts(cleaned)
+    setAccountSaveNotice({ kind: 'success', text: '저장되었습니다.' })
     refreshHistory(cleaned)
   }
 
   const addAccount = (): void => {
     const firstAgent = profiles.find((profile) => profile.id !== 'powershell')?.id ?? 'claude'
+    setAccountSaveNotice(null)
     setDraftAccounts((current) => [...current, {
       id: crypto.randomUUID(),
       agentId: firstAgent,
@@ -1012,6 +1054,38 @@ export function App() {
     setSettingsOpen(false)
   }
 
+  const refreshLoginAccount = (session: RuntimeSession): void => {
+    if (!session.account || loginAccountRefreshing) return
+    setLoginAccountRefreshing(session.id)
+    void window.cliAgent.inspectAccount(session.account).then((inspected) => {
+      if (!inspected) {
+        updateSession(session.id, { statusDetail: '인증 계정 정보를 아직 확인할 수 없습니다.' })
+        return
+      }
+      const identity = accountIdentity(inspected)
+      const currentAccounts = accountsRef.current
+      const existing = currentAccounts.find((account) => accountIdentity(account) === identity)
+      const refreshed: AgentAccount = {
+        ...inspected,
+        id: existing?.id ?? inspected.id,
+        detected: existing?.detected,
+      }
+      const nextAccounts = existing
+        ? currentAccounts.map((account) => accountIdentity(account) === identity ? refreshed : account)
+        : [...currentAccounts, refreshed]
+      localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(nextAccounts))
+      accountsRef.current = nextAccounts
+      setAccounts(nextAccounts)
+      setDraftAccounts(nextAccounts)
+      updateSession(session.id, {
+        account: refreshed,
+        title: `Sign in - ${refreshed.email}`,
+        statusDetail: `인증 확인: ${refreshed.email}`,
+      })
+      refreshHistory(nextAccounts)
+    }).finally(() => setLoginAccountRefreshing(''))
+  }
+
   const detectedVersions = profiles.filter((profile) => profile.available && profile.id !== 'powershell')
     .slice(0, 2).map((profile) => `${profile.id} ${profile.version ?? 'detected'}`).join(' · ')
 
@@ -1021,7 +1095,6 @@ export function App() {
         <div className="titlebar-brand">
           <img className="brand-logo" src={moaCliIcon} alt="" draggable={false} />
           <strong>MoaCLI</strong>
-          <span className="prototype-label">prototype</span>
         </div>
         <div className="window-controls" onDoubleClick={(event) => event.stopPropagation()}>
           <button title="최소화" onClick={() => window.cliAgent.minimizeWindow()}><Minus size={16} /></button>
@@ -1223,7 +1296,13 @@ export function App() {
           )}
 
           <div className="agent-section">
-            <SectionHeading label="Agents" count={`${profiles.filter((profile) => profile.available).length}/${profiles.length}`} open={sectionOpen.agents} onToggle={() => toggleSection('agents')} />
+            <SectionHeading
+              label="Agents"
+              count={`${profiles.filter((profile) => profile.available).length}/${profiles.length}`}
+              open={sectionOpen.agents}
+              onToggle={() => toggleSection('agents')}
+              actions={<button className="mini-icon-button" title="CLI 버전 새로고침" disabled={profilesRefreshing} onClick={refreshProfiles}><RefreshCw size={13} /></button>}
+            />
             {sectionOpen.agents && profiles.map((profile) => (
               <div className="health-row" key={profile.id} title={profile.resolvedPath ?? 'Not found'}>
                 <AgentAvatar agentId={profile.id} className="neutral" preference={resolvedAgentIcon(profile.id)} />
@@ -1254,9 +1333,21 @@ export function App() {
                   <div className="session-summary">
                     <AgentAvatar agentId={activeSession.agentId} className="header" color={activeProfile?.color ?? '#7e878d'} preference={resolvedAgentIcon(activeSession.agentId)} />
                     <h1 title={activeSession.title}>{activeSession.title}</h1>
-                    <span className={`state-chip ${activeSession.state}`}><span />{stateLabel(activeSession.state)}</span>
+                    <span className={`state-chip ${activeSession.state}`} title={activeSession.statusDetail}><span />{stateLabel(activeSession.state)}</span>
                     {activeSession.account?.email && <span className="session-email">{activeSession.account.email}</span>}
                     <span className="session-cwd" title={activeSession.cwd}>{activeSession.cwd}</span>
+                    {activeSession.purpose === 'login' && (
+                      <button
+                        className="icon-button context-account-refresh"
+                        title={activeSession.statusDetail.startsWith('인증 확인:') ? activeSession.statusDetail : '로그인 계정 정보 새로고침'}
+                        disabled={loginAccountRefreshing === activeSession.id}
+                        onClick={() => refreshLoginAccount(activeSession)}
+                      >
+                        {activeSession.statusDetail.startsWith('인증 확인:')
+                          ? <Check size={15} />
+                          : <RefreshCw className={loginAccountRefreshing === activeSession.id ? 'spinning' : ''} size={15} />}
+                      </button>
+                    )}
                     <button className="icon-button context-close" title="세션 닫기" onClick={() => closeSession(activeSession.id)}><X size={15} /></button>
                   </div>
                   <div className="session-subnav">
@@ -1359,6 +1450,7 @@ export function App() {
 
       <button className="floating-settings" title="계정 및 테마 설정" onClick={() => {
         setDraftAccounts(accounts)
+        setAccountSaveNotice(null)
         setSettingsOpen(true)
       }}><Settings2 size={16} /></button>
 
@@ -1432,15 +1524,27 @@ export function App() {
                   <div className="account-row" key={account.id}>
                     <AgentAvatar agentId={account.agentId} className="tinted" color={profile?.color ?? '#7e878d'} preference={resolvedAgentIcon(account.agentId)} />
                     <div className="account-inputs">
-                      <select value={account.agentId} disabled={account.detected} onChange={(event) => setDraftAccounts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, agentId: event.target.value } : item))}>
+                      <select value={account.agentId} disabled={account.detected} onChange={(event) => {
+                        setAccountSaveNotice(null)
+                        setDraftAccounts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, agentId: event.target.value } : item))
+                      }}>
                         {profiles.filter((item) => item.id !== 'powershell').map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}
                       </select>
-                      <input type="email" value={account.email} readOnly={account.detected} placeholder="Account email" onChange={(event) => setDraftAccounts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, email: event.target.value } : item))} />
-                      <input value={account.configDir} readOnly={account.detected} placeholder="Isolated config directory" onChange={(event) => setDraftAccounts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, configDir: event.target.value } : item))} />
+                      <input type="email" value={account.email} readOnly={account.detected} placeholder="Account email" onChange={(event) => {
+                        setAccountSaveNotice(null)
+                        setDraftAccounts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, email: event.target.value } : item))
+                      }} />
+                      <input value={account.configDir} readOnly={account.detected} placeholder="Isolated config directory" onChange={(event) => {
+                        setAccountSaveNotice(null)
+                        setDraftAccounts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, configDir: event.target.value } : item))
+                      }} />
                     </div>
                     <span className={`account-status ${account.detected ? 'verified' : ''}`}>{account.detected ? 'Verified' : 'Fixed'}</span>
                     <button className="icon-button" title="공식 CLI로 로그인" disabled={!['claude', 'codex'].includes(account.agentId) || !account.email.trim() || !account.configDir.trim()} onClick={() => authenticateAccount(account)}><LogIn size={15} /></button>
-                    <button className="icon-button" title={account.detected ? '자동 감지 계정' : '계정 삭제'} disabled={account.detected} onClick={() => setDraftAccounts((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={15} /></button>
+                    <button className="icon-button" title={account.detected ? '자동 감지 계정은 공식 CLI 인증에서 관리됩니다' : '계정 삭제'} disabled={account.detected} onClick={() => {
+                      setAccountSaveNotice(null)
+                      setDraftAccounts((current) => current.filter((_, itemIndex) => itemIndex !== index))
+                    }}><Trash2 size={15} /></button>
                   </div>
                 )
               })}
@@ -1448,7 +1552,8 @@ export function App() {
               </div>
             </div>
             <footer>
-              <button className="secondary-button" onClick={() => setSettingsOpen(false)}>취소</button>
+              {accountSaveNotice && <span className={`account-save-notice ${accountSaveNotice.kind}`}>{accountSaveNotice.text}</span>}
+              <button className="secondary-button" onClick={() => setSettingsOpen(false)}>닫기</button>
               <button className="modal-save" onClick={saveAccounts}>저장</button>
             </footer>
           </section>
