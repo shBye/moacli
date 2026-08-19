@@ -87,6 +87,8 @@ npm.cmd run build
 npm.cmd run start:lean
 ```
 
+To produce and publish the Windows installer, follow the verified [Windows Release Guide](./docs/WINDOWS_RELEASE.md).
+
 Use the low-memory mode only when GPU acceleration is not desirable:
 
 ```powershell

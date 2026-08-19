@@ -6,6 +6,7 @@
 - Added a configurable x64 NSIS installer that uses the MoaCLI application, installer, uninstaller, desktop shortcut, and Start menu icons.
 - Verified `MoaCLI-Setup.exe` metadata, SHA-256 generation, embedded icon extraction, and a packaged-app startup smoke test.
 - Installer output remains excluded from Git and is published as a GitHub Release asset. The README download button resolves to the latest release.
+- Added `docs/WINDOWS_RELEASE.md` with the verified build, installer QA, GitHub publishing, and failure-recovery process.
 - Public-repository audit found no tracked credentials, tokens, private keys, or user-specific home-directory paths. Design mockup identities were replaced with neutral example values.
 
 ## Product naming (2026-08-14)
