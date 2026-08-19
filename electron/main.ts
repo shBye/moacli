@@ -4,17 +4,28 @@ import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { app, BrowserWindow, clipboard, dialog, ipcMain } from 'electron'
 import { getAgentHealth } from './agent-profiles'
-import type { AgentAccount, StartPtyRequest } from './contracts'
+import type { AgentAccount, NotificationContext, NotificationSettings, StartPtyRequest } from './contracts'
+import { NotificationCenter } from './notification-center'
 import { PtyManager } from './pty-manager'
 import { SessionHistoryService } from './session-history'
 
 let mainWindow: BrowserWindow | null = null
 app.setPath('userData', join(app.getPath('appData'), 'cli-agent-manager'))
-const ptyManager = new PtyManager(() => mainWindow?.webContents ?? null)
+if (process.platform === 'win32') app.setAppUserModelId('app.moacli.desktop')
+let notificationCenter: NotificationCenter | null = null
+const ptyManager = new PtyManager(
+  () => mainWindow?.webContents ?? null,
+  ({ request, exitCode, intentional }) => notificationCenter?.handleExit(request, exitCode, intentional),
+)
 const sessionHistory = new SessionHistoryService()
 const historyWatchers = new Map<string, FSWatcher>()
 let historyChangeTimer: ReturnType<typeof setTimeout> | undefined
 const CLIPBOARD_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'])
+
+function notifications(): NotificationCenter {
+  if (!notificationCenter) throw new Error('Notification center is not ready')
+  return notificationCenter
+}
 
 function readWindowsClipboardImageFiles(): Promise<string[]> {
   if (process.platform !== 'win32') return Promise.resolve([])
@@ -161,12 +172,28 @@ ipcMain.handle('directory:select', async (_event, defaultPath?: string) => {
   })
   return result.canceled ? null : result.filePaths[0] ?? null
 })
-ipcMain.handle('pty:start', (_event, request: StartPtyRequest) => ptyManager.start(request))
+ipcMain.handle('pty:start', (_event, request: StartPtyRequest) => {
+  try {
+    ptyManager.start(request)
+  } catch (error) {
+    notificationCenter?.handleStartFailure(request)
+    throw error
+  }
+})
 ipcMain.on('pty:write', (_event, { id, data }: { id: string; data: string }) => ptyManager.write(id, data))
 ipcMain.on('pty:resize', (_event, { id, cols, rows }: { id: string; cols: number; rows: number }) => {
   ptyManager.resize(id, cols, rows)
 })
 ipcMain.on('pty:stop', (_event, { id }: { id: string }) => ptyManager.stop(id))
+ipcMain.handle('notifications:snapshot', () => notifications().snapshot())
+ipcMain.handle('notifications:update-settings', (_event, settings: Partial<NotificationSettings>) => notifications().updateSettings(settings))
+ipcMain.handle('notifications:dismiss', (_event, id: string) => notifications().dismiss(id))
+ipcMain.handle('notifications:clear', () => notifications().clear())
+ipcMain.handle('notifications:acknowledge-session', (_event, sessionId: string) => notifications().acknowledgeSession(sessionId))
+ipcMain.handle('notifications:mute-session', (_event, payload: { sessionId: string; muted: boolean }) => (
+  notifications().setSessionMuted(payload.sessionId, payload.muted)
+))
+ipcMain.on('notifications:context', (_event, context: NotificationContext) => notifications().updateContext(context))
 ipcMain.on('window:minimize', (event) => {
   if (event.sender === mainWindow?.webContents) mainWindow.minimize()
 })
@@ -180,6 +207,7 @@ ipcMain.on('window:close', (event) => {
 })
 
 app.whenReady().then(() => {
+  notificationCenter = new NotificationCenter(join(app.getPath('userData'), 'notification-settings.json'), () => mainWindow)
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -188,6 +216,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   closeHistoryWatchers()
+  notificationCenter?.dispose()
   ptyManager.stopAll()
 })
 app.on('window-all-closed', () => {

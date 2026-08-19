@@ -9,6 +9,12 @@ const MAX_PTY_PROCESSES = 10
 const OUTPUT_BATCH_DELAY_MS = 8
 const MAX_OUTPUT_BATCH_LENGTH = 64 * 1024
 
+export interface PtyLifecycleExitEvent {
+  request: StartPtyRequest
+  exitCode: number
+  intentional: boolean
+}
+
 function cleanEnvironment(extra: Record<string, string>, account?: StartPtyRequest['account']): Record<string, string> {
   const environment: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env)) {
@@ -25,9 +31,13 @@ function cleanEnvironment(extra: Record<string, string>, account?: StartPtyReque
 export class PtyManager {
   private readonly processes = new Map<string, IPty>()
   private readonly pendingOutput = new Map<string, string>()
+  private readonly intentionalStops = new Set<string>()
   private outputTimer: ReturnType<typeof setTimeout> | undefined
 
-  constructor(private readonly getWebContents: () => WebContents | null) {}
+  constructor(
+    private readonly getWebContents: () => WebContents | null,
+    private readonly onLifecycleExit?: (event: PtyLifecycleExitEvent) => void,
+  ) {}
 
   start(request: StartPtyRequest): void {
     if (this.processes.has(request.id)) throw new Error('Session is already running')
@@ -73,7 +83,9 @@ export class PtyManager {
     instance.onExit(({ exitCode }) => {
       this.flushOutput(request.id)
       this.processes.delete(request.id)
+      const intentional = this.intentionalStops.delete(request.id)
       this.getWebContents()?.send('pty:exit', { id: request.id, exitCode })
+      queueMicrotask(() => this.onLifecycleExit?.({ request, exitCode, intentional }))
     })
   }
 
@@ -89,6 +101,7 @@ export class PtyManager {
   stop(id: string): void {
     const instance = this.processes.get(id)
     if (!instance) return
+    this.intentionalStops.add(id)
     instance.kill()
     this.processes.delete(id)
     this.pendingOutput.delete(id)

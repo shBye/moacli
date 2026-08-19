@@ -157,6 +157,7 @@ src/
 electron/
   main.ts             BrowserWindow lifecycle and IPC handlers
   preload.ts          Typed renderer-to-main API boundary
+  notification-center.ts  Ephemeral in-app and Windows notification state
   pty-manager.ts      PTY lifecycle, isolated environments, output batching
   session-history.ts  Account inspection and agent-specific history adapters
   agent-profiles.ts   CLI discovery, version checks, and Windows launch wrappers
@@ -171,11 +172,11 @@ The renderer is built with React 18 and TypeScript. Privileged filesystem, proce
 
 | Feature | Status | Development branch |
 | --- | --- | --- |
-| Unified notification center | Planned | [`feature/notification-center`](https://github.com/shBye/moacli/tree/feature/notification-center) |
+| Unified notification center | In progress | [`feature/notification-center`](https://github.com/shBye/moacli/tree/feature/notification-center) |
 | Session restoration after restart | Planned | [`feature/session-restore`](https://github.com/shBye/moacli/tree/feature/session-restore) |
 | Full conversation search with SQLite FTS5 | Planned | [`feature/conversation-search`](https://github.com/shBye/moacli/tree/feature/conversation-search) |
 
-The detailed product flow, data model, failure handling, and acceptance criteria are documented in [ROADMAP.md](./ROADMAP.md). Completed work and resolved implementation issues are tracked in [PROGRESS.md](./PROGRESS.md).
+The detailed product flow, data model, failure handling, and acceptance criteria are documented in [ROADMAP.md](./ROADMAP.md). The notification implementation has a dedicated [Notification Center Design](./docs/NOTIFICATION_CENTER_DESIGN.md). Completed work and resolved implementation issues are tracked in [PROGRESS.md](./PROGRESS.md).
 
 ## Scripts
 

@@ -19,6 +19,7 @@ export interface AgentHealth extends AgentProfile {
 
 export interface StartPtyRequest {
   id: string
+  sessionId: string
   agentId: string
   cwd: string
   title?: string
@@ -46,6 +47,44 @@ export interface PtyExitEvent {
   id: string
   exitCode: number
 }
+
+export type AppNotificationType = 'needs_attention' | 'completed' | 'failed' | 'account_changed' | 'info'
+
+export interface AppNotification {
+  id: string
+  sessionId: string
+  agentId: string
+  accountId: string
+  accountLabel: string
+  type: AppNotificationType
+  title: string
+  createdAt: number
+  desktopDeliveredAt?: number
+}
+
+export interface NotificationSettings {
+  enabled: boolean
+  desktopEnabled: boolean
+  needsAttention: boolean
+  failed: boolean
+  completed: boolean
+}
+
+export interface NotificationSnapshot {
+  version: number
+  notifications: AppNotification[]
+  settings: NotificationSettings
+  mutedSessionIds: string[]
+}
+
+export interface NotificationContext {
+  activeSessionId: string
+  activeView: 'cli' | 'conversation' | 'none'
+}
+
+export type NotificationActivation =
+  | { kind: 'session'; sessionId: string }
+  | { kind: 'panel' }
 
 export interface HistorySession {
   key: string
@@ -92,6 +131,15 @@ export interface CliAgentApi {
   onPtyData: (id: string, callback: (data: string) => void) => () => void
   onPtyExit: (id: string, callback: (exitCode: number) => void) => () => void
   onHistoryChanged: (callback: () => void) => () => void
+  getNotificationSnapshot: () => Promise<NotificationSnapshot>
+  updateNotificationSettings: (settings: Partial<NotificationSettings>) => Promise<NotificationSnapshot>
+  dismissNotification: (id: string) => Promise<NotificationSnapshot>
+  clearNotifications: () => Promise<NotificationSnapshot>
+  acknowledgeSessionNotification: (sessionId: string) => Promise<NotificationSnapshot>
+  setSessionNotificationMuted: (sessionId: string, muted: boolean) => Promise<NotificationSnapshot>
+  updateNotificationContext: (context: NotificationContext) => void
+  onNotificationsChanged: (callback: (snapshot: NotificationSnapshot) => void) => () => void
+  onNotificationActivated: (callback: (activation: NotificationActivation) => void) => () => void
   minimizeWindow: () => void
   toggleMaximizeWindow: () => void
   closeWindow: () => void

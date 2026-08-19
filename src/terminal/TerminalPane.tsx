@@ -6,6 +6,7 @@ import type { AgentAccount } from '../../electron/contracts'
 
 interface TerminalPaneProps {
   active: boolean
+  sessionId: string
   agentId: string
   cwd: string
   title: string
@@ -20,7 +21,7 @@ const ACTIVE_SCROLLBACK = 5000
 const BACKGROUND_SCROLLBACK = 1500
 const MIN_STARTING_INDICATOR_MS = 650
 
-export function TerminalPane({ active, agentId, cwd, title, account, purpose = 'session', resumeId, onActivity, onStateChange }: TerminalPaneProps) {
+export function TerminalPane({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, onActivity, onStateChange }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const activeRef = useRef(active)
@@ -168,6 +169,7 @@ export function TerminalPane({ active, agentId, cwd, title, account, purpose = '
     onStateChange('starting')
     void window.cliAgent.startPty({
       id,
+      sessionId,
       agentId,
       cwd,
       title,
@@ -210,7 +212,7 @@ export function TerminalPane({ active, agentId, cwd, title, account, purpose = '
       terminal.dispose()
       terminalRef.current = null
     }
-  }, [agentId, cwd, title, account?.id, purpose, resumeId])
+  }, [sessionId, agentId, cwd, title, account?.id, purpose, resumeId])
 
   useEffect(() => {
     const terminal = terminalRef.current

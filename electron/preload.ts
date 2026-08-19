@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { CliAgentApi, PtyDataEvent, PtyExitEvent, StartPtyRequest } from './contracts'
+import type { CliAgentApi, NotificationActivation, NotificationSnapshot, PtyDataEvent, PtyExitEvent, StartPtyRequest } from './contracts'
 
 const api: CliAgentApi = {
   getProfiles: () => ipcRenderer.invoke('profiles:list'),
@@ -31,6 +31,23 @@ const api: CliAgentApi = {
     const listener = (): void => callback()
     ipcRenderer.on('history:changed', listener)
     return () => ipcRenderer.removeListener('history:changed', listener)
+  },
+  getNotificationSnapshot: () => ipcRenderer.invoke('notifications:snapshot'),
+  updateNotificationSettings: (settings) => ipcRenderer.invoke('notifications:update-settings', settings),
+  dismissNotification: (id) => ipcRenderer.invoke('notifications:dismiss', id),
+  clearNotifications: () => ipcRenderer.invoke('notifications:clear'),
+  acknowledgeSessionNotification: (sessionId) => ipcRenderer.invoke('notifications:acknowledge-session', sessionId),
+  setSessionNotificationMuted: (sessionId, muted) => ipcRenderer.invoke('notifications:mute-session', { sessionId, muted }),
+  updateNotificationContext: (context) => ipcRenderer.send('notifications:context', context),
+  onNotificationsChanged: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, snapshot: NotificationSnapshot): void => callback(snapshot)
+    ipcRenderer.on('notifications:changed', listener)
+    return () => ipcRenderer.removeListener('notifications:changed', listener)
+  },
+  onNotificationActivated: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, activation: NotificationActivation): void => callback(activation)
+    ipcRenderer.on('notifications:activate', listener)
+    return () => ipcRenderer.removeListener('notifications:activate', listener)
   },
   minimizeWindow: () => ipcRenderer.send('window:minimize'),
   toggleMaximizeWindow: () => ipcRenderer.send('window:toggle-maximize'),

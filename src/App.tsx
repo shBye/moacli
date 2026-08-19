@@ -16,7 +16,10 @@ import {
 } from 'react'
 import {
   Activity,
+  Bell,
+  BellOff,
   Check,
+  CheckCheck,
   ChevronLeft,
   ChevronDown,
   ChevronRight,
@@ -36,11 +39,12 @@ import {
   Shapes,
   Square,
   Trash2,
+  TriangleAlert,
   X,
 } from 'lucide-react'
 import dynamicIconImports from 'lucide-react/dynamicIconImports'
 import moaCliIcon from './assets/moacli-icon.png'
-import type { AgentAccount, AgentHealth, ConversationHistory, HistorySession } from '../electron/contracts'
+import type { AgentAccount, AgentHealth, AppNotification, ConversationHistory, HistorySession, NotificationSettings, NotificationSnapshot } from '../electron/contracts'
 import { ConversationView } from './history/ConversationView'
 import { TerminalPane } from './terminal/TerminalPane'
 
@@ -138,6 +142,19 @@ const DEFAULT_FOLDERS: LogicalFolder[] = [
   { id: 'prototype', name: 'Prototype' },
   { id: 'unsorted', name: 'Unsorted' },
 ]
+const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  enabled: false,
+  desktopEnabled: true,
+  needsAttention: true,
+  failed: true,
+  completed: true,
+}
+const EMPTY_NOTIFICATION_SNAPSHOT: NotificationSnapshot = {
+  version: 0,
+  notifications: [],
+  settings: DEFAULT_NOTIFICATION_SETTINGS,
+  mutedSessionIds: [],
+}
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -297,6 +314,20 @@ function stateLabel(state: SessionState): string {
   return 'Idle'
 }
 
+function notificationTypeLabel(notification: AppNotification): string {
+  if (notification.type === 'failed') return 'Failed'
+  if (notification.type === 'completed') return 'Completed'
+  if (notification.type === 'needs_attention') return 'Needs attention'
+  if (notification.type === 'account_changed') return 'Account changed'
+  return 'Activity'
+}
+
+function NotificationTypeIcon({ notification, size = 13 }: { notification: AppNotification; size?: number }) {
+  if (notification.type === 'failed') return <TriangleAlert size={size} />
+  if (notification.type === 'completed') return <Check size={size} />
+  return <Bell size={size} />
+}
+
 function formatElapsed(milliseconds: number): string {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000))
   const minutes = Math.floor(seconds / 60)
@@ -333,6 +364,30 @@ function SectionHeading({ label, count, open, onToggle, actions }: SectionHeadin
   )
 }
 
+interface SettingsToggleProps {
+  label: string
+  checked: boolean
+  disabled?: boolean
+  onChange: (checked: boolean) => void
+}
+
+function SettingsToggle({ label, checked, disabled = false, onChange }: SettingsToggleProps) {
+  return (
+    <div className={`settings-toggle-row ${disabled ? 'disabled' : ''}`}>
+      <span>{label}</span>
+      <button
+        className={`settings-toggle ${checked ? 'active' : ''}`}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+      ><span /></button>
+    </div>
+  )
+}
+
 export function App() {
   const [profiles, setProfiles] = useState<AgentHealth[]>([])
   const [profilesRefreshing, setProfilesRefreshing] = useState(false)
@@ -344,6 +399,8 @@ export function App() {
   const [loginAccountRefreshing, setLoginAccountRefreshing] = useState('')
   const [accountId, setAccountId] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [notificationSnapshot, setNotificationSnapshot] = useState<NotificationSnapshot>(EMPTY_NOTIFICATION_SNAPSHOT)
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
   const [folders, setFolders] = useState<LogicalFolder[]>(savedFolders)
   const [folderAssignments, setFolderAssignments] = useState<Record<string, string>>(savedFolderAssignments)
   const [folderOrders, setFolderOrders] = useState<Record<string, string[]>>(savedFolderOrders)
@@ -370,10 +427,16 @@ export function App() {
   const [lucideIconPage, setLucideIconPage] = useState(0)
   const searchRef = useRef<HTMLInputElement>(null)
   const accountsRef = useRef(accounts)
+  const sessionsRef = useRef(sessions)
   const profileRefreshInFlight = useRef(false)
   const historyRefreshInFlight = useRef(false)
   const historyRefreshQueued = useRef(false)
   accountsRef.current = accounts
+  sessionsRef.current = sessions
+
+  const acceptNotificationSnapshot = (snapshot: NotificationSnapshot): void => {
+    setNotificationSnapshot((current) => snapshot.version >= current.version ? snapshot : current)
+  }
 
   const resolvedAgentIcon = (agent: string): AgentIconPreference => {
     return agentIcons[agent] ?? { mode: 'monogram' }
@@ -453,6 +516,40 @@ export function App() {
   }, [])
 
   useEffect(() => {
+    let mounted = true
+    void window.cliAgent.getNotificationSnapshot().then((snapshot) => {
+      if (mounted) acceptNotificationSnapshot(snapshot)
+    })
+    const offChanged = window.cliAgent.onNotificationsChanged((snapshot) => {
+      if (mounted) acceptNotificationSnapshot(snapshot)
+    })
+    const offActivated = window.cliAgent.onNotificationActivated((activation) => {
+      if (activation.kind === 'panel') {
+        setNotificationPanelOpen(true)
+        return
+      }
+      if (!sessionsRef.current.some((session) => session.id === activation.sessionId)) {
+        setNotificationPanelOpen(true)
+        return
+      }
+      const now = Date.now()
+      setSessions((current) => current.map((session) => (
+        session.id === activation.sessionId
+          ? { ...session, view: 'cli', lastViewedAt: now }
+          : session
+      )))
+      setActiveSessionId(activation.sessionId)
+      setNotificationPanelOpen(false)
+      void window.cliAgent.acknowledgeSessionNotification(activation.sessionId).then(acceptNotificationSnapshot)
+    })
+    return () => {
+      mounted = false
+      offChanged()
+      offActivated()
+    }
+  }, [])
+
+  useEffect(() => {
     const reconcileProfiles = (): void => {
       if (document.visibilityState === 'visible') refreshProfiles()
     }
@@ -522,6 +619,7 @@ export function App() {
   const agentAccounts = accounts.filter((account) => account.agentId === agentId)
   const selectedAccount = accounts.find((account) => account.id === accountId)
   const activeSession = sessions.find((session) => session.id === activeSessionId)
+  const activeSessionMuted = notificationSnapshot.mutedSessionIds.includes(activeSessionId)
   const activeProfile = profiles.find((profile) => profile.id === activeSession?.agentId)
   const filteredHistory = history.filter((session) => {
     const query = historyQuery.trim().toLocaleLowerCase()
@@ -532,6 +630,13 @@ export function App() {
     '--acc': theme === 'amber' ? '#E9B45C' : '#8AA0FF',
     '--acc-ink': theme === 'amber' ? '#1a1409' : '#0e1226',
   } as CSSProperties
+
+  useEffect(() => {
+    window.cliAgent.updateNotificationContext({
+      activeSessionId,
+      activeView: activeSession?.view ?? 'none',
+    })
+  }, [activeSessionId, activeSession?.view])
 
   const updateSession = (id: string, update: Partial<RuntimeSession>): void => {
     setSessions((current) => current.map((session) => session.id === id ? { ...session, ...update } : session))
@@ -558,11 +663,14 @@ export function App() {
       session.id === id || session.id === activeSessionId ? { ...session, lastViewedAt: now } : session
     )))
     setActiveSessionId(id)
+    void window.cliAgent.acknowledgeSessionNotification(id).then(acceptNotificationSnapshot)
   }
 
   const closeSession = (id: string): void => {
     setSessions((current) => current.filter((session) => session.id !== id))
     setActiveSessionId((current) => current === id ? '' : current)
+    void window.cliAgent.acknowledgeSessionNotification(id).then(acceptNotificationSnapshot)
+    void window.cliAgent.setSessionNotificationMuted(id, false).then(acceptNotificationSnapshot)
   }
 
   const startSession = (): void => {
@@ -596,10 +704,13 @@ export function App() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       const cutoff = Date.now() - SESSION_IDLE_TIMEOUT_MS
-      setSessions((current) => current.filter((session) => session.id === activeSessionId || session.lastViewedAt >= cutoff))
+      const notifiedSessionIds = new Set(notificationSnapshot.notifications.map((notification) => notification.sessionId))
+      setSessions((current) => current.filter((session) => (
+        session.id === activeSessionId || notifiedSessionIds.has(session.id) || session.lastViewedAt >= cutoff
+      )))
     }, SESSION_SWEEP_INTERVAL_MS)
     return () => window.clearInterval(timer)
-  }, [activeSessionId])
+  }, [activeSessionId, notificationSnapshot.notifications])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -717,6 +828,27 @@ export function App() {
   const changeTheme = (next: AccentTheme): void => {
     setTheme(next)
     localStorage.setItem(THEME_STORAGE_KEY, next)
+  }
+
+  const changeNotificationSettings = (update: Partial<NotificationSettings>): void => {
+    void window.cliAgent.updateNotificationSettings(update).then((snapshot) => {
+      acceptNotificationSnapshot(snapshot)
+      if (!snapshot.settings.enabled) setNotificationPanelOpen(false)
+    })
+  }
+
+  const openNotification = (notification: AppNotification): void => {
+    if (!sessionsRef.current.some((session) => session.id === notification.sessionId)) {
+      void window.cliAgent.dismissNotification(notification.id).then(acceptNotificationSnapshot)
+      return
+    }
+    updateSession(notification.sessionId, { view: 'cli', lastViewedAt: Date.now() })
+    activateSession(notification.sessionId)
+    setNotificationPanelOpen(false)
+  }
+
+  const toggleSessionNotificationMute = (sessionId: string, muted: boolean): void => {
+    void window.cliAgent.setSessionNotificationMuted(sessionId, muted).then(acceptNotificationSnapshot)
   }
 
   const changeAgentIcon = (agentId: string, preference: AgentIconPreference): void => {
@@ -1184,6 +1316,7 @@ export function App() {
                       if (entry.kind === 'session') {
                         const { session } = entry
                         const profile = profiles.find((item) => item.id === session.agentId)
+                        const sessionNotification = notificationSnapshot.notifications.find((notification) => notification.sessionId === session.id)
                         return (
                           <div
                             className={`session-row folder-entry ${activeSessionId === session.id ? 'active' : ''} ${draggedSidebarItem?.kind === 'session' && draggedSidebarItem.key === session.id ? 'dragging' : ''} ${removingFolderEntry === `session:${session.id}` ? 'removing' : ''} ${dropClass}`}
@@ -1197,7 +1330,15 @@ export function App() {
                             <button className="session-select" onClick={() => activateSession(session.id)}>
                               <AgentAvatar agentId={session.agentId} className="tinted" color={profile?.color ?? '#7e878d'} preference={resolvedAgentIcon(session.agentId)} />
                               <span className="session-copy">
-                                <span className="session-title-line"><strong title={session.title}>{session.title}</strong><span className={`state-dot ${session.state}`} /></span>
+                                <span className="session-title-line">
+                                  <strong title={session.title}>{session.title}</strong>
+                                  {sessionNotification && (
+                                    <span className={`session-notification-marker ${sessionNotification.type}`} title={notificationTypeLabel(sessionNotification)}>
+                                      <NotificationTypeIcon notification={sessionNotification} size={11} />
+                                    </span>
+                                  )}
+                                  <span className={`state-dot ${session.state}`} />
+                                </span>
                                 <small>{session.cwd}</small>
                               </span>
                             </button>
@@ -1348,6 +1489,16 @@ export function App() {
                           : <RefreshCw className={loginAccountRefreshing === activeSession.id ? 'spinning' : ''} size={15} />}
                       </button>
                     )}
+                    {notificationSnapshot.settings.enabled && activeSession.purpose === 'session' && (
+                      <button
+                        className="icon-button context-notification-mute"
+                        title={activeSessionMuted ? 'Unmute session notifications' : 'Mute session notifications'}
+                        aria-pressed={activeSessionMuted}
+                        onClick={() => toggleSessionNotificationMute(activeSession.id, !activeSessionMuted)}
+                      >
+                        {activeSessionMuted ? <BellOff size={14} /> : <Bell size={14} />}
+                      </button>
+                    )}
                     <button className="icon-button context-close" title="Close session" onClick={() => closeSession(activeSession.id)}><X size={15} /></button>
                   </div>
                   <div className="session-subnav">
@@ -1415,6 +1566,7 @@ export function App() {
                   <div className={`terminal-view ${session.view === 'cli' ? 'active' : ''}`}>
                     <TerminalPane
                       active={activeSessionId === session.id && session.view === 'cli'}
+                      sessionId={session.id}
                       agentId={session.agentId}
                       cwd={session.cwd}
                       title={session.title}
@@ -1448,11 +1600,76 @@ export function App() {
         </section>
       </div>
 
-      <button className="floating-settings" title="Account and theme settings" onClick={() => {
+      <button
+        className={`floating-notifications ${notificationSnapshot.notifications.length ? 'has-items' : ''}`}
+        title={notificationSnapshot.settings.enabled ? 'Notifications' : 'Notifications are off'}
+        aria-label="Notifications"
+        aria-expanded={notificationPanelOpen}
+        onClick={() => setNotificationPanelOpen((current) => !current)}
+      >
+        {notificationSnapshot.settings.enabled ? <Bell size={15} /> : <BellOff size={15} />}
+        {notificationSnapshot.notifications.length > 0 && (
+          <span className="notification-count">{notificationSnapshot.notifications.length}</span>
+        )}
+      </button>
+
+      <button className="floating-settings" title="Settings" onClick={() => {
         setDraftAccounts(accounts)
         setAccountSaveNotice(null)
+        setNotificationPanelOpen(false)
         setSettingsOpen(true)
       }}><Settings2 size={16} /></button>
+
+      {notificationPanelOpen && (
+        <>
+          <button className="notification-dismiss-layer" aria-label="Close notifications" onClick={() => setNotificationPanelOpen(false)} />
+          <section className="notification-panel" aria-label="Notifications" aria-live="polite">
+            <header>
+              <div>
+                <h2>Notifications</h2>
+                <span>{notificationSnapshot.notifications.length} active</span>
+              </div>
+              <div className="notification-panel-actions">
+                <button
+                  className="icon-button"
+                  title="Clear all"
+                  disabled={!notificationSnapshot.notifications.length}
+                  onClick={() => void window.cliAgent.clearNotifications().then(acceptNotificationSnapshot)}
+                ><CheckCheck size={15} /></button>
+                <button className="icon-button" title="Close" onClick={() => setNotificationPanelOpen(false)}><X size={15} /></button>
+              </div>
+            </header>
+            <div className="notification-list scroll">
+              {notificationSnapshot.notifications.map((notification) => {
+                const profile = profiles.find((item) => item.id === notification.agentId)
+                return (
+                  <div className={`notification-row ${notification.type}`} key={notification.id}>
+                    <button className="notification-open" onClick={() => openNotification(notification)}>
+                      <AgentAvatar agentId={notification.agentId} className="tinted" color={profile?.color ?? '#7e878d'} preference={resolvedAgentIcon(notification.agentId)} />
+                      <span className="notification-copy">
+                        <span className="notification-kind"><NotificationTypeIcon notification={notification} size={12} />{notificationTypeLabel(notification)}</span>
+                        <strong title={notification.title}>{notification.title}</strong>
+                        <small>
+                          {profile?.label ?? notification.agentId}
+                          {notification.accountLabel ? ` · ${notification.accountLabel}` : ''}
+                          {` · ${new Date(notification.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
+                        </small>
+                      </span>
+                    </button>
+                    <button
+                      className="notification-dismiss"
+                      title="Dismiss"
+                      onClick={() => void window.cliAgent.dismissNotification(notification.id).then(acceptNotificationSnapshot)}
+                    ><X size={13} /></button>
+                  </div>
+                )
+              })}
+              {!notificationSnapshot.settings.enabled && <p className="notification-empty">Notifications are off</p>}
+              {notificationSnapshot.settings.enabled && !notificationSnapshot.notifications.length && <p className="notification-empty">No active notifications</p>}
+            </div>
+          </section>
+        </>
+      )}
 
       {settingsOpen && (
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
@@ -1460,7 +1677,7 @@ export function App() {
         }}>
           <section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="account-settings-title">
             <header>
-              <div><h2 id="account-settings-title">Settings</h2><p>Manage agent accounts, icons, and the interface theme.</p></div>
+              <div><h2 id="account-settings-title">Settings</h2><p>Manage notifications, agent accounts, icons, and the interface theme.</p></div>
               <button className="icon-button" title="Close" onClick={() => setSettingsOpen(false)}><X size={16} /></button>
             </header>
             <div className="settings-content scroll">
@@ -1471,6 +1688,42 @@ export function App() {
                   <button className={theme === 'periwinkle' ? 'active' : ''} onClick={() => changeTheme('periwinkle')}><span className="theme-swatch periwinkle" />Periwinkle</button>
                 </div>
               </div>
+              <section className="notification-settings" aria-labelledby="notification-settings-title">
+                <div className="notification-settings-heading">
+                  <h3 id="notification-settings-title">Notifications</h3>
+                  <SettingsToggle
+                    label="Enabled"
+                    checked={notificationSnapshot.settings.enabled}
+                    onChange={(enabled) => changeNotificationSettings({ enabled })}
+                  />
+                </div>
+                <div className="notification-settings-options">
+                  <SettingsToggle
+                    label="Desktop notifications"
+                    checked={notificationSnapshot.settings.desktopEnabled}
+                    disabled={!notificationSnapshot.settings.enabled}
+                    onChange={(desktopEnabled) => changeNotificationSettings({ desktopEnabled })}
+                  />
+                  <SettingsToggle
+                    label="Needs attention"
+                    checked={notificationSnapshot.settings.needsAttention}
+                    disabled={!notificationSnapshot.settings.enabled}
+                    onChange={(needsAttention) => changeNotificationSettings({ needsAttention })}
+                  />
+                  <SettingsToggle
+                    label="Failed"
+                    checked={notificationSnapshot.settings.failed}
+                    disabled={!notificationSnapshot.settings.enabled}
+                    onChange={(failed) => changeNotificationSettings({ failed })}
+                  />
+                  <SettingsToggle
+                    label="Completed"
+                    checked={notificationSnapshot.settings.completed}
+                    disabled={!notificationSnapshot.settings.enabled}
+                    onChange={(completed) => changeNotificationSettings({ completed })}
+                  />
+                </div>
+              </section>
               <section className="agent-icon-settings" aria-labelledby="agent-icon-settings-title">
                 <h3 id="agent-icon-settings-title">Agent icons</h3>
                 {profiles.map((profile) => {
