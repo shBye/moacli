@@ -1,104 +1,177 @@
-# MoaCLI
+<p align="center">
+  <img src="./src/assets/moacli-icon.png" width="112" alt="MoaCLI icon" />
+</p>
 
-Claude Code, Codex, Gemini CLI, OpenCode와 PowerShell을 한 Electron 앱에서 실행하고 로컬 대화를 재개하기 위한 Windows 우선 프로토타입입니다.
+<h1 align="center">MoaCLI</h1>
 
-## 현재 지원 범위
+<p align="center">
+  Run, organize, and resume multiple coding-agent CLIs from one Windows desktop workspace.
+</p>
 
-- `node-pty`와 xterm.js를 사용한 실제 대화형 CLI 화면
-- 최대 10개의 CLI 세션 동시 유지 및 왼쪽 실행 목록에서 즉시 전환
-- 30분 동안 보지 않은 백그라운드 세션 자동 종료와 수동 닫기
-- 새 CLI 세션 시작 및 로컬 히스토리 세션 `resume`
-- `CLI` / `대화 전문` 탭과 공통 세션 제목 헤더
-- Claude, Codex, Gemini 로컬 계정 자동 감지
-- 계정 정보가 확인된 저장소만 Recent conversations에 노출
-- Claude `CLAUDE_CONFIG_DIR`, Codex `CODEX_HOME` 기반 수동 다중 계정 격리
-- Claude, Codex, Gemini, OpenCode 로컬 히스토리 어댑터
-- 한글 IME 조합 문자열 오버레이
-- 텍스트 및 클립보드 이미지 `Ctrl+V`
-- 논리 폴더와 실제 작업 디렉터리를 분리한 UI 골격
-- CLI 실행 파일 탐색, 버전 확인, 상태 표시
+<p align="center">
+  <img alt="Windows" src="https://img.shields.io/badge/Windows-10%20%7C%2011-1f6feb?style=flat-square" />
+  <img alt="Electron" src="https://img.shields.io/badge/Electron-33-47848f?style=flat-square" />
+  <img alt="React" src="https://img.shields.io/badge/React-18-149eca?style=flat-square" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square" />
+</p>
 
-상세 구현 현황과 해결한 이슈는 [PROGRESS.md](./PROGRESS.md), 다음 개발 기능의 설계와 우선순위는 [ROADMAP.md](./ROADMAP.md)를 참고합니다.
+<p align="center">
+  <img src="./docs/assets/moacli-brand.png" width="720" alt="MoaCLI brand system" />
+</p>
 
-## 실행
+MoaCLI keeps the native interactive experience of each CLI while adding a shared launcher, isolated account profiles, persistent conversation organization, and fast switching between live terminals.
+
+## Highlights
+
+- Run real interactive CLIs through `node-pty` and xterm.js.
+- Keep up to 10 terminal sessions open and switch between them without restarting a CLI.
+- Resume local Claude, Codex, Gemini, and OpenCode conversations from one recent-history list.
+- View the native CLI and the locally stored conversation transcript in separate tabs.
+- Detect verified Claude, Codex, and Gemini accounts from their local CLI configuration.
+- Isolate multiple Claude and Codex accounts with separate configuration directories.
+- Organize conversations and live sessions into resizable, reorderable logical folders.
+- Paste text, screenshots, and copied image files into the active CLI with `Ctrl+V`.
+- Customize agent icons with monograms, Lucide icons, PNG images, and background colors.
+- Preserve responsive terminal bottom anchoring during window resize and maximize operations.
+- Detect installed CLI versions and refresh them without restarting MoaCLI.
+
+## Supported Agents
+
+| Agent | Interactive terminal | Local history and resume | Account discovery | Isolated account directory |
+| --- | :---: | :---: | :---: | --- |
+| PowerShell | Yes | No | Not required | Not required |
+| Claude Code | Yes | Yes | Yes | `CLAUDE_CONFIG_DIR` |
+| Codex | Yes | Yes | Yes | `CODEX_HOME` |
+| Gemini CLI | Yes | Yes | Yes | Not currently configured |
+| OpenCode | Yes | Yes | No | Not currently configured |
+
+MoaCLI uses each agent's installed executable and native resume command. It does not replace or emulate the CLI itself.
+
+## Quick Start
+
+### Requirements
+
+- Windows 10 or Windows 11
+- Node.js and npm
+- At least one supported CLI installed and available on `PATH`
+
+### Install and run
 
 ```powershell
+git clone https://github.com/shBye/moacli.git
+cd moacli
 npm.cmd install
 npm.cmd run dev
 ```
 
-개발 renderer 포트는 다른 로컬 Vite 서버와 충돌하지 않도록 `5187`로 고정되어 있습니다.
+The renderer development server uses port `5187`.
 
-프로덕션 빌드 검증:
+### Build and run locally
 
 ```powershell
 npm.cmd run build
+npm.cmd run start:lean
 ```
 
-빌드 후 메모리를 줄여 실행하려면 Windows 전용 명령을 사용합니다.
+Use the low-memory mode only when GPU acceleration is not desirable:
 
 ```powershell
-# GPU 가속 유지, npm Electron 래퍼 제외
-npm.cmd run start:lean
-
-# GPU 가속도 비활성화하는 최소 메모리 모드
 npm.cmd run start:low-memory
 ```
 
-`start:low-memory`는 빈 화면 안정화 기준 전용 메모리를 약 100MB 더 줄였지만, 여러 CLI가 빠르게 출력할 때 CPU 사용량이 증가할 수 있습니다. 일반 사용은 `start:lean`, 메모리가 부족한 환경은 `start:low-memory`를 권장합니다.
-
-`node-pty`의 Electron ABI 오류가 발생한 경우에만 다시 빌드합니다.
+If `node-pty` reports an Electron ABI mismatch after changing Electron or Node dependencies, rebuild the native module:
 
 ```powershell
 npx electron-rebuild -f -w node-pty
 ```
 
-## 기본 사용 흐름
+## Using MoaCLI
 
-### 새 세션
+### Start a new session
 
-1. 상단에서 Title, Agent, Account, Working directory를 선택합니다.
-2. `Start`를 누릅니다.
-3. 오른쪽 `CLI` 탭에서 실제 CLI TUI를 사용합니다.
+1. Select an agent and account.
+2. Enter an optional session title.
+3. Choose the working directory.
+4. Select the logical folder where the session should appear.
+5. Press **Start**.
 
-### 기존 대화 재개
+Each live terminal remains mounted while you move between sessions. Sessions that have not been viewed for 30 minutes are removed from the in-memory session list, while the active session is retained.
 
-1. 왼쪽 Recent conversations에서 항목을 누릅니다.
-2. 해당 계정, 작업 경로, 세션 ID로 공식 CLI의 resume 명령을 실행합니다.
-3. `대화 전문` 탭에서는 로컬 저장 기록을 읽을 수 있습니다.
+### Resume a conversation
 
-### 이미지 붙여넣기
+1. Select a conversation under **Recent**.
+2. MoaCLI opens the matching account, working directory, and native resume ID.
+3. Use the **CLI** tab to continue working or **Conversation** to read the local transcript.
 
-터미널에서 `Ctrl+V`를 누르면 텍스트는 그대로 입력됩니다. 클립보드가 이미지면 임시 PNG로 저장하고 따옴표로 감싼 파일 경로를 현재 CLI 입력줄에 삽입합니다. Enter는 자동 전송하지 않습니다.
+Recent conversations are read from the CLI-owned local history. If a conversation is removed through its original CLI, MoaCLI reconciles the list on the next history refresh.
 
-## 계정과 자격증명
+### Use multiple accounts
 
-- 앱은 비밀번호, OAuth 토큰, API 키를 직접 입력받거나 저장하지 않습니다.
-- 로그인 버튼은 격리된 환경에서 공식 CLI 로그인 명령을 실행합니다.
-- 기본 계정은 각 CLI의 로컬 인증 메타데이터에서 이메일을 확인할 수 있을 때만 등록합니다.
-- 수동 계정은 이메일과 독립 config directory가 모두 있어야 히스토리를 읽습니다.
-- 같은 cwd에서 여러 계정을 실행할 수 있지만 동시에 같은 파일을 수정하면 충돌할 수 있습니다. 병렬 수정에는 Git worktree를 권장합니다.
+Open **Settings**, add an account, select the agent, and assign a dedicated configuration directory. Accounts are identified by the combination of agent type and normalized configuration directory, so Claude and Codex may use the same email without colliding.
 
-## 주요 디렉터리
+The email is display metadata. Authentication is controlled by the official CLI state inside the selected configuration directory. A single directory cannot hold two simultaneous identities for the same agent; signing in again replaces that directory's active credentials.
+
+Automatically detected accounts are read-only. Manually added profiles can be edited or removed. After browser login, use the refresh action next to the login session close button to verify and update the account email.
+
+### Paste images
+
+Press `Ctrl+V` inside the terminal:
+
+- Clipboard text is inserted as text.
+- A copied bitmap is saved as a temporary PNG and inserted as a quoted path.
+- Image files copied from Windows Explorer are inserted as quoted paths.
+- Enter is never sent automatically.
+
+## Security and Privacy
+
+- MoaCLI does not ask for or store passwords, OAuth tokens, or API keys.
+- Authentication is performed by the installed official CLI.
+- Account discovery exposes only verified email metadata to the renderer.
+- Conversation history stays on the local machine and is read from CLI-owned files.
+- Custom account directories are passed only to the matching CLI process.
+
+## Architecture
 
 ```text
-electron/
-  agent-profiles.ts   CLI 탐색, Windows 실행 래퍼, 헬스체크
-  contracts.ts        renderer/preload/main IPC 계약
-  main.ts             BrowserWindow와 IPC 등록
-  pty-manager.ts      PTY 생성, 계정 환경, resume, 종료
-  session-history.ts  계정 감지 및 CLI별 히스토리 어댑터
 src/
-  App.tsx             화면 상태와 사용자 흐름
-  history/            대화 전문 렌더링
-  terminal/           xterm 래퍼와 IME 처리
+  App.tsx             React application state and desktop workflows
+  history/            Local conversation transcript UI
+  terminal/           xterm.js wrapper, resize handling, IME, clipboard input
+
+electron/
+  main.ts             BrowserWindow lifecycle and IPC handlers
+  preload.ts          Typed renderer-to-main API boundary
+  pty-manager.ts      PTY lifecycle, isolated environments, output batching
+  session-history.ts  Account inspection and agent-specific history adapters
+  agent-profiles.ts   CLI discovery, version checks, and Windows launch wrappers
+
 profiles/
-  agents.default.json CLI 실행 및 resume 인자
+  agents.default.json Agent commands, login arguments, and resume arguments
 ```
 
-## 디자인과 창 효과
+The renderer is built with React 18 and TypeScript. Privileged filesystem, process, clipboard, and PTY operations remain behind the Electron preload boundary.
 
-- 프레임리스 디자인은 유지하되 창 배경은 안정적인 불투명 다크 셸을 사용합니다.
-- Windows DWM `acrylic`은 리사이즈와 최대화 후 검정 배경으로 고착되는 문제가 있어 기본 구현에서 제외했습니다.
-- `Inter Variable`은 앱 UI, `JetBrains Mono Variable`은 터미널에 사용하며 폰트와 OFL 라이선스는 `src/assets/fonts/`에 포함합니다.
-- BrowserWindow와 앱 셸은 모두 `#121418` 배경을 사용해 크기와 상태 전환 중 색이 달라지지 않습니다.
+## Roadmap
+
+| Feature | Status | Development branch |
+| --- | --- | --- |
+| Unified notification center | Planned | [`feature/notification-center`](https://github.com/shBye/moacli/tree/feature/notification-center) |
+| Session restoration after restart | Planned | [`feature/session-restore`](https://github.com/shBye/moacli/tree/feature/session-restore) |
+| Full conversation search with SQLite FTS5 | Planned | [`feature/conversation-search`](https://github.com/shBye/moacli/tree/feature/conversation-search) |
+
+The detailed product flow, data model, failure handling, and acceptance criteria are documented in [ROADMAP.md](./ROADMAP.md). Completed work and resolved implementation issues are tracked in [PROGRESS.md](./PROGRESS.md).
+
+## Scripts
+
+| Command | Purpose |
+| --- | --- |
+| `npm.cmd run dev` | Start Electron with the development renderer |
+| `npm.cmd run typecheck` | Run TypeScript checks without emitting files |
+| `npm.cmd run build` | Type-check and build main, preload, and renderer bundles |
+| `npm.cmd run start:lean` | Run the production build with GPU acceleration |
+| `npm.cmd run start:low-memory` | Run the production build with GPU acceleration disabled |
+| `npm.cmd run package` | Build a distributable Electron package |
+
+## Fonts and Branding
+
+MoaCLI uses Inter Variable for the application UI and JetBrains Mono Variable for terminals. Their OFL license files are included under `src/assets/fonts/`. The application icon and brand artwork are stored in `src/assets/` and `docs/assets/`.
