@@ -15,6 +15,9 @@ app.setPath('userData', join(app.getPath('appData'), 'cli-agent-manager'))
 if (process.platform === 'win32') app.setAppUserModelId('app.moacli.desktop')
 let notificationCenter: NotificationCenter | null = null
 const attentionBridge = new AttentionBridge(({ request, source, reason, generation }) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('pty:attention', { id: request.id, reason })
+  }
   notificationCenter?.handleNeedsAttention(request, `${source}:${reason}:${generation}`)
 })
 const ptyManager = new PtyManager(

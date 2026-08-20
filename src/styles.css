@@ -138,6 +138,8 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .state-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: rgba(255,255,255,.22); }
 .state-dot.running { background: #3ed598; box-shadow: 0 0 0 3px rgba(62,213,152,.18); }
 .state-dot.starting { background: var(--acc); }
+.state-dot.processing { background: #72c7f0; box-shadow: 0 0 0 3px rgba(114,199,240,.16); animation: status-pulse 1.25s ease-in-out infinite; }
+.state-dot.needs_attention { background: #f4c95d; box-shadow: 0 0 0 3px rgba(244,201,93,.18); }
 .session-notification-marker { display: grid; width: 17px; height: 17px; flex: none; place-items: center; border-radius: 50%; color: var(--acc); background: color-mix(in oklch, var(--acc) 14%, transparent); }
 .session-notification-marker.failed { color: #ff7e86; background: rgba(255,126,134,.13); }
 .session-notification-marker.completed { color: #3ed598; background: rgba(62,213,152,.12); }
@@ -229,6 +231,10 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .state-chip.running > span { background: #3ed598; }
 .state-chip.starting { border-color: color-mix(in oklch, var(--acc) 30%, transparent); color: var(--acc); }
 .state-chip.starting > span { background: var(--acc); }
+.state-chip.processing { border-color: rgba(114,199,240,.28); color: #72c7f0; background: rgba(114,199,240,.1); }
+.state-chip.processing > span { background: #72c7f0; animation: status-pulse 1.25s ease-in-out infinite; }
+.state-chip.needs_attention { border-color: rgba(244,201,93,.3); color: #f4c95d; background: rgba(244,201,93,.11); }
+.state-chip.needs_attention > span { background: #f4c95d; }
 .session-email { flex: none; color: rgba(255,255,255,.34); font: 400 10px/1 'JetBrains Mono', monospace; }
 .session-cwd { min-width: 40px; max-width: 280px; flex: 1; margin-left: auto; overflow: hidden; color: rgba(255,255,255,.34); font: 400 10px/1 'JetBrains Mono', monospace; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 .icon-button { display: grid; width: 28px; height: 28px; flex: none; padding: 0; place-items: center; border: 0; border-radius: 6px; color: rgba(255,255,255,.5); background: transparent; cursor: pointer; }
@@ -237,6 +243,7 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .context-account-refresh, .context-notification-mute, .context-close { width: 24px; height: 24px; }
 .spinning { animation: spin 700ms linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes status-pulse { 50% { opacity: .35; } }
 .session-subnav { display: flex; min-width: 0; align-items: flex-end; justify-content: space-between; margin-top: 11px; }
 .view-tabs { display: flex; align-items: flex-end; gap: 22px; }
 .view-tabs button { height: 29px; padding: 0 1px 9px; border: 0; border-bottom: 2px solid transparent; color: rgba(255,255,255,.42); background: transparent; font-size: 11px; font-weight: 500; cursor: pointer; }
@@ -279,6 +286,10 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .status-pill.running .status-dot { background: #3ed598; }
 .status-pill.starting { color: var(--acc); }
 .status-pill.starting .status-dot { background: var(--acc); }
+.status-pill.processing { color: #72c7f0; }
+.status-pill.processing .status-dot { background: #72c7f0; animation: status-pulse 1.25s ease-in-out infinite; }
+.status-pill.needs_attention { color: #f4c95d; }
+.status-pill.needs_attention .status-dot { background: #f4c95d; }
 .status-right { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .floating-settings, .floating-notifications { position: fixed; z-index: 30; top: 5px; display: grid; width: 28px; height: 28px; padding: 0; place-items: center; border: 0; border-radius: 6px; color: rgba(255,255,255,.42); background: transparent; cursor: pointer; app-region: no-drag; -webkit-app-region: no-drag; }
@@ -462,6 +473,7 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
   .folder-entry, .folder-entry.removing { animation-duration: 1ms; }
   .folder-contents, .folder-tree { transition-duration: 1ms; }
   .session-starting-bar::after, .history-loading-track span { width: 100%; animation: none; opacity: .55; }
+  .state-dot.processing, .state-chip.processing > span, .status-pill.processing .status-dot { animation: none; opacity: .55; }
 }
 
 @media (max-width: 1050px) {

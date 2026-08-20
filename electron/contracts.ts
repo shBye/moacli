@@ -58,6 +58,11 @@ export interface PtyExitEvent {
   exitCode: number
 }
 
+export interface PtyAttentionEvent {
+  id: string
+  reason: string
+}
+
 export type AppNotificationType = 'needs_attention' | 'completed' | 'failed' | 'account_changed' | 'info'
 
 export interface AppNotification {
@@ -140,6 +145,7 @@ export interface CliAgentApi {
   stopPty: (id: string) => void
   onPtyData: (id: string, callback: (data: string) => void) => () => void
   onPtyExit: (id: string, callback: (exitCode: number) => void) => () => void
+  onPtyAttention: (id: string, callback: (reason: string) => void) => () => void
   onHistoryChanged: (callback: () => void) => () => void
   getNotificationSnapshot: () => Promise<NotificationSnapshot>
   updateNotificationSettings: (settings: Partial<NotificationSettings>) => Promise<NotificationSnapshot>

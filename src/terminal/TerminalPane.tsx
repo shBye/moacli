@@ -17,15 +17,16 @@ interface TerminalPaneProps {
   fontSize: number
   foreground: string
   cursorColor: string
+  activityStatusEnabled: boolean
   onActivity: () => void
-  onStateChange: (state: 'starting' | 'running' | 'stopped', detail?: string) => void
+  onStateChange: (state: 'starting' | 'running' | 'processing' | 'needs_attention' | 'stopped', detail?: string) => void
 }
 
 const ACTIVE_SCROLLBACK = 5000
 const BACKGROUND_SCROLLBACK = 1500
 const MIN_STARTING_INDICATOR_MS = 650
 
-export function TerminalPane({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, fontFamily, fontSize, foreground, cursorColor, onActivity, onStateChange }: TerminalPaneProps) {
+export function TerminalPane({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, fontFamily, fontSize, foreground, cursorColor, activityStatusEnabled, onActivity, onStateChange }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -33,8 +34,10 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
   const ptyReadyRef = useRef(false)
   const activeRef = useRef(active)
   const activityRef = useRef(onActivity)
+  const activityStatusEnabledRef = useRef(activityStatusEnabled)
   activeRef.current = active
   activityRef.current = onActivity
+  activityStatusEnabledRef.current = activityStatusEnabled
 
   useEffect(() => {
     const container = containerRef.current
@@ -92,9 +95,13 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       lastActivityReport = now
       activityRef.current()
     }
+    let interactionState: 'running' | 'processing' | 'needs_attention' = 'running'
     const inputDisposable = terminal.onData((data) => {
       reportActivity()
       window.cliAgent.writePty(id, data)
+      if (!activityStatusEnabledRef.current || purpose !== 'session') return
+      if (/[\r\n]/.test(data)) reportInteractionState('processing', 'Request submitted')
+      else if (interactionState === 'needs_attention') reportInteractionState('running')
     })
     let started = false
     let disposed = false
@@ -117,7 +124,12 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       }
       runningReported = true
       clearTimeout(fallbackReadyTimer)
-      onStateChange('running')
+      if (interactionState === 'running') onStateChange('running')
+    }
+    const reportInteractionState = (state: typeof interactionState, detail?: string): void => {
+      if (!activityStatusEnabledRef.current || purpose !== 'session' || disposed) return
+      interactionState = state
+      onStateChange(state, detail)
     }
     const offData = window.cliAgent.onPtyData(id, (data) => {
       reportActivity()
@@ -129,6 +141,9 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     const offExit = window.cliAgent.onPtyExit(id, (exitCode) => {
       terminal.write(`\r\n\x1b[90m[process exited: ${exitCode}]\x1b[0m\r\n`)
       onStateChange('stopped', `exit ${exitCode}`)
+    })
+    const offAttention = window.cliAgent.onPtyAttention(id, (reason) => {
+      reportInteractionState('needs_attention', reason)
     })
 
     const pasteClipboard = (): void => {
@@ -218,6 +233,7 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       inputDisposable.dispose()
       offData()
       offExit()
+      offAttention()
       window.cliAgent.stopPty(id)
       terminal.dispose()
       terminalRef.current = null

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { CliAgentApi, NotificationActivation, NotificationSnapshot, PtyDataEvent, PtyExitEvent, StartPtyRequest } from './contracts'
+import type { CliAgentApi, NotificationActivation, NotificationSnapshot, PtyAttentionEvent, PtyDataEvent, PtyExitEvent, StartPtyRequest } from './contracts'
 
 const api: CliAgentApi = {
   getProfiles: () => ipcRenderer.invoke('profiles:list'),
@@ -26,6 +26,13 @@ const api: CliAgentApi = {
     }
     ipcRenderer.on('pty:exit', listener)
     return () => ipcRenderer.removeListener('pty:exit', listener)
+  },
+  onPtyAttention: (id, callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: PtyAttentionEvent) => {
+      if (payload.id === id) callback(payload.reason)
+    }
+    ipcRenderer.on('pty:attention', listener)
+    return () => ipcRenderer.removeListener('pty:attention', listener)
   },
   onHistoryChanged: (callback) => {
     const listener = (): void => callback()

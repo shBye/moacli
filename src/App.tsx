@@ -63,7 +63,7 @@ import {
 import { ConversationView } from './history/ConversationView'
 import { TerminalPane } from './terminal/TerminalPane'
 
-type SessionState = 'idle' | 'starting' | 'running' | 'stopped'
+type SessionState = 'idle' | 'starting' | 'running' | 'processing' | 'needs_attention' | 'stopped'
 type SessionView = 'cli' | 'conversation'
 type LucideIconName = keyof typeof dynamicIconImports
 type AgentIconMode = 'monogram' | 'lucide' | 'custom'
@@ -324,6 +324,8 @@ function AgentAvatar({ agentId, className, color, preference }: AgentAvatarProps
 }
 
 function stateLabel(state: SessionState): string {
+  if (state === 'needs_attention') return 'Needs attention'
+  if (state === 'processing') return 'Processing'
   if (state === 'running') return 'Running'
   if (state === 'starting') return 'Starting'
   if (state === 'stopped') return 'Stopped'
@@ -356,7 +358,12 @@ function SessionClock({ session }: { session: RuntimeSession }) {
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [])
-  return <span>idle {formatElapsed(now - session.lastActivityAt)} · closes after 30 min in background</span>
+  const activityLabel = session.state === 'processing'
+    ? 'processing'
+    : session.state === 'needs_attention'
+      ? 'waiting for input'
+      : 'idle'
+  return <span>{activityLabel} {formatElapsed(now - session.lastActivityAt)} · closes after 30 min in background</span>
 }
 
 interface SectionHeadingProps {
@@ -1644,6 +1651,9 @@ export function App() {
                       fontSize={appearance.terminalFontSize}
                       foreground={appearance.terminalForeground}
                       cursorColor={ACCENT_OPTIONS.find((option) => option.id === theme)?.color ?? ACCENT_OPTIONS[0].color}
+                      activityStatusEnabled={profiles.some((profile) => (
+                        profile.id === session.agentId && profile.attention.status === 'supported'
+                      ))}
                       onActivity={() => updateSession(session.id, { lastActivityAt: Date.now() })}
                       onStateChange={(state, detail) => updateSession(session.id, { state, statusDetail: detail ?? '' })}
                     />
@@ -1663,7 +1673,7 @@ export function App() {
           </div>
 
           <footer className="status-bar">
-            <span className={`status-pill ${activeSession?.state ?? 'idle'}`}><span className="status-dot" />{activeSession?.state ?? 'idle'}</span>
+            <span className={`status-pill ${activeSession?.state ?? 'idle'}`}><span className="status-dot" />{stateLabel(activeSession?.state ?? 'idle')}</span>
             <span>{activeSession ? activeProfile?.version ?? activeSession.agentId : 'No session'}</span>
             <span>{sessions.length}/{MAX_RUNTIME_SESSIONS} open</span>
             <span className="status-right">{activeSession ? <SessionClock session={activeSession} /> : detectedVersions}</span>
