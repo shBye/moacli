@@ -1723,6 +1723,26 @@ export function App() {
                     onChange={(completed) => changeNotificationSettings({ completed })}
                   />
                 </div>
+                <div className="attention-compatibility" aria-label="Needs attention compatibility">
+                  {profiles.filter((profile) => profile.attention.minimumVersion).map((profile) => {
+                    const status = profile.attention.status
+                    const needsUpdate = status === 'update_required'
+                    const ready = status === 'supported'
+                    return (
+                      <div className={`attention-compatibility-row ${ready ? 'ready' : 'warning'}`} key={profile.id}>
+                        <span>{profile.label}</span>
+                        <span title={profile.version ?? 'Version unavailable'}>
+                          {ready ? <Check size={12} /> : <TriangleAlert size={12} />}
+                          {ready
+                            ? `Ready · v${profile.attention.minimumVersion}+`
+                            : needsUpdate
+                              ? `Update to v${profile.attention.minimumVersion} or newer`
+                              : `Version check required · v${profile.attention.minimumVersion}+`}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
               </section>
               <section className="agent-icon-settings" aria-labelledby="agent-icon-settings-title">
                 <h3 id="agent-icon-settings-title">Agent icons</h3>

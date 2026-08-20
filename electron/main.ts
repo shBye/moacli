@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { app, BrowserWindow, clipboard, dialog, ipcMain } from 'electron'
 import { getAgentHealth } from './agent-profiles'
+import { AttentionBridge } from './attention-bridge'
 import type { AgentAccount, NotificationContext, NotificationSettings, StartPtyRequest } from './contracts'
 import { NotificationCenter } from './notification-center'
 import { PtyManager } from './pty-manager'
@@ -13,8 +14,12 @@ let mainWindow: BrowserWindow | null = null
 app.setPath('userData', join(app.getPath('appData'), 'cli-agent-manager'))
 if (process.platform === 'win32') app.setAppUserModelId('app.moacli.desktop')
 let notificationCenter: NotificationCenter | null = null
+const attentionBridge = new AttentionBridge(({ request, source, reason, generation }) => {
+  notificationCenter?.handleNeedsAttention(request, `${source}:${reason}:${generation}`)
+})
 const ptyManager = new PtyManager(
   () => mainWindow?.webContents ?? null,
+  attentionBridge,
   ({ request, exitCode, intentional }) => notificationCenter?.handleExit(request, exitCode, intentional),
 )
 const sessionHistory = new SessionHistoryService()
@@ -172,9 +177,9 @@ ipcMain.handle('directory:select', async (_event, defaultPath?: string) => {
   })
   return result.canceled ? null : result.filePaths[0] ?? null
 })
-ipcMain.handle('pty:start', (_event, request: StartPtyRequest) => {
+ipcMain.handle('pty:start', async (_event, request: StartPtyRequest) => {
   try {
-    ptyManager.start(request)
+    await ptyManager.start(request)
   } catch (error) {
     notificationCenter?.handleStartFailure(request)
     throw error
@@ -206,8 +211,13 @@ ipcMain.on('window:close', (event) => {
   if (event.sender === mainWindow?.webContents) mainWindow.close()
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   notificationCenter = new NotificationCenter(join(app.getPath('userData'), 'notification-settings.json'), () => mainWindow)
+  try {
+    await attentionBridge.start(join(app.getPath('temp'), 'moacli', 'attention-hooks'))
+  } catch (error) {
+    console.warn('Needs-attention hook server could not start', error)
+  }
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -218,6 +228,7 @@ app.on('before-quit', () => {
   closeHistoryWatchers()
   notificationCenter?.dispose()
   ptyManager.stopAll()
+  attentionBridge.dispose()
 })
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

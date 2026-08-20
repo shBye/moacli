@@ -19,6 +19,8 @@
     "args_login": ["auth", "login"],
     "args_resume": ["--resume", "{id}"],
     "version_cmd": ["--version"],
+    "attention_adapter": "claude-http",
+    "attention_min_version": "2.1.235",
     "env": {}
   },
   {
@@ -30,6 +32,8 @@
     "args_login": ["login"],
     "args_resume": ["resume", "{id}"],
     "version_cmd": ["--version"],
+    "attention_adapter": "codex-osc9",
+    "attention_min_version": "0.148.0",
     "env": {}
   },
   {

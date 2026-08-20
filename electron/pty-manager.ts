@@ -4,6 +4,7 @@ import * as pty from 'node-pty'
 import type { IPty } from 'node-pty'
 import type { StartPtyRequest } from './contracts'
 import { detectBinary, executableCommand, getProfile } from './agent-profiles'
+import { AttentionBridge } from './attention-bridge'
 
 const MAX_PTY_PROCESSES = 10
 const OUTPUT_BATCH_DELAY_MS = 8
@@ -30,18 +31,22 @@ function cleanEnvironment(extra: Record<string, string>, account?: StartPtyReque
 
 export class PtyManager {
   private readonly processes = new Map<string, IPty>()
+  private readonly starting = new Set<string>()
   private readonly pendingOutput = new Map<string, string>()
   private readonly intentionalStops = new Set<string>()
   private outputTimer: ReturnType<typeof setTimeout> | undefined
 
   constructor(
     private readonly getWebContents: () => WebContents | null,
+    private readonly attentionBridge: AttentionBridge,
     private readonly onLifecycleExit?: (event: PtyLifecycleExitEvent) => void,
   ) {}
 
-  start(request: StartPtyRequest): void {
-    if (this.processes.has(request.id)) throw new Error('Session is already running')
-    if (this.processes.size >= MAX_PTY_PROCESSES) throw new Error(`At most ${MAX_PTY_PROCESSES} CLI sessions can run at once`)
+  async start(request: StartPtyRequest): Promise<void> {
+    if (this.processes.has(request.id) || this.starting.has(request.id)) throw new Error('Session is already running')
+    if (this.processes.size + this.starting.size >= MAX_PTY_PROCESSES) {
+      throw new Error(`At most ${MAX_PTY_PROCESSES} CLI sessions can run at once`)
+    }
     if (!existsSync(request.cwd) || !statSync(request.cwd).isDirectory()) {
       throw new Error(`Working directory does not exist: ${request.cwd}`)
     }
@@ -51,42 +56,53 @@ export class PtyManager {
     const executable = detectBinary(profile.bin)
     if (!executable) throw new Error(`${profile.label} executable was not found`)
 
-    if (request.account?.configDir) mkdirSync(request.account.configDir, { recursive: true })
+    this.starting.add(request.id)
+    try {
+      if (request.account?.configDir) mkdirSync(request.account.configDir, { recursive: true })
 
-    const titleArgs = request.purpose !== 'login' && !request.resumeId && request.title && profile.args_name
-      ? profile.args_name.map((argument) => argument.replaceAll('{title}', request.title!))
-      : []
-    const baseArgs = request.purpose === 'login'
-      ? profile.args_login ?? []
-      : request.resumeId
-        ? profile.args_resume.map((argument) => argument.replaceAll('{id}', request.resumeId!))
-        : profile.args_new
-    if (!baseArgs.length && (request.purpose === 'login' || request.resumeId)) {
-      const action = request.purpose === 'login' ? 'login' : request.resumeId ? 'resume' : 'start'
-      throw new Error(`${profile.label} does not expose a supported ${action} command`)
+      const titleArgs = request.purpose !== 'login' && !request.resumeId && request.title && profile.args_name
+        ? profile.args_name.map((argument) => argument.replaceAll('{title}', request.title!))
+        : []
+      const baseArgs = request.purpose === 'login'
+        ? profile.args_login ?? []
+        : request.resumeId
+          ? profile.args_resume.map((argument) => argument.replaceAll('{id}', request.resumeId!))
+          : profile.args_new
+      if (!baseArgs.length && (request.purpose === 'login' || request.resumeId)) {
+        const action = request.purpose === 'login' ? 'login' : request.resumeId ? 'resume' : 'start'
+        throw new Error(`${profile.label} does not expose a supported ${action} command`)
+      }
+      const attentionOptions = await this.attentionBridge.prepare(request, profile, executable)
+      const command = executableCommand(executable, [...attentionOptions.args, ...baseArgs, ...titleArgs])
+      const instance = pty.spawn(command.file, command.args, {
+        name: 'xterm-256color',
+        cols: Math.max(20, request.cols),
+        rows: Math.max(5, request.rows),
+        cwd: request.cwd,
+        env: cleanEnvironment({ ...profile.env, ...attentionOptions.env }, request.account),
+        useConpty: process.platform === 'win32',
+        useConptyDll: process.platform === 'win32',
+      } as pty.IPtyForkOptions & { useConpty: boolean; useConptyDll: boolean })
+
+      this.processes.set(request.id, instance)
+      instance.onData((data) => {
+        this.attentionBridge.observePtyOutput(request, data)
+        this.queueOutput(request.id, data)
+      })
+      instance.onExit(({ exitCode }) => {
+        this.flushOutput(request.id)
+        this.processes.delete(request.id)
+        this.attentionBridge.release(request.id)
+        const intentional = this.intentionalStops.delete(request.id)
+        this.getWebContents()?.send('pty:exit', { id: request.id, exitCode })
+        queueMicrotask(() => this.onLifecycleExit?.({ request, exitCode, intentional }))
+      })
+    } catch (error) {
+      this.attentionBridge.release(request.id)
+      throw error
+    } finally {
+      this.starting.delete(request.id)
     }
-    const command = executableCommand(executable, [...baseArgs, ...titleArgs])
-    const instance = pty.spawn(command.file, command.args, {
-      name: 'xterm-256color',
-      cols: Math.max(20, request.cols),
-      rows: Math.max(5, request.rows),
-      cwd: request.cwd,
-      env: cleanEnvironment(profile.env, request.account),
-      useConpty: process.platform === 'win32',
-      useConptyDll: process.platform === 'win32',
-    } as pty.IPtyForkOptions & { useConpty: boolean; useConptyDll: boolean })
-
-    this.processes.set(request.id, instance)
-    instance.onData((data) => {
-      this.queueOutput(request.id, data)
-    })
-    instance.onExit(({ exitCode }) => {
-      this.flushOutput(request.id)
-      this.processes.delete(request.id)
-      const intentional = this.intentionalStops.delete(request.id)
-      this.getWebContents()?.send('pty:exit', { id: request.id, exitCode })
-      queueMicrotask(() => this.onLifecycleExit?.({ request, exitCode, intentional }))
-    })
   }
 
   write(id: string, data: string): void {
@@ -105,6 +121,7 @@ export class PtyManager {
     instance.kill()
     this.processes.delete(id)
     this.pendingOutput.delete(id)
+    this.attentionBridge.release(id)
   }
 
   stopAll(): void {

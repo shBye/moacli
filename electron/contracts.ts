@@ -9,12 +9,22 @@ export interface AgentProfile {
   args_resume: string[]
   version_cmd: string[]
   env: Record<string, string>
+  attention_adapter?: 'claude-http' | 'codex-osc9'
+  attention_min_version?: string
+}
+
+export type AttentionSupportStatus = 'supported' | 'update_required' | 'version_unknown' | 'not_integrated'
+
+export interface AgentAttentionSupport {
+  status: AttentionSupportStatus
+  minimumVersion: string | null
 }
 
 export interface AgentHealth extends AgentProfile {
   available: boolean
   resolvedPath: string | null
   version: string | null
+  attention: AgentAttentionSupport
 }
 
 export interface StartPtyRequest {

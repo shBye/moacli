@@ -63,7 +63,7 @@ function notificationTypeEnabled(settings: NotificationSettings, type: AppNotifi
 function notificationMessage(type: AppNotificationType): string {
   if (type === 'failed') return 'Session failed'
   if (type === 'completed') return 'Session completed'
-  if (type === 'needs_attention') return 'Session may need attention'
+  if (type === 'needs_attention') return 'Session needs attention'
   if (type === 'account_changed') return 'Account changed'
   return 'Session activity'
 }
@@ -114,6 +114,10 @@ export class NotificationCenter {
 
   handleStartFailure(request: StartPtyRequest): void {
     this.create({ request, type: 'failed', dedupeKey: `start:${request.id}` })
+  }
+
+  handleNeedsAttention(request: StartPtyRequest, signalKey: string): void {
+    this.create({ request, type: 'needs_attention', dedupeKey: `attention:${request.id}:${signalKey}` })
   }
 
   handleExit(request: StartPtyRequest, exitCode: number, intentional: boolean): void {

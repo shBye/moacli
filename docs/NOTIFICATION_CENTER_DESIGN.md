@@ -41,7 +41,7 @@ Each live session also has a mute control. A muted session does not create in-ap
 failed > needs_attention > account_changed > completed > info
 ```
 
-The MVP produces `completed` and `failed` events from PTY lifecycle signals. Input-request detection and `account_changed` can be added later without changing the UI contract.
+The current implementation produces `completed` and `failed` events from PTY lifecycle signals. It also produces `needs_attention` from agent-specific structured signals. `account_changed` can be added later without changing the UI contract.
 
 When a session already has an active notification:
 
@@ -59,6 +59,52 @@ app_shutdown
 ```
 
 Natural exit code `0` produces `completed`. A non-zero natural exit or start failure produces `failed`.
+
+## Needs-attention adapters
+
+MoaCLI does not infer attention state from terminal text, prompt glyphs, quiet time, or model prose. Each integration uses a signal owned by the CLI.
+
+### Claude Code
+
+Validated baseline: Claude Code `2.1.235` or newer.
+
+MoaCLI starts a loopback-only HTTP hook receiver on a random port and creates a temporary per-PTY settings file. The file is passed with Claude's `--settings` argument and adds handlers for:
+
+- `PermissionRequest`: a tool requires an approval decision.
+- `Elicitation`: an MCP server requires user input.
+- `Stop`: the main agent finished its response and is waiting for the next user turn.
+- `StopFailure`: the turn stopped because of an API or model failure and requires review.
+
+The receiver binds to `127.0.0.1`, uses a random token in the URL, accepts at most 64 KiB per request, and only accepts the registered PTY ID and expected hook event names. It responds with an empty decision so it never approves, denies, or otherwise changes Claude behavior. Hook payloads and terminal text are not persisted.
+
+The temporary settings file is deleted when the PTY exits or is stopped. User, project, and account settings are not modified.
+
+### Codex
+
+Validated baseline: Codex CLI `0.148.0` or newer.
+
+MoaCLI adds process-local configuration overrides:
+
+```text
+-c tui.notifications=true
+-c tui.notification_method="osc9"
+-c tui.notification_condition="always"
+```
+
+Codex continues to render its normal TUI. `PtyManager` observes the resulting OSC 9 terminal notification sequences before forwarding the unchanged data to xterm. The parser handles escape sequences split across PTY data chunks and treats every Codex TUI notification as an attention event. Enabling all notification kinds also allows future Codex attention events to work without adding prompt-text rules.
+
+### Version gating
+
+The Settings dialog shows compatibility rows below `Needs attention`. An integrated CLI is marked `Ready` only when its detected version meets the validated baseline.
+
+If the binary is missing, its version cannot be read, or it is below the baseline:
+
+- MoaCLI shows the required minimum version.
+- The adapter does not add CLI arguments or environment variables.
+- The PTY starts normally without needs-attention detection.
+- `completed` and `failed` lifecycle notifications remain available.
+
+Version checks are repeated when a PTY starts, so updating a CLI while MoaCLI is running does not require restarting the application.
 
 ## Concurrent notifications
 
@@ -117,6 +163,8 @@ The Main process is the single writer for notification state.
 
 ```text
 PtyManager
+  -> agent attention adapter
+    -> structured attention signal
   -> lifecycle event
     -> NotificationCenter
       -> active notification map
@@ -169,13 +217,16 @@ When session restoration is implemented, the notification repository can move be
 - A dedupe key identifies the session, event type, and event generation.
 - Windows delivery drains the current burst in a single operation.
 
-Future input-request adapters will track the last scanned PTY position and require new output after acknowledgment before raising another event.
+Claude hook deliveries and Codex OSC sequences increment a per-PTY event generation. That generation is included in the dedupe key. No raw PTY data is retained by the notification queue.
 
 ## Failure handling
 
 - Settings-file read failure falls back to the default disabled configuration.
 - Settings-file write failure reports an IPC error but does not change PTY behavior.
 - Unsupported Windows notifications leave the in-app notification intact.
+- An unavailable, unreadable, or outdated CLI version disables only its attention adapter and leaves normal PTY startup unchanged.
+- Failure to start the loopback hook receiver disables Claude attention detection and leaves Codex and PTY lifecycle handling available.
+- A malformed, oversized, incorrectly routed, or unexpected Claude hook request is rejected without reaching notification state.
 - A Windows notification that targets a closed session opens the panel instead.
 - Renderer reload requests a fresh snapshot from Main.
 - Main-process shutdown cancels pending desktop delivery and stops PTYs without generating completion events.
@@ -189,6 +240,10 @@ Future input-request adapters will track the last scanned PTY position and requi
 - Concurrent Windows events are grouped into one toast.
 - A natural successful exit creates `completed` only when the session is not currently being viewed.
 - A natural failed exit or start failure creates `failed`.
+- A supported Claude permission, elicitation, stop, or stop-failure event creates `needs_attention` when the session is not being viewed.
+- A supported Codex OSC 9 notification creates `needs_attention` when the session is not being viewed.
+- Split Codex OSC 9 sequences create one event after the terminating byte arrives.
+- An outdated CLI shows an update requirement and starts without adapter-specific arguments.
 - User close, idle eviction, and application shutdown do not create notifications.
 - Clicking a notification activates the correct CLI session and removes its row.
 - Per-session mute suppresses future notifications for that session.

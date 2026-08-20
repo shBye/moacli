@@ -323,6 +323,11 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .notification-settings-heading { display: flex; min-height: 32px; align-items: center; justify-content: space-between; gap: 16px; }
 .notification-settings h3 { margin: 0; color: rgba(255,255,255,.42); font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .notification-settings-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,.045); }
+.attention-compatibility { display: grid; gap: 5px; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.045); }
+.attention-compatibility-row { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 14px; color: rgba(255,255,255,.4); font-size: 9.5px; }
+.attention-compatibility-row > span:last-child { display: flex; min-width: 0; align-items: center; gap: 5px; text-align: right; }
+.attention-compatibility-row.ready > span:last-child { color: #7dd8a9; }
+.attention-compatibility-row.warning > span:last-child { color: #e9b45c; }
 .settings-toggle-row { display: flex; min-width: 0; height: 32px; align-items: center; justify-content: space-between; gap: 12px; color: rgba(255,255,255,.58); font-size: 10.5px; }
 .settings-toggle-row.disabled { color: rgba(255,255,255,.25); }
 .settings-toggle { position: relative; width: 30px; height: 17px; flex: none; padding: 0; border: 1px solid rgba(255,255,255,.13); border-radius: 999px; background: rgba(255,255,255,.07); cursor: pointer; transition: border-color 120ms ease, background 120ms ease; }
