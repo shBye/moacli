@@ -44,7 +44,17 @@ import {
 } from 'lucide-react'
 import dynamicIconImports from 'lucide-react/dynamicIconImports'
 import moaCliIcon from './assets/moacli-icon.png'
-import type { AgentAccount, AgentHealth, AppNotification, ConversationHistory, HistorySession, NotificationSettings, NotificationSnapshot } from '../electron/contracts'
+import type {
+  AgentAccount,
+  AgentHealth,
+  AppNotification,
+  ConversationHistory,
+  ConversationSearchResult,
+  HistorySession,
+  NotificationSettings,
+  NotificationSnapshot,
+  SearchIndexState,
+} from '../electron/contracts'
 import {
   ACCENT_OPTIONS,
   APPEARANCE_PRESETS,
@@ -112,6 +122,8 @@ interface RuntimeSession {
   conversation: ConversationHistory | null
   conversationLoading: boolean
   conversationError: string
+  terminalEnabled: boolean
+  highlightMessageId: string
   state: SessionState
   statusDetail: string
   view: SessionView
@@ -169,6 +181,16 @@ const EMPTY_NOTIFICATION_SNAPSHOT: NotificationSnapshot = {
   notifications: [],
   settings: DEFAULT_NOTIFICATION_SETTINGS,
   mutedSessionIds: [],
+}
+const EMPTY_SEARCH_INDEX_STATE: SearchIndexState = {
+  phase: 'idle',
+  discoveredSources: 0,
+  processedSources: 0,
+  failedSources: 0,
+  indexedSources: 0,
+  indexedMessages: 0,
+  lastUpdatedAt: 0,
+  error: '',
 }
 
 function loadJson<T>(key: string, fallback: T): T {
@@ -356,6 +378,26 @@ function formatElapsed(milliseconds: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 }
 
+function HighlightedSearchSnippet({ text }: { text: string }) {
+  const parts = text.split(/([\uE000\uE001])/)
+  let highlighted = false
+  return (
+    <span>
+      {parts.map((part, index) => {
+        if (part === '\uE000') {
+          highlighted = true
+          return null
+        }
+        if (part === '\uE001') {
+          highlighted = false
+          return null
+        }
+        return highlighted ? <mark key={index}>{part}</mark> : <span key={index}>{part}</span>
+      })}
+    </span>
+  )
+}
+
 function SessionClock({ session }: { session: RuntimeSession }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
@@ -439,6 +481,11 @@ export function App() {
   const [profilesRefreshing, setProfilesRefreshing] = useState(false)
   const [history, setHistory] = useState<HistorySession[]>([])
   const [historyQuery, setHistoryQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<ConversationSearchResult[]>([])
+  const [searchIndexState, setSearchIndexState] = useState<SearchIndexState>(EMPTY_SEARCH_INDEX_STATE)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState('')
+  const [searchRebuilding, setSearchRebuilding] = useState(false)
   const [accounts, setAccounts] = useState<AgentAccount[]>(savedAccounts)
   const [draftAccounts, setDraftAccounts] = useState<AgentAccount[]>(accounts)
   const [accountSaveNotice, setAccountSaveNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
@@ -481,6 +528,7 @@ export function App() {
   const profileRefreshInFlight = useRef(false)
   const historyRefreshInFlight = useRef(false)
   const historyRefreshQueued = useRef(false)
+  const searchRequestId = useRef(0)
   accountsRef.current = accounts
   sessionsRef.current = sessions
 
@@ -598,6 +646,47 @@ export function App() {
       offActivated()
     }
   }, [])
+
+  useEffect(() => {
+    let mounted = true
+    void window.cliAgent.getSearchIndexState().then((state) => {
+      if (mounted) setSearchIndexState(state)
+    })
+    const offChanged = window.cliAgent.onSearchIndexChanged((state) => {
+      if (mounted) setSearchIndexState(state)
+    })
+    return () => {
+      mounted = false
+      offChanged()
+    }
+  }, [])
+
+  useEffect(() => {
+    const query = historyQuery.trim()
+    const requestId = ++searchRequestId.current
+    if (query.length < 2) {
+      setSearchResults([])
+      setSearchLoading(false)
+      setSearchError('')
+      return undefined
+    }
+
+    setSearchLoading(true)
+    setSearchError('')
+    const timer = window.setTimeout(() => {
+      void window.cliAgent.searchConversations(query).then((response) => {
+        if (searchRequestId.current !== requestId) return
+        setSearchResults(response.results)
+        setSearchIndexState(response.index)
+      }).catch((error: unknown) => {
+        if (searchRequestId.current !== requestId) return
+        setSearchError(error instanceof Error ? error.message : String(error))
+      }).finally(() => {
+        if (searchRequestId.current === requestId) setSearchLoading(false)
+      })
+    }, 180)
+    return () => window.clearTimeout(timer)
+  }, [historyQuery, searchIndexState.phase, searchIndexState.lastUpdatedAt])
 
   useEffect(() => {
     const reconcileProfiles = (): void => {
@@ -743,6 +832,8 @@ export function App() {
       conversation: null,
       conversationLoading: false,
       conversationError: '',
+      terminalEnabled: true,
+      highlightMessageId: '',
       state: 'idle',
       statusDetail: '',
       view: 'cli',
@@ -772,6 +863,14 @@ export function App() {
         event.preventDefault()
         searchRef.current?.focus()
       }
+      if (event.key === 'Escape' && document.activeElement === searchRef.current && historyQuery) {
+        event.preventDefault()
+        setHistoryQuery('')
+      }
+      if (event.key === 'Enter' && document.activeElement === searchRef.current && historyQuery.trim().length >= 2 && searchResults[0]) {
+        event.preventDefault()
+        openSearchResult(searchResults[0])
+      }
       if (event.ctrlKey && event.key === 'Enter' && !activeSession) {
         event.preventDefault()
         startSession()
@@ -779,7 +878,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeSession, agentId, cwd, title, selectedAccount, selectedFolderId])
+  }, [activeSession, agentId, cwd, title, selectedAccount, selectedFolderId, historyQuery, searchResults])
 
   const toggleSection = (section: SectionKey): void => {
     setSectionOpen((current) => {
@@ -1182,26 +1281,79 @@ export function App() {
       conversation: null,
       conversationLoading: false,
       conversationError: '',
+      terminalEnabled: true,
+      highlightMessageId: '',
       state: 'idle',
       statusDetail: '',
       view: 'cli',
     })
   }
 
-  const showConversation = (id: string): void => {
-    const session = sessions.find((item) => item.id === id)
-    if (!session?.historyKey) return
-    updateSession(id, { view: 'conversation' })
-    if (session.conversation || session.conversationLoading) return
-    updateSession(id, { conversationLoading: true, conversationError: '' })
-    void window.cliAgent.getConversation(session.historyKey).then((conversation) => {
-      updateSession(id, { conversation, conversationLoading: false })
+  const loadConversation = (id: string, historyKey: string, highlightMessageId = ''): void => {
+    updateSession(id, { conversationLoading: true, conversationError: '', highlightMessageId })
+    void window.cliAgent.getConversation(historyKey).then((conversation) => {
+      updateSession(id, { conversation, conversationLoading: false, highlightMessageId })
     }).catch((error: unknown) => {
       updateSession(id, {
         conversationLoading: false,
         conversationError: error instanceof Error ? error.message : String(error),
       })
     })
+  }
+
+  const showConversation = (id: string, highlightMessageId = ''): void => {
+    const session = sessions.find((item) => item.id === id)
+    if (!session?.historyKey) return
+    updateSession(id, { view: 'conversation', highlightMessageId })
+    if (session.conversation || session.conversationLoading) return
+    loadConversation(id, session.historyKey, highlightMessageId)
+  }
+
+  const showCli = (id: string): void => {
+    updateSession(id, { view: 'cli', terminalEnabled: true, highlightMessageId: '' })
+  }
+
+  const openSearchResult = (result: ConversationSearchResult): void => {
+    const existing = sessions.find((session) => session.historyKey === result.session.key)
+    if (existing) {
+      activateSession(existing.id)
+      showConversation(existing.id, result.messageId)
+      setHistoryQuery('')
+      return
+    }
+
+    const account = accounts.find((item) => item.id === result.session.accountId)
+    const id = addRuntimeSession({
+      agentId: result.session.agentId,
+      cwd: result.session.cwd || cwd.trim() || 'C:\\git_workspace',
+      title: result.session.title,
+      account,
+      purpose: 'session',
+      resumeId: result.session.resumeId,
+      folderId: folderAssignments[result.session.key] || 'unsorted',
+      historyKey: result.session.key,
+      conversation: null,
+      conversationLoading: true,
+      conversationError: '',
+      terminalEnabled: false,
+      highlightMessageId: result.messageId,
+      state: 'idle',
+      statusDetail: 'Conversation opened from search',
+      view: 'conversation',
+    })
+    loadConversation(id, result.session.key, result.messageId)
+    setHistoryQuery('')
+  }
+
+  const rebuildConversationSearch = (): void => {
+    if (searchRebuilding) return
+    setSearchRebuilding(true)
+    setSearchError('')
+    void window.cliAgent.rebuildSearchIndex(accountsRef.current).then((state) => {
+      setSearchIndexState(state)
+    }).catch((error: unknown) => {
+      setSearchError(error instanceof Error ? error.message : String(error))
+    }).finally(() => setSearchRebuilding(false))
   }
 
   const saveAccounts = (): void => {
@@ -1257,6 +1409,8 @@ export function App() {
       conversation: null,
       conversationLoading: false,
       conversationError: '',
+      terminalEnabled: true,
+      highlightMessageId: '',
       state: 'idle',
       statusDetail: '',
       view: 'cli',
@@ -1317,9 +1471,66 @@ export function App() {
         <aside className="sidebar scroll">
           <div className="search-box">
             <Search size={14} aria-hidden="true" />
-            <input ref={searchRef} aria-label="Search sessions" placeholder="Search sessions" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} />
-            <kbd>Ctrl K</kbd>
+            <input ref={searchRef} aria-label="Search conversations" placeholder="Search conversations" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} />
+            {historyQuery
+              ? <button className="search-clear" title="Clear search" onClick={() => setHistoryQuery('')}><X size={13} /></button>
+              : <kbd>Ctrl K</kbd>}
           </div>
+          {historyQuery.trim().length >= 2 && (
+            <section className="conversation-search-panel" aria-label="Conversation search results">
+              <header>
+                <div>
+                  <strong>Conversation search</strong>
+                  <span>
+                    {searchIndexState.phase === 'indexing'
+                      ? `${searchIndexState.processedSources}/${searchIndexState.discoveredSources} files indexed`
+                      : `${searchIndexState.indexedMessages.toLocaleString()} messages indexed`}
+                  </span>
+                </div>
+                <button
+                  className="mini-icon-button"
+                  title="Rebuild search index"
+                  disabled={searchRebuilding || searchIndexState.phase === 'indexing'}
+                  onClick={rebuildConversationSearch}
+                >
+                  <RefreshCw className={searchRebuilding ? 'spinning' : ''} size={13} />
+                </button>
+              </header>
+              {searchIndexState.phase === 'indexing' && (
+                <span className="search-index-progress" aria-hidden="true">
+                  <span style={{ width: `${searchIndexState.discoveredSources
+                    ? Math.round(searchIndexState.processedSources / searchIndexState.discoveredSources * 100)
+                    : 0}%` }} />
+                </span>
+              )}
+              <div className="conversation-search-results">
+                {searchResults.map((result) => {
+                  const profile = profiles.find((item) => item.id === result.session.agentId)
+                  return (
+                    <button className="conversation-search-result" key={result.id} onClick={() => openSearchResult(result)}>
+                      <AgentAvatar agentId={result.session.agentId} className="neutral" color={profile?.color} preference={resolvedAgentIcon(result.session.agentId)} />
+                      <span className="conversation-search-copy">
+                        <span className="conversation-search-title">
+                          <strong>{result.session.title}</strong>
+                          <small>{result.role === 'user' ? 'You' : result.session.agentId}</small>
+                        </span>
+                        <span className="conversation-search-snippet"><HighlightedSearchSnippet text={result.snippet} /></span>
+                        <small>{result.session.accountEmail} · {result.session.cwd}</small>
+                      </span>
+                    </button>
+                  )
+                })}
+                {searchLoading && !searchResults.length && <p className="conversation-search-empty">Searching local conversations...</p>}
+                {!searchLoading && !searchError && !searchResults.length && searchIndexState.phase === 'indexing' && (
+                  <p className="conversation-search-empty">Indexing local conversations...</p>
+                )}
+                {!searchLoading && !searchError && !searchResults.length && searchIndexState.phase !== 'indexing' && (
+                  <p className="conversation-search-empty">No matching messages</p>
+                )}
+                {searchError && <p className="conversation-search-empty error">{searchError}</p>}
+              </div>
+            </section>
+          )}
 
           <SectionHeading
             label="Folders"
@@ -1581,7 +1792,7 @@ export function App() {
                   </div>
                   <div className="session-subnav">
                     <nav className="view-tabs" aria-label="Session views">
-                      <button className={activeSession.view === 'cli' ? 'active' : ''} onClick={() => updateSession(activeSession.id, { view: 'cli' })}>CLI</button>
+                      <button className={activeSession.view === 'cli' ? 'active' : ''} onClick={() => showCli(activeSession.id)}>CLI</button>
                       <button className={activeSession.view === 'conversation' ? 'active' : ''} disabled={!activeSession.historyKey} onClick={() => showConversation(activeSession.id)}>
                         Conversation {activeSession.conversation?.messages.length ?? ''}
                       </button>
@@ -1642,26 +1853,28 @@ export function App() {
               {sessions.map((session) => (
                 <div className={`runtime-session ${activeSessionId === session.id ? 'active' : ''}`} key={session.id}>
                   <div className={`terminal-view ${session.view === 'cli' ? 'active' : ''}`}>
-                    <TerminalPane
-                      active={activeSessionId === session.id && session.view === 'cli'}
-                      sessionId={session.id}
-                      agentId={session.agentId}
-                      cwd={session.cwd}
-                      title={session.title}
-                      account={session.account}
-                      purpose={session.purpose}
-                      resumeId={session.resumeId}
-                      fontFamily={terminalFontFamily(appearance.terminalFont, appearance.localTerminalFont)}
-                      fontSize={appearance.terminalFontSize}
-                      foreground={appearance.terminalForeground}
-                      cursorColor={ACCENT_OPTIONS.find((option) => option.id === theme)?.color ?? ACCENT_OPTIONS[0].color}
-                      activityStatusEnabled={profiles.some((profile) => (
-                        profile.id === session.agentId && profile.attention.status === 'supported'
-                      ))}
-                      onActivity={() => updateSession(session.id, { lastActivityAt: Date.now() })}
-                      onStateChange={(state, detail) => updateSession(session.id, { state, statusDetail: detail ?? '' })}
-                    />
-                    {(session.state === 'idle' || session.state === 'starting') && (
+                    {session.terminalEnabled && (
+                      <TerminalPane
+                        active={activeSessionId === session.id && session.view === 'cli'}
+                        sessionId={session.id}
+                        agentId={session.agentId}
+                        cwd={session.cwd}
+                        title={session.title}
+                        account={session.account}
+                        purpose={session.purpose}
+                        resumeId={session.resumeId}
+                        fontFamily={terminalFontFamily(appearance.terminalFont, appearance.localTerminalFont)}
+                        fontSize={appearance.terminalFontSize}
+                        foreground={appearance.terminalForeground}
+                        cursorColor={ACCENT_OPTIONS.find((option) => option.id === theme)?.color ?? ACCENT_OPTIONS[0].color}
+                        activityStatusEnabled={profiles.some((profile) => (
+                          profile.id === session.agentId && profile.attention.status === 'supported'
+                        ))}
+                        onActivity={() => updateSession(session.id, { lastActivityAt: Date.now() })}
+                        onStateChange={(state, detail) => updateSession(session.id, { state, statusDetail: detail ?? '' })}
+                      />
+                    )}
+                    {session.terminalEnabled && (session.state === 'idle' || session.state === 'starting') && (
                       <div className="session-starting" role="status" aria-label="Connecting to CLI session">
                         <span className="session-starting-bar" />
                         <span className="session-starting-label">Connecting to CLI session</span>
@@ -1669,7 +1882,12 @@ export function App() {
                     )}
                   </div>
                   <div className={`conversation-tab ${session.view === 'conversation' ? 'active' : ''}`}>
-                    <ConversationView conversation={session.conversation} loading={session.conversationLoading} error={session.conversationError} />
+                    <ConversationView
+                      conversation={session.conversation}
+                      loading={session.conversationLoading}
+                      error={session.conversationError}
+                      highlightMessageId={session.highlightMessageId}
+                    />
                   </div>
                 </div>
               ))}

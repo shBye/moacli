@@ -3,13 +3,23 @@ import { execFile } from 'node:child_process'
 import { existsSync, openSync, closeSync, readFileSync, readSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 import { promisify } from 'node:util'
-import type { AgentAccount, ConversationHistory, HistoryMessage, HistorySession } from './contracts'
+import type {
+  AgentAccount,
+  ConversationHistory,
+  ConversationSearchResponse,
+  HistoryMessage,
+  HistorySession,
+  SearchIndexState,
+} from './contracts'
 import { detectBinary } from './agent-profiles'
+import { ConversationSearchIndex, type SearchIndexSource } from './conversation-search'
 
 const execFileAsync = promisify(execFile)
 const MAX_SESSIONS_PER_AGENT = 30
 const SAMPLE_BYTES = 384 * 1024
+const JSONL_STREAM_BYTES = 256 * 1024
 
 interface HistorySource {
   agentId: string
@@ -70,6 +80,47 @@ function jsonLines(text: string): Array<Record<string, unknown>> {
     }
   }
   return records
+}
+
+function* streamedJsonLines(path: string): Generator<Record<string, unknown>> {
+  const handle = openSync(path, 'r')
+  const buffer = Buffer.allocUnsafe(JSONL_STREAM_BYTES)
+  const decoder = new StringDecoder('utf8')
+  let pending = ''
+  try {
+    let bytesRead = 0
+    do {
+      bytesRead = readSync(handle, buffer, 0, buffer.length, null)
+      pending += decoder.write(buffer.subarray(0, bytesRead))
+      let newline = pending.indexOf('\n')
+      while (newline >= 0) {
+        const line = pending.slice(0, newline).trim()
+        pending = pending.slice(newline + 1)
+        if (line) {
+          try {
+            const value: unknown = JSON.parse(line)
+            if (value && typeof value === 'object') yield value as Record<string, unknown>
+          } catch {
+            // Ignore an incomplete or malformed record without dropping the rest of the file.
+          }
+        }
+        newline = pending.indexOf('\n')
+      }
+    } while (bytesRead > 0)
+
+    pending += decoder.end()
+    const line = pending.trim()
+    if (line) {
+      try {
+        const value: unknown = JSON.parse(line)
+        if (value && typeof value === 'object') yield value as Record<string, unknown>
+      } catch {
+        // An actively written JSONL file may end with a partial record.
+      }
+    }
+  } finally {
+    closeSync(handle)
+  }
 }
 
 function readSample(path: string): string {
@@ -282,35 +333,49 @@ function parseGeminiSummary(path: string, projects: Map<string, string>, account
   }
 }
 
-function parseClaudeConversation(path: string): HistoryMessage[] {
-  return jsonLines(readFileSync(path, 'utf8')).flatMap((record, index) => {
-    if (record.type !== 'user' && record.type !== 'assistant') return []
+function* iterateClaudeConversation(path: string): Generator<HistoryMessage> {
+  let index = 0
+  for (const record of streamedJsonLines(path)) {
+    const recordIndex = index
+    index += 1
+    if (record.type !== 'user' && record.type !== 'assistant') continue
     const message = record.message as Record<string, unknown> | undefined
     const text = contentText(message?.content)
-    if (!text) return []
-    return [{
-      id: typeof record.uuid === 'string' ? record.uuid : `${index}`,
+    if (!text) continue
+    yield {
+      id: typeof record.uuid === 'string' ? record.uuid : `${recordIndex}`,
       role: record.type as 'user' | 'assistant',
       text,
       timestamp: epoch(record.timestamp, 0) || undefined,
-    }]
-  })
+    }
+  }
 }
 
-function parseCodexConversation(path: string): HistoryMessage[] {
-  return jsonLines(readFileSync(path, 'utf8')).flatMap((record, index) => {
-    if (record.type !== 'response_item') return []
+function parseClaudeConversation(path: string): HistoryMessage[] {
+  return [...iterateClaudeConversation(path)]
+}
+
+function* iterateCodexConversation(path: string): Generator<HistoryMessage> {
+  let index = 0
+  for (const record of streamedJsonLines(path)) {
+    const recordIndex = index
+    index += 1
+    if (record.type !== 'response_item') continue
     const payload = record.payload as Record<string, unknown> | undefined
-    if (payload?.type !== 'message' || (payload.role !== 'user' && payload.role !== 'assistant')) return []
+    if (payload?.type !== 'message' || (payload.role !== 'user' && payload.role !== 'assistant')) continue
     const text = contentText(payload.content)
-    if (!text) return []
-    return [{
-      id: typeof payload.id === 'string' ? payload.id : `${index}`,
+    if (!text) continue
+    yield {
+      id: typeof payload.id === 'string' ? payload.id : `${recordIndex}`,
       role: payload.role,
       text,
       timestamp: epoch(record.timestamp, 0) || undefined,
-    }]
-  })
+    }
+  }
+}
+
+function parseCodexConversation(path: string): HistoryMessage[] {
+  return [...iterateCodexConversation(path)]
 }
 
 function parseGeminiConversation(path: string): HistoryMessage[] {
@@ -351,6 +416,59 @@ export class SessionHistoryService {
   private sources = new Map<string, HistorySource>()
   private sessions = new Map<string, HistorySession>()
   private readonly summaryCache = new Map<string, SummaryCacheEntry>()
+  private searchIndex: ConversationSearchIndex | null = null
+  private searchSources: SearchIndexSource[] = []
+  private searchSync: Promise<void> = Promise.resolve()
+  private searchState: SearchIndexState = {
+    phase: 'idle',
+    discoveredSources: 0,
+    processedSources: 0,
+    failedSources: 0,
+    indexedSources: 0,
+    indexedMessages: 0,
+    lastUpdatedAt: 0,
+    error: '',
+  }
+
+  initializeSearch(databasePath: string, onStateChanged: (state: SearchIndexState) => void): void {
+    this.searchIndex?.close()
+    try {
+      this.searchIndex = new ConversationSearchIndex(databasePath, (state) => {
+        this.searchState = state
+        onStateChanged(state)
+      })
+      this.searchState = this.searchIndex.snapshot()
+    } catch (error) {
+      this.searchIndex = null
+      this.searchState = {
+        ...this.searchState,
+        phase: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      }
+      onStateChanged(this.searchState)
+    }
+  }
+
+  searchConversations(query: string): ConversationSearchResponse {
+    if (!this.searchIndex) return { query: query.trim(), results: [], index: this.searchState }
+    return this.searchIndex.search(query)
+  }
+
+  getSearchIndexState(): SearchIndexState {
+    return this.searchIndex?.snapshot() ?? this.searchState
+  }
+
+  async rebuildSearchIndex(accounts: AgentAccount[]): Promise<SearchIndexState> {
+    if (!this.searchIndex) return this.searchState
+    await this.list(accounts)
+    await this.searchSync
+    return this.searchIndex.rebuild(this.searchSources)
+  }
+
+  close(): void {
+    this.searchIndex?.close()
+    this.searchIndex = null
+  }
 
   async detectAccounts(): Promise<AgentAccount[]> {
     const claudeDir = join(homedir(), '.claude')
@@ -453,6 +571,17 @@ export class SessionHistoryService {
     }
     this.sessions = nextSessions
     this.sources = nextSources
+    this.searchSources = local.flatMap(({ summary, source }) => {
+      if (!summary || !source.path || (source.agentId !== 'claude' && source.agentId !== 'codex')) return []
+      return [{
+        session: summary,
+        path: source.path,
+        readMessages: source.agentId === 'claude'
+          ? () => iterateClaudeConversation(source.path!)
+          : () => iterateCodexConversation(source.path!),
+      }]
+    })
+    if (this.searchIndex) this.searchSync = this.searchIndex.synchronize(this.searchSources)
     return [...this.sessions.values()].sort((a, b) => b.updatedAt - a.updatedAt)
   }
 

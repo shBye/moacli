@@ -20,9 +20,10 @@ Produce a reproducible Windows installer without committing build output, creden
 1. Choose the version with the user or infer only an unambiguous requested patch version.
 2. Update both package files with `npm.cmd version <version> --no-git-tag-version`.
 3. Run `npm.cmd ci` when dependencies are absent or lockfile fidelity must be re-established.
-4. Confirm both `node-pty` Windows x64 prebuilds documented in the release guide exist.
+4. Confirm both `node-pty` Windows x64 prebuilds and the Electron-compatible `better-sqlite3` binary documented in the release guide exist.
 5. Run `npm.cmd run typecheck`, then `npm.cmd run package`. Stop on failure.
-6. Keep the stable asset name `out/MoaCLI-Setup.exe`.
+6. Confirm the packaged `better_sqlite3.node` exists under `out/win-unpacked/resources/app.asar.unpacked`.
+7. Keep the stable asset name `out/MoaCLI-Setup.exe`.
 
 ## Verify
 
@@ -32,7 +33,7 @@ Run the deterministic verifier from the repository root:
 powershell -ExecutionPolicy Bypass -File .codex\skills\moacli-windows-release\scripts\verify-release.ps1
 ```
 
-Record the version, byte size, and SHA-256 it reports. Treat any privacy-scan match as a release blocker until reviewed.
+Record the version, byte size, SHA-256, and packaged SQLite path it reports. Treat any privacy-scan match as a release blocker until reviewed.
 
 Start `out\win-unpacked\MoaCLI.exe` and verify the window opens, profiles load, and a PowerShell session starts. Stop only the exact smoke-test executable after checking its resolved path. Run the NSIS installer when the user requests installation-flow verification.
 

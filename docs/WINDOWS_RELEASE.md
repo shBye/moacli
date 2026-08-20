@@ -29,14 +29,15 @@ The installer filename must remain `MoaCLI-Setup.exe`. The README download URL r
 - Write access to `%LOCALAPPDATA%\electron-builder` and `%USERPROFILE%\.electron-gyp`
 - GitHub CLI only when publishing from the command line
 
-The current `node-pty` dependency includes Windows x64 prebuilt binaries. Confirm they are present after installing dependencies:
+The current `node-pty` dependency includes Windows x64 prebuilt binaries. Conversation search also uses a `better-sqlite3` native binary rebuilt for Electron by the `postinstall` script. Confirm all three files are present after installing dependencies:
 
 ```powershell
 Test-Path .\node_modules\node-pty\prebuilds\win32-x64\pty.node
 Test-Path .\node_modules\node-pty\prebuilds\win32-x64\conpty.node
+Test-Path .\node_modules\better-sqlite3\build\Release\better_sqlite3.node
 ```
 
-Both commands must return `True`.
+All commands must return `True`.
 
 ## 1. Prepare the version
 
@@ -82,7 +83,13 @@ The package script builds the application and invokes electron-builder without p
 - English installer UI
 - output under `out/`
 
-`npmRebuild` is intentionally disabled. `node-pty@1.1.0` already provides the required Windows x64 Electron-compatible binaries, while forcing a native rebuild adds a Python and Visual Studio toolchain dependency.
+`npmRebuild` is intentionally disabled. `node-pty@1.1.0` already provides the required Windows x64 Electron-compatible binaries, while the targeted `postinstall` script rebuilds only `better-sqlite3`. A broad electron-builder rebuild would unnecessarily compile `node-pty` and add a Python and Visual Studio toolchain dependency.
+
+The `better-sqlite3` package is unpacked from ASAR so Electron can load its native module. After packaging, confirm this file exists:
+
+```powershell
+Test-Path .\out\win-unpacked\resources\app.asar.unpacked\node_modules\better-sqlite3\build\Release\better_sqlite3.node
+```
 
 ## 4. Verify the package
 
@@ -226,6 +233,7 @@ Run `npm.cmd run package` again after both files are confirmed. This fallback is
 - [ ] Typecheck passed
 - [ ] Production build passed
 - [ ] NSIS package completed
+- [ ] Packaged `better-sqlite3` native binary verified
 - [ ] Product metadata and embedded icon verified
 - [ ] SHA-256 recorded
 - [ ] Unpacked application smoke test passed

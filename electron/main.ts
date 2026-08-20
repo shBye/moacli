@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, session } from 'electron'
 import { getAgentHealth } from './agent-profiles'
 import { AttentionBridge } from './attention-bridge'
-import type { AgentAccount, NotificationContext, NotificationSettings, StartPtyRequest } from './contracts'
+import type { AgentAccount, NotificationContext, NotificationSettings, SearchIndexState, StartPtyRequest } from './contracts'
 import { NotificationCenter } from './notification-center'
 import { PtyManager } from './pty-manager'
 import { SessionHistoryService } from './session-history'
@@ -154,6 +154,9 @@ ipcMain.handle('history:list', (_event, accounts: AgentAccount[]) => {
   return sessionHistory.list(accounts)
 })
 ipcMain.handle('history:get', (_event, key: string) => sessionHistory.get(key))
+ipcMain.handle('search:query', (_event, query: string) => sessionHistory.searchConversations(query))
+ipcMain.handle('search:state', () => sessionHistory.getSearchIndexState())
+ipcMain.handle('search:rebuild', (_event, accounts: AgentAccount[]) => sessionHistory.rebuildSearchIndex(accounts))
 ipcMain.handle('clipboard:read-terminal', async () => {
   const image = clipboard.readImage()
   if (!image.isEmpty()) {
@@ -221,6 +224,12 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     callback(String(permission) === 'local-fonts' && webContents === mainWindow?.webContents)
   })
+  sessionHistory.initializeSearch(
+    join(app.getPath('userData'), 'conversation-search.sqlite'),
+    (state: SearchIndexState) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('search:index-changed', state)
+    },
+  )
   notificationCenter = new NotificationCenter(join(app.getPath('userData'), 'notification-settings.json'), () => mainWindow)
   try {
     await attentionBridge.start(join(app.getPath('temp'), 'moacli', 'attention-hooks'))
@@ -235,6 +244,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   closeHistoryWatchers()
+  sessionHistory.close()
   notificationCenter?.dispose()
   ptyManager.stopAll()
   attentionBridge.dispose()

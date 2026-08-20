@@ -125,6 +125,35 @@ export interface ConversationHistory {
   messages: HistoryMessage[]
 }
 
+export type SearchIndexPhase = 'idle' | 'indexing' | 'ready' | 'error'
+
+export interface SearchIndexState {
+  phase: SearchIndexPhase
+  discoveredSources: number
+  processedSources: number
+  failedSources: number
+  indexedSources: number
+  indexedMessages: number
+  lastUpdatedAt: number
+  error: string
+}
+
+export interface ConversationSearchResult {
+  id: string
+  session: HistorySession
+  messageId: string
+  ordinal: number
+  role: 'user' | 'assistant'
+  snippet: string
+  timestamp?: number
+}
+
+export interface ConversationSearchResponse {
+  query: string
+  results: ConversationSearchResult[]
+  index: SearchIndexState
+}
+
 export interface TerminalClipboardContent {
   kind: 'text' | 'image' | 'empty'
   value: string
@@ -138,6 +167,10 @@ export interface CliAgentApi {
   selectDirectory: (defaultPath?: string) => Promise<string | null>
   listHistory: (accounts: AgentAccount[]) => Promise<HistorySession[]>
   getConversation: (key: string) => Promise<ConversationHistory>
+  searchConversations: (query: string) => Promise<ConversationSearchResponse>
+  getSearchIndexState: () => Promise<SearchIndexState>
+  rebuildSearchIndex: (accounts: AgentAccount[]) => Promise<SearchIndexState>
+  onSearchIndexChanged: (callback: (state: SearchIndexState) => void) => () => void
   readTerminalClipboard: () => Promise<TerminalClipboardContent>
   startPty: (request: StartPtyRequest) => Promise<void>
   writePty: (id: string, data: string) => void

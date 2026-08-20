@@ -32,6 +32,7 @@ MoaCLI keeps the native interactive experience of each CLI while adding a shared
 - Run real interactive CLIs through `node-pty` and xterm.js.
 - Keep up to 10 terminal sessions open and switch between them without restarting a CLI.
 - Resume local Claude, Codex, Gemini, and OpenCode conversations from one recent-history list.
+- Search local Claude and Codex message content with `Ctrl+K` and jump directly to the matching message.
 - View the native CLI and the locally stored conversation transcript in separate tabs.
 - Detect verified Claude, Codex, and Gemini accounts from their local CLI configuration.
 - Isolate multiple Claude and Codex accounts with separate configuration directories.
@@ -122,6 +123,8 @@ Each live terminal remains mounted while you move between sessions. Sessions tha
 
 Recent conversations are read from the CLI-owned local history. If a conversation is removed through its original CLI, MoaCLI reconciles the list on the next history refresh.
 
+Press `Ctrl+K` and type at least two characters to search indexed Claude and Codex messages. Selecting a result opens the transcript at the matching message without starting the CLI; select the **CLI** tab only when you want to resume the agent.
+
 ### Use multiple accounts
 
 Open **Settings**, add an account, select the agent, and assign a dedicated configuration directory. Accounts are identified by the combination of agent type and normalized configuration directory, so Claude and Codex may use the same email without colliding.
@@ -145,6 +148,7 @@ Press `Ctrl+V` inside the terminal:
 - Authentication is performed by the installed official CLI.
 - Account discovery exposes only verified email metadata to the renderer.
 - Conversation history stays on the local machine and is read from CLI-owned files.
+- The SQLite FTS5 search index stays in the local Electron user-data directory and contains no CLI credentials.
 - Custom account directories are passed only to the matching CLI process.
 
 ## Architecture
@@ -159,6 +163,7 @@ electron/
   main.ts             BrowserWindow lifecycle and IPC handlers
   preload.ts          Typed renderer-to-main API boundary
   notification-center.ts  Ephemeral in-app and Windows notification state
+  conversation-search.ts  Incremental local SQLite FTS5 message index
   pty-manager.ts      PTY lifecycle, isolated environments, output batching
   session-history.ts  Account inspection and agent-specific history adapters
   agent-profiles.ts   CLI discovery, version checks, and Windows launch wrappers
@@ -175,9 +180,9 @@ The renderer is built with React 18 and TypeScript. Privileged filesystem, proce
 | --- | --- | --- |
 | Unified notification center | In progress | [`feature/notification-center`](https://github.com/shBye/moacli/tree/feature/notification-center) |
 | Session restoration after restart | Planned | [`feature/session-restore`](https://github.com/shBye/moacli/tree/feature/session-restore) |
-| Full conversation search with SQLite FTS5 | Planned | [`feature/conversation-search`](https://github.com/shBye/moacli/tree/feature/conversation-search) |
+| Full conversation search with SQLite FTS5 | Implemented on branch | [`feature/conversation-search`](https://github.com/shBye/moacli/tree/feature/conversation-search) |
 
-The detailed product flow, data model, failure handling, and acceptance criteria are documented in [ROADMAP.md](./ROADMAP.md). The notification implementation has a dedicated [Notification Center Design](./docs/NOTIFICATION_CENTER_DESIGN.md). Completed work and resolved implementation issues are tracked in [PROGRESS.md](./PROGRESS.md).
+The detailed product flow, data model, failure handling, and acceptance criteria are documented in [ROADMAP.md](./ROADMAP.md). See [Local Conversation Search](./docs/CONVERSATION_SEARCH.md) and [Notification Center Design](./docs/NOTIFICATION_CENTER_DESIGN.md) for implementation-specific notes. Completed work and resolved implementation issues are tracked in [PROGRESS.md](./PROGRESS.md).
 
 ## Scripts
 

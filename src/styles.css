@@ -28,13 +28,13 @@ button, input, select { font: inherit; }
 button { color: inherit; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 
-:where(.scroll, .folder-tree, .history-list, .launcher, .message-list) { overscroll-behavior: contain; }
-:where(.scroll, .folder-tree, .history-list, .launcher, .message-list)::-webkit-scrollbar { width: 10px; height: 10px; }
-:where(.scroll, .folder-tree, .history-list, .launcher, .message-list)::-webkit-scrollbar-track { margin-block: 4px; background: transparent; }
-:where(.scroll, .folder-tree, .history-list, .launcher, .message-list)::-webkit-scrollbar-thumb { min-height: 42px; border: 3px solid transparent; border-radius: 999px; background: rgba(151,160,174,.5); background-clip: padding-box; }
-:where(.scroll, .folder-tree, .history-list, .launcher, .message-list)::-webkit-scrollbar-thumb:hover { border-width: 2px; background: color-mix(in oklch, var(--acc) 34%, rgb(151,160,174)); background-clip: padding-box; }
-:where(.scroll, .folder-tree, .history-list, .launcher, .message-list)::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-:where(.scroll, .folder-tree, .history-list, .launcher, .message-list)::-webkit-scrollbar-corner { background: transparent; }
+:where(.scroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results) { overscroll-behavior: contain; }
+:where(.scroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results)::-webkit-scrollbar { width: 10px; height: 10px; }
+:where(.scroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results)::-webkit-scrollbar-track { margin-block: 4px; background: transparent; }
+:where(.scroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results)::-webkit-scrollbar-thumb { min-height: 42px; border: 3px solid transparent; border-radius: 999px; background: rgba(151,160,174,.5); background-clip: padding-box; }
+:where(.scroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results)::-webkit-scrollbar-thumb:hover { border-width: 2px; background: color-mix(in oklch, var(--acc) 34%, rgb(151,160,174)); background-clip: padding-box; }
+:where(.scroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results)::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+:where(.scroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results)::-webkit-scrollbar-corner { background: transparent; }
 
 .app-shell {
   --acc: #e9b45c;
@@ -81,10 +81,32 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .sidebar-resizer:hover::after, .sidebar-resizer:focus-visible::after, body.sidebar-resizing .sidebar-resizer::after { opacity: 1; }
 body.sidebar-resizing, body.sidebar-resizing * { cursor: col-resize !important; user-select: none !important; }
 
-.search-box { display: flex; min-height: 34px; flex: none; align-items: center; gap: 9px; margin: 14px 14px 10px; padding: 0 11px; border: 1px solid rgba(255,255,255,.09); border-radius: 8px; color: rgba(255,255,255,.36); background: rgba(0,0,0,.22); }
+.search-box { display: flex; position: relative; z-index: 42; min-height: 34px; flex: none; align-items: center; gap: 9px; margin: 14px 14px 10px; padding: 0 8px 0 11px; border: 1px solid rgba(255,255,255,.09); border-radius: 8px; color: rgba(255,255,255,.36); background: rgba(0,0,0,.22); }
 .search-box input { min-width: 0; flex: 1; border: 0; outline: 0; color: rgba(255,255,255,.78); background: transparent; font-size: 11.5px; }
 .search-box input::placeholder { color: rgba(255,255,255,.28); }
 .search-box kbd { flex: none; padding: 3px 5px; border: 1px solid rgba(255,255,255,.1); border-radius: 4px; color: rgba(255,255,255,.28); font: 500 8.5px/1 'JetBrains Mono', monospace; }
+.search-clear { display: grid; width: 24px; height: 24px; flex: none; padding: 0; place-items: center; border: 0; border-radius: 5px; color: rgba(255,255,255,.4); background: transparent; cursor: pointer; }
+.search-clear:hover { color: #fff; background: rgba(255,255,255,.07); }
+.conversation-search-panel { display: grid; position: fixed; z-index: 41; top: 85px; left: 14px; width: min(680px, calc(100vw - 28px)); max-height: min(620px, calc(100vh - 104px)); grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: #171a1e; box-shadow: 0 20px 56px rgba(0,0,0,.58), 0 3px 12px rgba(0,0,0,.32); }
+.conversation-search-panel > header { display: flex; min-height: 49px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px 8px 14px; border-bottom: 1px solid rgba(255,255,255,.07); }
+.conversation-search-panel > header > div { display: grid; min-width: 0; gap: 4px; }
+.conversation-search-panel > header strong { color: rgba(255,255,255,.82); font-size: 11px; font-weight: 650; }
+.conversation-search-panel > header span { color: rgba(255,255,255,.34); font: 400 9px/1 'JetBrains Mono', monospace; }
+.search-index-progress { display: block; height: 2px; overflow: hidden; background: rgba(255,255,255,.06); }
+.search-index-progress > span { display: block; height: 100%; background: var(--acc); transition: width 140ms ease; }
+.conversation-search-results { min-height: 64px; overflow-y: auto; padding: 5px; }
+.conversation-search-result { display: flex; width: 100%; min-height: 74px; align-items: flex-start; gap: 10px; padding: 10px; border: 0; border-radius: 6px; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.conversation-search-result:hover, .conversation-search-result:focus-visible { outline: 0; background: rgba(255,255,255,.055); }
+.conversation-search-result > .agent-monogram { margin-top: 1px; }
+.conversation-search-copy { display: grid; min-width: 0; flex: 1; gap: 5px; }
+.conversation-search-title { display: flex; min-width: 0; align-items: baseline; gap: 10px; }
+.conversation-search-title strong { min-width: 0; flex: 1; overflow: hidden; color: rgba(255,255,255,.78); font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-search-title small { flex: none; color: var(--acc); font: 500 8.5px/1 'JetBrains Mono', monospace; text-transform: uppercase; }
+.conversation-search-snippet { display: -webkit-box; overflow: hidden; color: rgba(255,255,255,.56); font-size: 10.5px; line-height: 1.42; white-space: pre-wrap; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.conversation-search-snippet mark { padding: 0 1px; color: #fff; background: color-mix(in oklch, var(--acc) 38%, transparent); }
+.conversation-search-copy > small { overflow: hidden; color: rgba(255,255,255,.27); font: 400 8.5px/1.2 'JetBrains Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-search-empty { margin: 0; padding: 28px 16px; color: rgba(255,255,255,.32); font-size: 10.5px; text-align: center; }
+.conversation-search-empty.error { color: #ff7e86; }
 
 .sidebar-heading { display: flex; height: 30px; flex: none; align-items: center; gap: 5px; padding: 0 7px; color: rgba(255,255,255,.42); font-size: 9.5px; font-weight: 700; text-transform: uppercase; }
 .section-toggle { display: flex; min-width: 0; flex: 1; align-items: center; gap: 4px; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; text-transform: uppercase; cursor: pointer; }
@@ -269,6 +291,7 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .message-list { height: 100%; min-height: 0; overflow-y: auto; }
 .message-row { display: grid; grid-template-columns: 110px minmax(0, 780px); gap: 18px; padding: 18px 24px; border-bottom: 1px solid rgba(255,255,255,.06); }
 .message-row.user { background: rgba(255,255,255,.025); }
+.message-row.search-match { background: color-mix(in oklch, var(--acc) 10%, rgba(255,255,255,.02)); box-shadow: inset 3px 0 0 color-mix(in oklch, var(--acc) 78%, transparent); }
 .message-role { display: flex; align-items: center; gap: 7px; align-self: start; color: rgba(255,255,255,.42); font-size: 11px; }
 .message-role strong { color: rgba(255,255,255,.72); text-transform: capitalize; }
 .message-role time { display: block; width: 100%; color: rgba(255,255,255,.26); font: 400 9px/1.3 'JetBrains Mono', monospace; }

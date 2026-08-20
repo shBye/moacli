@@ -27,12 +27,18 @@ if ($package.name -ne 'moacli') {
 $expectedVersion = [string]$package.version
 $prebuilds = @(
   'node_modules\node-pty\prebuilds\win32-x64\pty.node',
-  'node_modules\node-pty\prebuilds\win32-x64\conpty.node'
+  'node_modules\node-pty\prebuilds\win32-x64\conpty.node',
+  'node_modules\better-sqlite3\build\Release\better_sqlite3.node'
 )
 foreach ($relativePath in $prebuilds) {
   if (-not (Test-Path -LiteralPath (Join-Path $root $relativePath))) {
-    throw "Required node-pty prebuild is missing: $relativePath"
+    throw "Required native binary is missing: $relativePath"
   }
+}
+
+$packagedSqlitePath = Join-Path $root 'out\win-unpacked\resources\app.asar.unpacked\node_modules\better-sqlite3\build\Release\better_sqlite3.node'
+if (-not (Test-Path -LiteralPath $packagedSqlitePath)) {
+  throw 'Packaged better-sqlite3 binary was not found under app.asar.unpacked.'
 }
 
 if (-not (Test-Path -LiteralPath $installerPath)) {
@@ -70,5 +76,6 @@ $hash = Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256
   Bytes = $installer.Length
   SHA256 = $hash.Hash
   LatestMetadata = $latestPath
+  PackagedSqlite = $packagedSqlitePath
   PrivacyScan = 'passed'
 }

@@ -8,6 +8,8 @@ MoaCLI distributes or uses the following open-source software and fonts. The app
 | React and React DOM | MIT | https://github.com/facebook/react |
 | xterm.js and FitAddon | MIT | https://github.com/xtermjs/xterm.js |
 | node-pty | MIT | https://github.com/microsoft/node-pty |
+| better-sqlite3 | MIT | https://github.com/WiseLibs/better-sqlite3 |
+| SQLite | Public Domain | https://www.sqlite.org/copyright.html |
 | Lucide React | ISC, with MIT-licensed Feather-derived icons | https://github.com/lucide-icons/lucide |
 | Inter | SIL Open Font License 1.1 | https://github.com/rsms/inter |
 | JetBrains Mono | SIL Open Font License 1.1 | https://github.com/JetBrains/JetBrainsMono |

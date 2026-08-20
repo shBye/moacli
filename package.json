@@ -12,6 +12,8 @@
   },
   "main": "./dist/main/main.js",
   "scripts": {
+    "postinstall": "electron-rebuild -f --only better-sqlite3",
+    "rebuild:native": "electron-rebuild -f --only better-sqlite3",
     "dev": "electron-vite dev",
     "start": "electron .",
     "start:lean": "node_modules\\electron\\dist\\electron.exe .",
@@ -23,12 +25,15 @@
   "dependencies": {
     "@xterm/addon-fit": "0.10.0",
     "@xterm/xterm": "5.5.0",
+    "better-sqlite3": "^12.11.1",
     "lucide-react": "^0.468.0",
     "node-pty": "1.1.0",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",

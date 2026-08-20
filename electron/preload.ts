@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { CliAgentApi, NotificationActivation, NotificationSnapshot, PtyAttentionEvent, PtyDataEvent, PtyExitEvent, StartPtyRequest } from './contracts'
+import type { CliAgentApi, NotificationActivation, NotificationSnapshot, PtyAttentionEvent, PtyDataEvent, PtyExitEvent, SearchIndexState, StartPtyRequest } from './contracts'
 
 const api: CliAgentApi = {
   getProfiles: () => ipcRenderer.invoke('profiles:list'),
@@ -8,6 +8,14 @@ const api: CliAgentApi = {
   selectDirectory: (defaultPath?: string) => ipcRenderer.invoke('directory:select', defaultPath),
   listHistory: (accounts) => ipcRenderer.invoke('history:list', accounts),
   getConversation: (key: string) => ipcRenderer.invoke('history:get', key),
+  searchConversations: (query: string) => ipcRenderer.invoke('search:query', query),
+  getSearchIndexState: () => ipcRenderer.invoke('search:state'),
+  rebuildSearchIndex: (accounts) => ipcRenderer.invoke('search:rebuild', accounts),
+  onSearchIndexChanged: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: SearchIndexState): void => callback(state)
+    ipcRenderer.on('search:index-changed', listener)
+    return () => ipcRenderer.removeListener('search:index-changed', listener)
+  },
   readTerminalClipboard: () => ipcRenderer.invoke('clipboard:read-terminal'),
   startPty: (request: StartPtyRequest) => ipcRenderer.invoke('pty:start', request),
   writePty: (id, data) => ipcRenderer.send('pty:write', { id, data }),

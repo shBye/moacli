@@ -5,6 +5,8 @@ directories:
 files:
   - dist/**/*
   - package.json
+asarUnpack:
+  - node_modules/better-sqlite3/**/*
 extraResources:
   - from: profiles
     to: profiles
