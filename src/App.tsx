@@ -146,10 +146,10 @@ const AGENT_COLOR_SWATCHES = [
 const MAX_RUNTIME_SESSIONS = 10
 const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000
 const SESSION_SWEEP_INTERVAL_MS = 60 * 1000
-const DEFAULT_SIDEBAR_WIDTH = 272
+const DEFAULT_SIDEBAR_WIDTH = 288
 const MIN_SIDEBAR_WIDTH = 200
 const MAX_SIDEBAR_WIDTH = 420
-const DEFAULT_FOLDER_PANE_HEIGHT = 240
+const DEFAULT_FOLDER_PANE_HEIGHT = 260
 const MIN_FOLDER_PANE_HEIGHT = 80
 const MAX_FOLDER_PANE_HEIGHT = 520
 const DEFAULT_SECTIONS: SectionState = { folders: true, recent: true, agents: true }
@@ -196,12 +196,16 @@ function savedTheme(): AccentTheme {
 }
 
 function savedSidebarWidth(): number {
-  const value = Number(localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY))
+  const stored = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
+  if (stored === null) return DEFAULT_SIDEBAR_WIDTH
+  const value = Number(stored)
   return Number.isFinite(value) ? Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, value)) : DEFAULT_SIDEBAR_WIDTH
 }
 
 function savedFolderPaneHeight(): number {
-  const value = Number(localStorage.getItem(FOLDER_PANE_HEIGHT_STORAGE_KEY))
+  const stored = localStorage.getItem(FOLDER_PANE_HEIGHT_STORAGE_KEY)
+  if (stored === null) return DEFAULT_FOLDER_PANE_HEIGHT
+  const value = Number(stored)
   return Number.isFinite(value)
     ? Math.min(MAX_FOLDER_PANE_HEIGHT, Math.max(MIN_FOLDER_PANE_HEIGHT, value))
     : DEFAULT_FOLDER_PANE_HEIGHT
