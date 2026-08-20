@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { existsSync, mkdirSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { app, BrowserWindow, clipboard, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, session } from 'electron'
 import { getAgentHealth } from './agent-profiles'
 import { AttentionBridge } from './attention-bridge'
 import type { AgentAccount, NotificationContext, NotificationSettings, StartPtyRequest } from './contracts'
@@ -212,6 +212,12 @@ ipcMain.on('window:close', (event) => {
 })
 
 app.whenReady().then(async () => {
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => (
+    String(permission) === 'local-fonts' && webContents === mainWindow?.webContents
+  ))
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(String(permission) === 'local-fonts' && webContents === mainWindow?.webContents)
+  })
   notificationCenter = new NotificationCenter(join(app.getPath('userData'), 'notification-settings.json'), () => mainWindow)
   try {
     await attentionBridge.start(join(app.getPath('temp'), 'moacli', 'attention-hooks'))

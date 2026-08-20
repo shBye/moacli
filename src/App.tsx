@@ -45,15 +45,30 @@ import {
 import dynamicIconImports from 'lucide-react/dynamicIconImports'
 import moaCliIcon from './assets/moacli-icon.png'
 import type { AgentAccount, AgentHealth, AppNotification, ConversationHistory, HistorySession, NotificationSettings, NotificationSnapshot } from '../electron/contracts'
+import {
+  ACCENT_OPTIONS,
+  APPEARANCE_PRESETS,
+  DEFAULT_APPEARANCE,
+  TERMINAL_FONT_OPTIONS,
+  UI_FONT_OPTIONS,
+  loadAppearance,
+  saveAppearance,
+  terminalFontFamily,
+  uiFontFamily,
+  type AppearancePreferences,
+  type AccentTheme,
+  type TerminalFontId,
+  type UiFontId,
+} from './appearance'
 import { ConversationView } from './history/ConversationView'
 import { TerminalPane } from './terminal/TerminalPane'
 
 type SessionState = 'idle' | 'starting' | 'running' | 'stopped'
 type SessionView = 'cli' | 'conversation'
-type AccentTheme = 'amber' | 'periwinkle'
 type LucideIconName = keyof typeof dynamicIconImports
 type AgentIconMode = 'monogram' | 'lucide' | 'custom'
 type SectionKey = 'folders' | 'recent' | 'agents'
+type SettingsSection = 'appearance' | 'notifications' | 'icons' | 'accounts'
 
 interface AgentIconPreference {
   mode: AgentIconMode
@@ -176,7 +191,8 @@ function accountIdentity(account: Pick<AgentAccount, 'agentId' | 'configDir'>): 
 }
 
 function savedTheme(): AccentTheme {
-  return localStorage.getItem(THEME_STORAGE_KEY) === 'periwinkle' ? 'periwinkle' : 'amber'
+  const stored = localStorage.getItem(THEME_STORAGE_KEY)
+  return ACCENT_OPTIONS.some((option) => option.id === stored) ? stored as AccentTheme : 'amber'
 }
 
 function savedSidebarWidth(): number {
@@ -388,6 +404,25 @@ function SettingsToggle({ label, checked, disabled = false, onChange }: Settings
   )
 }
 
+interface AppearanceColorProps {
+  label: string
+  value: string
+  onChange: (value: string) => void
+}
+
+function AppearanceColor({ label, value, onChange }: AppearanceColorProps) {
+  return (
+    <label className="appearance-color">
+      <span>{label}</span>
+      <span className="appearance-color-value">
+        <span className="appearance-color-swatch" style={{ background: value }} />
+        <code>{value}</code>
+        <input type="color" aria-label={label} value={value} onChange={(event) => onChange(event.target.value.toUpperCase())} />
+      </span>
+    </label>
+  )
+}
+
 export function App() {
   const [profiles, setProfiles] = useState<AgentHealth[]>([])
   const [profilesRefreshing, setProfilesRefreshing] = useState(false)
@@ -399,6 +434,7 @@ export function App() {
   const [loginAccountRefreshing, setLoginAccountRefreshing] = useState('')
   const [accountId, setAccountId] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('appearance')
   const [notificationSnapshot, setNotificationSnapshot] = useState<NotificationSnapshot>(EMPTY_NOTIFICATION_SNAPSHOT)
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
   const [folders, setFolders] = useState<LogicalFolder[]>(savedFolders)
@@ -419,6 +455,9 @@ export function App() {
   const [sidebarWidth, setSidebarWidth] = useState(savedSidebarWidth)
   const [folderPaneHeight, setFolderPaneHeight] = useState(savedFolderPaneHeight)
   const [theme, setTheme] = useState<AccentTheme>(savedTheme)
+  const [appearance, setAppearance] = useState<AppearancePreferences>(loadAppearance)
+  const [localFonts, setLocalFonts] = useState<string[]>([])
+  const [localFontStatus, setLocalFontStatus] = useState('')
   const [agentIcons, setAgentIcons] = useState<Record<string, AgentIconPreference>>(savedAgentIcons)
   const [iconPickerAgentId, setIconPickerAgentId] = useState('')
   const [agentColorPicker, setAgentColorPicker] = useState<AgentColorPickerState | null>(null)
@@ -627,8 +666,12 @@ export function App() {
     return `${session.title} ${session.cwd} ${session.agentId} ${session.accountEmail ?? ''}`.toLocaleLowerCase().includes(query)
   })
   const themeStyle = {
-    '--acc': theme === 'amber' ? '#E9B45C' : '#8AA0FF',
-    '--acc-ink': theme === 'amber' ? '#1a1409' : '#0e1226',
+    '--acc': ACCENT_OPTIONS.find((option) => option.id === theme)?.color ?? ACCENT_OPTIONS[0].color,
+    '--acc-ink': ACCENT_OPTIONS.find((option) => option.id === theme)?.ink ?? ACCENT_OPTIONS[0].ink,
+    '--app-bg': appearance.appBackground,
+    '--app-fg': appearance.appForeground,
+    '--terminal-bg': appearance.terminalBackground,
+    '--ui-font': uiFontFamily(appearance.uiFont, appearance.localUiFont),
   } as CSSProperties
 
   useEffect(() => {
@@ -828,6 +871,30 @@ export function App() {
   const changeTheme = (next: AccentTheme): void => {
     setTheme(next)
     localStorage.setItem(THEME_STORAGE_KEY, next)
+  }
+
+  const changeAppearance = (update: Partial<AppearancePreferences>): void => {
+    setAppearance((current) => {
+      const next = { ...current, ...update }
+      saveAppearance(next)
+      return next
+    })
+  }
+
+  const discoverLocalFonts = (): void => {
+    if (!window.queryLocalFonts) {
+      setLocalFontStatus('Local font discovery is unavailable. Enter the family name manually.')
+      return
+    }
+    setLocalFontStatus('Loading installed fonts...')
+    void window.queryLocalFonts().then((fonts) => {
+      const families = [...new Set(fonts.map((font) => font.family.trim()).filter(Boolean))]
+        .sort((left, right) => left.localeCompare(right))
+      setLocalFonts(families)
+      setLocalFontStatus(families.length ? `${families.length} font families available` : 'No installed fonts were returned')
+    }).catch(() => {
+      setLocalFontStatus('Font access was denied. Enter the family name manually.')
+    })
   }
 
   const changeNotificationSettings = (update: Partial<NotificationSettings>): void => {
@@ -1573,6 +1640,10 @@ export function App() {
                       account={session.account}
                       purpose={session.purpose}
                       resumeId={session.resumeId}
+                      fontFamily={terminalFontFamily(appearance.terminalFont, appearance.localTerminalFont)}
+                      fontSize={appearance.terminalFontSize}
+                      foreground={appearance.terminalForeground}
+                      cursorColor={ACCENT_OPTIONS.find((option) => option.id === theme)?.color ?? ACCENT_OPTIONS[0].color}
                       onActivity={() => updateSession(session.id, { lastActivityAt: Date.now() })}
                       onStateChange={(state, detail) => updateSession(session.id, { state, statusDetail: detail ?? '' })}
                     />
@@ -1680,15 +1751,96 @@ export function App() {
               <div><h2 id="account-settings-title">Settings</h2><p>Manage notifications, agent accounts, icons, and the interface theme.</p></div>
               <button className="icon-button" title="Close" onClick={() => setSettingsOpen(false)}><X size={16} /></button>
             </header>
-            <div className="settings-content scroll">
-              <div className="theme-setting">
-                <span>Accent</span>
-                <div className="theme-segments">
-                  <button className={theme === 'amber' ? 'active' : ''} onClick={() => changeTheme('amber')}><span className="theme-swatch amber" />Amber</button>
-                  <button className={theme === 'periwinkle' ? 'active' : ''} onClick={() => changeTheme('periwinkle')}><span className="theme-swatch periwinkle" />Periwinkle</button>
+            <div className="settings-layout">
+              <nav className="settings-nav" aria-label="Settings sections">
+                <button className={settingsSection === 'appearance' ? 'active' : ''} onClick={() => setSettingsSection('appearance')}><Palette size={15} />Appearance</button>
+                <button className={settingsSection === 'notifications' ? 'active' : ''} onClick={() => setSettingsSection('notifications')}><Bell size={15} />Notifications</button>
+                <button className={settingsSection === 'icons' ? 'active' : ''} onClick={() => setSettingsSection('icons')}><Shapes size={15} />Agent icons</button>
+                <button className={settingsSection === 'accounts' ? 'active' : ''} onClick={() => setSettingsSection('accounts')}><LogIn size={15} />Accounts</button>
+              </nav>
+              <div className="settings-content scroll">
+              <section className="appearance-settings" aria-labelledby="appearance-settings-title" hidden={settingsSection !== 'appearance'}>
+                <div className="appearance-heading">
+                  <h3 id="appearance-settings-title">Appearance</h3>
+                  <button className="appearance-reset" title="Reset appearance" onClick={() => {
+                    changeTheme('amber')
+                    changeAppearance(DEFAULT_APPEARANCE)
+                  }}><RotateCcw size={13} />Reset</button>
                 </div>
-              </div>
-              <section className="notification-settings" aria-labelledby="notification-settings-title">
+                <div className="appearance-row">
+                  <span>Accent</span>
+                  <div className="theme-segments">
+                    {ACCENT_OPTIONS.map((option) => (
+                      <button className={theme === option.id ? 'active' : ''} key={option.id} onClick={() => changeTheme(option.id)}>
+                        <span className="theme-swatch" style={{ background: option.color }} />{option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="appearance-row appearance-presets-row">
+                  <span>Theme</span>
+                  <div className="appearance-presets">
+                    {APPEARANCE_PRESETS.map((preset) => (
+                      <button
+                        className={theme === preset.accent && Object.entries(preset.colors).every(([key, value]) => appearance[key as keyof typeof preset.colors] === value) ? 'active' : ''}
+                        key={preset.id}
+                        onClick={() => {
+                          changeTheme(preset.accent)
+                          changeAppearance(preset.colors)
+                        }}
+                      >
+                        <span className="appearance-preset-swatch" style={{ background: `linear-gradient(135deg, ${preset.colors.appBackground} 50%, ${preset.colors.terminalBackground} 50%)` }} />
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="appearance-grid">
+                  <label className="appearance-field">
+                    <span>Interface font</span>
+                    <select value={appearance.uiFont} onChange={(event) => changeAppearance({ uiFont: event.target.value as UiFontId })}>
+                      {UI_FONT_OPTIONS.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="appearance-field">
+                    <span>Terminal font</span>
+                    <select value={appearance.terminalFont} onChange={(event) => changeAppearance({ terminalFont: event.target.value as TerminalFontId })}>
+                      {TERMINAL_FONT_OPTIONS.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}
+                    </select>
+                  </label>
+                  {appearance.uiFont === 'local' && (
+                    <label className="appearance-field local-font-field">
+                      <span>Interface font family</span>
+                      <input list="installed-font-families" value={appearance.localUiFont} placeholder="Enter an installed font" onChange={(event) => changeAppearance({ localUiFont: event.target.value })} />
+                    </label>
+                  )}
+                  {appearance.terminalFont === 'local' && (
+                    <label className="appearance-field local-font-field">
+                      <span>Terminal font family</span>
+                      <input list="installed-font-families" value={appearance.localTerminalFont} placeholder="Enter an installed font" onChange={(event) => changeAppearance({ localTerminalFont: event.target.value })} />
+                    </label>
+                  )}
+                  <datalist id="installed-font-families">
+                    {localFonts.map((family) => <option value={family} key={family} />)}
+                  </datalist>
+                </div>
+                <div className="local-font-actions">
+                  <button onClick={discoverLocalFonts}><RefreshCw size={13} />Load installed fonts</button>
+                  {localFontStatus && <span>{localFontStatus}</span>}
+                </div>
+                <label className="terminal-font-size">
+                  <span>Terminal size</span>
+                  <input type="range" min="10" max="18" step="1" value={appearance.terminalFontSize} onChange={(event) => changeAppearance({ terminalFontSize: Number(event.target.value) })} />
+                  <output>{appearance.terminalFontSize}px</output>
+                </label>
+                <div className="appearance-colors">
+                  <AppearanceColor label="App background" value={appearance.appBackground} onChange={(appBackground) => changeAppearance({ appBackground })} />
+                  <AppearanceColor label="App foreground" value={appearance.appForeground} onChange={(appForeground) => changeAppearance({ appForeground })} />
+                  <AppearanceColor label="Terminal background" value={appearance.terminalBackground} onChange={(terminalBackground) => changeAppearance({ terminalBackground })} />
+                  <AppearanceColor label="Terminal foreground" value={appearance.terminalForeground} onChange={(terminalForeground) => changeAppearance({ terminalForeground })} />
+                </div>
+              </section>
+              <section className="notification-settings" aria-labelledby="notification-settings-title" hidden={settingsSection !== 'notifications'}>
                 <div className="notification-settings-heading">
                   <h3 id="notification-settings-title">Notifications</h3>
                   <SettingsToggle
@@ -1744,7 +1896,7 @@ export function App() {
                   })}
                 </div>
               </section>
-              <section className="agent-icon-settings" aria-labelledby="agent-icon-settings-title">
+              <section className="agent-icon-settings" aria-labelledby="agent-icon-settings-title" hidden={settingsSection !== 'icons'}>
                 <h3 id="agent-icon-settings-title">Agent icons</h3>
                 {profiles.map((profile) => {
                   const mode = agentIcons[profile.id]?.mode ?? 'monogram'
@@ -1790,7 +1942,7 @@ export function App() {
                   )
                 })}
               </section>
-              <div className="account-fields">
+              <div className="account-fields" hidden={settingsSection !== 'accounts'}>
               {draftAccounts.map((account, index) => {
                 const profile = profiles.find((item) => item.id === account.agentId)
                 return (
@@ -1824,10 +1976,11 @@ export function App() {
               <button className="add-account-button" onClick={addAccount}><Plus size={14} />Add account</button>
               </div>
             </div>
+            </div>
             <footer>
-              {accountSaveNotice && <span className={`account-save-notice ${accountSaveNotice.kind}`}>{accountSaveNotice.text}</span>}
+              {settingsSection === 'accounts' && accountSaveNotice && <span className={`account-save-notice ${accountSaveNotice.kind}`}>{accountSaveNotice.text}</span>}
               <button className="secondary-button" onClick={() => setSettingsOpen(false)}>Close</button>
-              <button className="modal-save" onClick={saveAccounts}>Save</button>
+              {settingsSection === 'accounts' && <button className="modal-save" onClick={saveAccounts}>Save</button>}
             </footer>
           </section>
         </div>

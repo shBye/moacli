@@ -1,0 +1,4 @@
+interface:
+  display_name: "MoaCLI Windows Release"
+  short_description: "Build and verify the MoaCLI Windows installer"
+  default_prompt: "Use $moacli-windows-release to build and verify a privacy-safe Windows release."

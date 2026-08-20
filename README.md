@@ -38,6 +38,7 @@ MoaCLI keeps the native interactive experience of each CLI while adding a shared
 - Organize conversations and live sessions into resizable, reorderable logical folders.
 - Paste text, screenshots, and copied image files into the active CLI with `Ctrl+V`.
 - Customize agent icons with monograms, Lucide icons, PNG images, and background colors.
+- Customize interface and terminal fonts, including locally installed Windows fonts, plus independent accent, background, and foreground colors.
 - Preserve responsive terminal bottom anchoring during window resize and maximize operations.
 - Detect installed CLI versions and refresh them without restarting MoaCLI.
 
@@ -87,7 +88,7 @@ npm.cmd run build
 npm.cmd run start:lean
 ```
 
-To produce and publish the Windows installer, follow the verified [Windows Release Guide](./docs/WINDOWS_RELEASE.md).
+To produce and publish the Windows installer, follow the verified [Windows Release Guide](./docs/WINDOWS_RELEASE.md). Codex can use the repository-local [`moacli-windows-release`](./.codex/skills/moacli-windows-release/SKILL.md) skill for the same guarded workflow.
 
 Use the low-memory mode only when GPU acceleration is not desirable:
 
@@ -192,3 +193,9 @@ The detailed product flow, data model, failure handling, and acceptance criteria
 ## Fonts and Branding
 
 MoaCLI uses Inter Variable for the application UI and JetBrains Mono Variable for terminals. Their OFL license files are included under `src/assets/fonts/`. The application icon and brand artwork are stored in `src/assets/` and `docs/assets/`.
+
+Locally installed fonts selected in Settings are referenced by family name only. MoaCLI does not copy or redistribute those font files.
+
+## Licensing
+
+Third-party software and font notices are listed in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md). The MoaCLI source itself does not currently include a root open-source license; public repository access therefore does not grant permission to redistribute or modify the project beyond rights provided by applicable law and GitHub's terms.

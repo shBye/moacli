@@ -2,6 +2,8 @@
 
 This guide is the verified process for producing and publishing the MoaCLI Windows installer.
 
+Codex may execute this workflow through the repository-local `.codex/skills/moacli-windows-release` skill. The skill derives repository and workspace values at runtime and must not be edited to contain user-specific paths, emails, or credentials.
+
 The process was last verified on Windows 11 on August 19, 2026. The generated installer was installed and launched successfully.
 
 ## Release outputs

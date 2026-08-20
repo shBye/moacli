@@ -13,6 +13,10 @@ interface TerminalPaneProps {
   account?: AgentAccount
   purpose?: 'session' | 'login'
   resumeId?: string
+  fontFamily: string
+  fontSize: number
+  foreground: string
+  cursorColor: string
   onActivity: () => void
   onStateChange: (state: 'starting' | 'running' | 'stopped', detail?: string) => void
 }
@@ -21,9 +25,12 @@ const ACTIVE_SCROLLBACK = 5000
 const BACKGROUND_SCROLLBACK = 1500
 const MIN_STARTING_INDICATOR_MS = 650
 
-export function TerminalPane({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, onActivity, onStateChange }: TerminalPaneProps) {
+export function TerminalPane({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, fontFamily, fontSize, foreground, cursorColor, onActivity, onStateChange }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
+  const fitAddonRef = useRef<FitAddon | null>(null)
+  const ptyIdRef = useRef('')
+  const ptyReadyRef = useRef(false)
   const activeRef = useRef(active)
   const activityRef = useRef(onActivity)
   activeRef.current = active
@@ -37,16 +44,16 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     const terminal = new Terminal({
       cursorBlink: activeRef.current,
       cursorStyle: 'bar',
-      fontFamily: 'JetBrains Mono, D2Coding, Cascadia Mono, Consolas, monospace',
-      fontSize: 12,
+      fontFamily,
+      fontSize,
       lineHeight: 1.3,
       scrollback: activeRef.current ? ACTIVE_SCROLLBACK : BACKGROUND_SCROLLBACK,
       allowTransparency: true,
       allowProposedApi: false,
       theme: {
         background: 'rgba(0,0,0,0)',
-        foreground: '#C9D0D4',
-        cursor: '#F3B33D',
+        foreground,
+        cursor: cursorColor,
         cursorAccent: '#111315',
         selectionBackground: '#36515E',
         black: '#111315',
@@ -61,6 +68,8 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     })
     terminalRef.current = terminal
     const fitAddon = new FitAddon()
+    fitAddonRef.current = fitAddon
+    ptyIdRef.current = id
     terminal.loadAddon(fitAddon)
     terminal.open(container)
     fitAddon.fit()
@@ -180,6 +189,7 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       rows: terminal.rows,
     }).then(() => {
       started = true
+      ptyReadyRef.current = true
       if (disposed) {
         window.cliAgent.stopPty(id)
         return
@@ -211,6 +221,9 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       window.cliAgent.stopPty(id)
       terminal.dispose()
       terminalRef.current = null
+      fitAddonRef.current = null
+      ptyIdRef.current = ''
+      ptyReadyRef.current = false
     }
   }, [sessionId, agentId, cwd, title, account?.id, purpose, resumeId])
 
@@ -221,6 +234,22 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     terminal.options.scrollback = active ? ACTIVE_SCROLLBACK : BACKGROUND_SCROLLBACK
     if (active) terminal.focus()
   }, [active])
+
+  useEffect(() => {
+    const terminal = terminalRef.current
+    if (!terminal) return
+    terminal.options.fontFamily = fontFamily
+    terminal.options.fontSize = fontSize
+    terminal.options.theme = { ...terminal.options.theme, foreground, cursor: cursorColor }
+    requestAnimationFrame(() => {
+      if (!terminalRef.current || !fitAddonRef.current) return
+      fitAddonRef.current.fit()
+      terminal.refresh(0, Math.max(0, terminal.rows - 1))
+      if (ptyReadyRef.current && ptyIdRef.current) {
+        window.cliAgent.resizePty(ptyIdRef.current, terminal.cols, terminal.rows)
+      }
+    })
+  }, [fontFamily, fontSize, foreground, cursorColor])
 
   return <div className="terminal-container" ref={containerRef} />
 }
