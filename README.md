@@ -180,7 +180,7 @@ The renderer is built with React 18 and TypeScript. Privileged filesystem, proce
 | --- | --- | --- |
 | Unified notification center | In progress | [`feature/notification-center`](https://github.com/shBye/moacli/tree/feature/notification-center) |
 | Session restoration after restart | Planned | [`feature/session-restore`](https://github.com/shBye/moacli/tree/feature/session-restore) |
-| Full conversation search with SQLite FTS5 | Implemented on branch | [`feature/conversation-search`](https://github.com/shBye/moacli/tree/feature/conversation-search) |
+| Full conversation search with SQLite FTS5 | Shipped in v0.1.3 | [`main`](https://github.com/shBye/moacli) |
 
 The detailed product flow, data model, failure handling, and acceptance criteria are documented in [ROADMAP.md](./ROADMAP.md). See [Local Conversation Search](./docs/CONVERSATION_SEARCH.md) and [Notification Center Design](./docs/NOTIFICATION_CENTER_DESIGN.md) for implementation-specific notes. Completed work and resolved implementation issues are tracked in [PROGRESS.md](./PROGRESS.md).
 

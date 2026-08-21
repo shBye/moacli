@@ -1,7 +1,7 @@
 {
   "name": "moacli",
   "productName": "MoaCLI",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "A desktop workspace that brings CLI coding agents, accounts, sessions, and conversations together",
   "author": "shBye",
