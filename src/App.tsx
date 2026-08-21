@@ -119,6 +119,7 @@ interface RuntimeSession {
   resumeId: string
   folderId: string
   historyKey: string
+  historyKeysAtStart: string[]
   conversation: ConversationHistory | null
   conversationLoading: boolean
   conversationError: string
@@ -130,6 +131,7 @@ interface RuntimeSession {
   createdAt: number
   lastViewedAt: number
   lastActivityAt: number
+  revealLatestAt: number
 }
 
 interface SectionState {
@@ -210,6 +212,10 @@ function savedAccounts(): AgentAccount[] {
 function accountIdentity(account: Pick<AgentAccount, 'agentId' | 'configDir'>): string {
   const configDir = account.configDir.trim().replace(/[\\/]+$/, '').toLocaleLowerCase()
   return `${account.agentId}:${configDir}`
+}
+
+function normalizedWorkingDirectory(value: string): string {
+  return value.trim().replace(/[\\/]+$/, '').replace(/\\/g, '/').toLocaleLowerCase()
 }
 
 function savedTheme(): AccentTheme {
@@ -526,12 +532,14 @@ export function App() {
   const searchRef = useRef<HTMLInputElement>(null)
   const accountsRef = useRef(accounts)
   const sessionsRef = useRef(sessions)
+  const activeSessionIdRef = useRef(activeSessionId)
   const profileRefreshInFlight = useRef(false)
   const historyRefreshInFlight = useRef(false)
   const historyRefreshQueued = useRef(false)
   const searchRequestId = useRef(0)
   accountsRef.current = accounts
   sessionsRef.current = sessions
+  activeSessionIdRef.current = activeSessionId
 
   const acceptNotificationSnapshot = (snapshot: NotificationSnapshot): void => {
     setNotificationSnapshot((current) => snapshot.version >= current.version ? snapshot : current)
@@ -634,7 +642,7 @@ export function App() {
       const now = Date.now()
       setSessions((current) => current.map((session) => (
         session.id === activation.sessionId
-          ? { ...session, view: 'cli', lastViewedAt: now }
+          ? { ...session, view: 'cli', lastViewedAt: now, revealLatestAt: now }
           : session
       )))
       setActiveSessionId(activation.sessionId)
@@ -645,6 +653,21 @@ export function App() {
       mounted = false
       offChanged()
       offActivated()
+    }
+  }, [])
+
+  useEffect(() => {
+    const acknowledgeFocusedSession = (): void => {
+      if (document.visibilityState !== 'visible') return
+      const session = sessionsRef.current.find((item) => item.id === activeSessionIdRef.current)
+      if (!session || session.view !== 'cli') return
+      void window.cliAgent.acknowledgeSessionNotification(session.id).then(acceptNotificationSnapshot)
+    }
+    window.addEventListener('focus', acknowledgeFocusedSession)
+    document.addEventListener('visibilitychange', acknowledgeFocusedSession)
+    return () => {
+      window.removeEventListener('focus', acknowledgeFocusedSession)
+      document.removeEventListener('visibilitychange', acknowledgeFocusedSession)
     }
   }, [])
 
@@ -752,6 +775,48 @@ export function App() {
     localStorage.setItem(FOLDER_ORDERS_STORAGE_KEY, JSON.stringify(folderOrders))
   }, [folderOrders])
 
+  useEffect(() => {
+    const claimedHistoryKeys = new Set(sessions.map((session) => session.historyKey).filter(Boolean))
+    const availableHistory = history.filter((item) => !claimedHistoryKeys.has(item.key))
+    const assignments: Record<string, string> = {}
+    let changed = false
+    const nextSessions = [...sessions]
+      .sort((left, right) => right.createdAt - left.createdAt)
+      .reduce<RuntimeSession[]>((result, session) => {
+        if (session.purpose !== 'session' || session.historyKey || session.agentId === 'powershell') {
+          result.push(session)
+          return result
+        }
+        const sessionCwd = normalizedWorkingDirectory(session.cwd)
+        const matchIndex = availableHistory
+          .map((item, index) => ({ item, index }))
+          .filter(({ item }) => (
+            !session.historyKeysAtStart.includes(item.key)
+            && item.agentId === session.agentId
+            && normalizedWorkingDirectory(item.cwd) === sessionCwd
+            && (!session.account?.id || item.accountId === session.account.id)
+          ))
+          .sort((left, right) => (
+            Math.abs(left.item.updatedAt - session.createdAt) - Math.abs(right.item.updatedAt - session.createdAt)
+          ))[0]?.index ?? -1
+        if (matchIndex < 0) {
+          result.push(session)
+          return result
+        }
+        const [match] = availableHistory.splice(matchIndex, 1)
+        claimedHistoryKeys.add(match.key)
+        assignments[match.key] = session.folderId
+        changed = true
+        result.push({ ...session, historyKey: match.key })
+        return result
+      }, [])
+      .sort((left, right) => left.createdAt - right.createdAt)
+
+    if (!changed) return
+    setSessions(nextSessions)
+    setFolderAssignments((current) => ({ ...current, ...assignments }))
+  }, [history, sessions])
+
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === agentId),
     [profiles, agentId],
@@ -826,6 +891,7 @@ export function App() {
       resumeId: '',
       folderId: selectedFolderId || 'unsorted',
       historyKey: '',
+      historyKeysAtStart: history.map((item) => item.key),
       conversation: null,
       conversationLoading: false,
       conversationError: '',
@@ -834,6 +900,7 @@ export function App() {
       state: 'idle',
       statusDetail: '',
       view: 'cli',
+      revealLatestAt: 0,
     })
     setTitle('')
   }
@@ -1018,7 +1085,8 @@ export function App() {
       void window.cliAgent.dismissNotification(notification.id).then(acceptNotificationSnapshot)
       return
     }
-    updateSession(notification.sessionId, { view: 'cli', lastViewedAt: Date.now() })
+    const now = Date.now()
+    updateSession(notification.sessionId, { view: 'cli', lastViewedAt: now, revealLatestAt: now })
     activateSession(notification.sessionId)
     setNotificationPanelOpen(false)
   }
@@ -1277,6 +1345,7 @@ export function App() {
       resumeId: historySession.resumeId,
       folderId: targetFolderId,
       historyKey: historySession.key,
+      historyKeysAtStart: [],
       conversation: null,
       conversationLoading: false,
       conversationError: '',
@@ -1285,6 +1354,7 @@ export function App() {
       state: 'idle',
       statusDetail: '',
       view: 'cli',
+      revealLatestAt: 0,
     })
   }
 
@@ -1332,6 +1402,7 @@ export function App() {
       resumeId: result.session.resumeId,
       folderId: folderAssignments[result.session.key] || 'unsorted',
       historyKey: result.session.key,
+      historyKeysAtStart: [],
       conversation: null,
       conversationLoading: true,
       conversationError: '',
@@ -1340,6 +1411,7 @@ export function App() {
       state: 'idle',
       statusDetail: 'Conversation opened from search',
       view: 'conversation',
+      revealLatestAt: 0,
     })
     loadConversation(id, result.session.key, result.messageId)
     setSearchOpen(false)
@@ -1407,6 +1479,7 @@ export function App() {
       resumeId: '',
       folderId: selectedFolderId || 'unsorted',
       historyKey: '',
+      historyKeysAtStart: [],
       conversation: null,
       conversationLoading: false,
       conversationError: '',
@@ -1415,6 +1488,7 @@ export function App() {
       state: 'idle',
       statusDetail: '',
       view: 'cli',
+      revealLatestAt: 0,
     })
     setSettingsOpen(false)
   }
@@ -1810,6 +1884,7 @@ export function App() {
                         account={session.account}
                         purpose={session.purpose}
                         resumeId={session.resumeId}
+                        revealLatestAt={session.revealLatestAt}
                         fontFamily={terminalFontFamily(appearance.terminalFont, appearance.localTerminalFont)}
                         fontSize={appearance.terminalFontSize}
                         background={appearance.terminalBackground}

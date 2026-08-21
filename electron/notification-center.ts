@@ -71,7 +71,7 @@ function notificationMessage(type: AppNotificationType): string {
 export class NotificationCenter {
   private readonly active = new Map<string, ActiveNotification>()
   private readonly mutedSessionIds = new Set<string>()
-  private readonly nativeNotifications = new Set<Notification>()
+  private readonly nativeNotifications = new Map<Notification, Set<string>>()
   private readonly pendingDesktopSessionIds = new Set<string>()
   private settings: NotificationSettings
   private context: NotificationContext = { activeSessionId: '', activeView: 'none' }
@@ -131,6 +131,7 @@ export class NotificationCenter {
       if (notification.id !== id) continue
       this.active.delete(sessionId)
       this.pendingDesktopSessionIds.delete(sessionId)
+      this.closeNativeNotificationsForSession(sessionId)
       this.emit()
       break
     }
@@ -138,10 +139,10 @@ export class NotificationCenter {
   }
 
   acknowledgeSession(sessionId: string): NotificationSnapshot {
-    if (this.active.delete(sessionId)) {
-      this.pendingDesktopSessionIds.delete(sessionId)
-      this.emit()
-    }
+    const activeRemoved = this.active.delete(sessionId)
+    const pendingRemoved = this.pendingDesktopSessionIds.delete(sessionId)
+    const nativeRemoved = this.closeNativeNotificationsForSession(sessionId)
+    if (activeRemoved || pendingRemoved || nativeRemoved) this.emit()
     return this.snapshot()
   }
 
@@ -150,6 +151,7 @@ export class NotificationCenter {
       this.mutedSessionIds.add(sessionId)
       this.active.delete(sessionId)
       this.pendingDesktopSessionIds.delete(sessionId)
+      this.closeNativeNotificationsForSession(sessionId)
     } else {
       this.mutedSessionIds.delete(sessionId)
     }
@@ -158,9 +160,10 @@ export class NotificationCenter {
   }
 
   clear(): NotificationSnapshot {
-    if (this.active.size || this.pendingDesktopSessionIds.size) {
+    if (this.active.size || this.pendingDesktopSessionIds.size || this.nativeNotifications.size) {
       this.active.clear()
       this.pendingDesktopSessionIds.clear()
+      this.closeAllNativeNotifications()
       this.emit()
     }
     return this.snapshot()
@@ -170,8 +173,7 @@ export class NotificationCenter {
     clearTimeout(this.desktopTimer)
     this.desktopTimer = undefined
     this.pendingDesktopSessionIds.clear()
-    for (const notification of this.nativeNotifications) notification.close()
-    this.nativeNotifications.clear()
+    this.closeAllNativeNotifications()
   }
 
   private create({ request, type, dedupeKey }: CreateNotificationInput): void {
@@ -248,7 +250,7 @@ export class NotificationCenter {
     const nativeNotification = new Notification(items.length === 1
       ? { title: items[0].title, body: notificationMessage(items[0].type), silent: true }
       : { title: 'MoaCLI', body: `${items.length} sessions have new activity`, silent: true })
-    this.nativeNotifications.add(nativeNotification)
+    this.nativeNotifications.set(nativeNotification, new Set(items.map((item) => item.sessionId)))
     nativeNotification.once('click', () => this.activate(activation))
     nativeNotification.once('close', () => this.nativeNotifications.delete(nativeNotification))
     nativeNotification.show()
@@ -268,9 +270,26 @@ export class NotificationCenter {
     this.desktopTimer = undefined
     this.active.clear()
     this.pendingDesktopSessionIds.clear()
-    for (const notification of this.nativeNotifications) notification.close()
-    this.nativeNotifications.clear()
+    this.closeAllNativeNotifications()
     this.emit()
+  }
+
+  private closeNativeNotificationsForSession(sessionId: string): boolean {
+    let changed = false
+    for (const [notification, sessionIds] of this.nativeNotifications) {
+      if (!sessionIds.delete(sessionId)) continue
+      changed = true
+      if (sessionIds.size) continue
+      this.nativeNotifications.delete(notification)
+      notification.close()
+    }
+    return changed
+  }
+
+  private closeAllNativeNotifications(): void {
+    const notifications = [...this.nativeNotifications.keys()]
+    this.nativeNotifications.clear()
+    for (const notification of notifications) notification.close()
   }
 
   private emit(): void {

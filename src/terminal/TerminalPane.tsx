@@ -14,6 +14,7 @@ interface TerminalPaneProps {
   account?: AgentAccount
   purpose?: 'session' | 'login'
   resumeId?: string
+  revealLatestAt: number
   fontFamily: string
   fontSize: number
   background: string
@@ -28,7 +29,7 @@ const ACTIVE_SCROLLBACK = 5000
 const BACKGROUND_SCROLLBACK = 1500
 const MIN_STARTING_INDICATOR_MS = 650
 
-export function TerminalPane({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, fontFamily, fontSize, background, foreground, cursorColor, activityStatusEnabled, onActivity, onStateChange }: TerminalPaneProps) {
+export function TerminalPane({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, revealLatestAt, fontFamily, fontSize, background, foreground, cursorColor, activityStatusEnabled, onActivity, onStateChange }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -180,6 +181,21 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
 
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true
+      if (
+        agentId === 'codex'
+        && event.key === 'Enter'
+        && event.shiftKey
+        && !event.ctrlKey
+        && !event.altKey
+        && !event.metaKey
+        && !event.isComposing
+      ) {
+        // xterm.js 5.5 collapses Shift+Enter to CR. Codex treats LF (Ctrl+J) as
+        // an inserted newline, so preserve the expected multiline shortcut.
+        reportActivity()
+        window.cliAgent.writePty(id, '\n')
+        return false
+      }
       if (event.ctrlKey && event.shiftKey && event.code === 'KeyC' && terminal.hasSelection()) {
         void navigator.clipboard.writeText(terminal.getSelection())
         return false
@@ -275,6 +291,21 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     terminal.options.scrollback = active ? ACTIVE_SCROLLBACK : BACKGROUND_SCROLLBACK
     if (active) terminal.focus()
   }, [active])
+
+  useEffect(() => {
+    if (!active || !revealLatestAt) return undefined
+    const frame = requestAnimationFrame(() => {
+      const terminal = terminalRef.current
+      if (!terminal) return
+      terminal.scrollToBottom()
+      terminal.focus()
+    })
+    const timer = window.setTimeout(() => terminalRef.current?.scrollToBottom(), 80)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [active, revealLatestAt])
 
   useEffect(() => {
     const terminal = terminalRef.current
