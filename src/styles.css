@@ -82,19 +82,28 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 body.sidebar-resizing, body.sidebar-resizing * { cursor: col-resize !important; user-select: none !important; }
 
 .search-box { display: flex; position: relative; z-index: 42; min-height: 34px; flex: none; align-items: center; gap: 9px; margin: 14px 14px 10px; padding: 0 8px 0 11px; border: 1px solid rgba(255,255,255,.09); border-radius: 8px; color: rgba(255,255,255,.36); background: rgba(0,0,0,.22); }
+.search-trigger { font-family: inherit; text-align: left; cursor: pointer; }
+.search-trigger:hover { border-color: rgba(255,255,255,.15); color: rgba(255,255,255,.52); background: rgba(255,255,255,.035); }
+.search-trigger > span { min-width: 0; flex: 1; overflow: hidden; color: rgba(255,255,255,.32); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
 .search-box input { min-width: 0; flex: 1; border: 0; outline: 0; color: rgba(255,255,255,.78); background: transparent; font-size: 11.5px; }
 .search-box input::placeholder { color: rgba(255,255,255,.28); }
 .search-box kbd { flex: none; padding: 3px 5px; border: 1px solid rgba(255,255,255,.1); border-radius: 4px; color: rgba(255,255,255,.28); font: 500 8.5px/1 'JetBrains Mono', monospace; }
 .search-clear { display: grid; width: 24px; height: 24px; flex: none; padding: 0; place-items: center; border: 0; border-radius: 5px; color: rgba(255,255,255,.4); background: transparent; cursor: pointer; }
 .search-clear:hover { color: #fff; background: rgba(255,255,255,.07); }
-.conversation-search-panel { display: grid; position: fixed; z-index: 41; top: 85px; left: 14px; width: min(680px, calc(100vw - 28px)); max-height: min(620px, calc(100vh - 104px)); grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: #171a1e; box-shadow: 0 20px 56px rgba(0,0,0,.58), 0 3px 12px rgba(0,0,0,.32); }
-.conversation-search-panel > header { display: flex; min-height: 49px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px 8px 14px; border-bottom: 1px solid rgba(255,255,255,.07); }
-.conversation-search-panel > header > div { display: grid; min-width: 0; gap: 4px; }
-.conversation-search-panel > header strong { color: rgba(255,255,255,.82); font-size: 11px; font-weight: 650; }
-.conversation-search-panel > header span { color: rgba(255,255,255,.34); font: 400 9px/1 'JetBrains Mono', monospace; }
+.conversation-search-backdrop { position: fixed; z-index: 115; inset: 37px 0 0; display: grid; place-items: center; padding: 24px; background: rgba(5,7,8,.66); backdrop-filter: blur(16px); }
+.conversation-search-modal { display: grid; width: min(760px, calc(100vw - 48px)); height: min(640px, calc(100vh - 112px)); min-height: 360px; grid-template-rows: auto auto auto minmax(0, 1fr); overflow: hidden; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(23,26,30,.98); box-shadow: 0 24px 80px rgba(0,0,0,.58), 0 4px 18px rgba(0,0,0,.32); animation: search-modal-in 140ms ease-out; }
+.conversation-search-input { display: flex; min-height: 58px; align-items: center; gap: 11px; padding: 0 14px 0 17px; border-bottom: 1px solid rgba(255,255,255,.09); color: rgba(255,255,255,.42); }
+.conversation-search-input input { min-width: 0; height: 100%; flex: 1; border: 0; outline: 0; color: rgba(255,255,255,.88); background: transparent; font: 500 14px/1.3 var(--ui-font); }
+.conversation-search-input input::placeholder { color: rgba(255,255,255,.27); }
+.conversation-search-input kbd { flex: none; padding: 4px 6px; border: 1px solid rgba(255,255,255,.1); border-radius: 4px; color: rgba(255,255,255,.3); font: 500 9px/1 'JetBrains Mono', monospace; }
+.conversation-search-modal > header { display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 10px 7px 16px; border-bottom: 1px solid rgba(255,255,255,.07); }
+.conversation-search-modal > header > div:first-child { display: grid; min-width: 0; gap: 4px; }
+.conversation-search-modal > header strong { color: rgba(255,255,255,.82); font-size: 11px; font-weight: 650; }
+.conversation-search-modal > header span { color: rgba(255,255,255,.34); font: 400 9px/1 'JetBrains Mono', monospace; }
+.conversation-search-actions { display: flex; align-items: center; gap: 2px; }
 .search-index-progress { display: block; height: 2px; overflow: hidden; background: rgba(255,255,255,.06); }
 .search-index-progress > span { display: block; height: 100%; background: var(--acc); transition: width 140ms ease; }
-.conversation-search-results { min-height: 64px; overflow-y: auto; padding: 5px; }
+.conversation-search-results { min-height: 0; overflow-y: auto; padding: 6px; }
 .conversation-search-result { display: flex; width: 100%; min-height: 74px; align-items: flex-start; gap: 10px; padding: 10px; border: 0; border-radius: 6px; color: inherit; background: transparent; text-align: left; cursor: pointer; }
 .conversation-search-result:hover, .conversation-search-result:focus-visible { outline: 0; background: rgba(255,255,255,.055); }
 .conversation-search-result > .agent-monogram { margin-top: 1px; }
@@ -107,6 +116,7 @@ body.sidebar-resizing, body.sidebar-resizing * { cursor: col-resize !important; 
 .conversation-search-copy > small { overflow: hidden; color: rgba(255,255,255,.27); font: 400 8.5px/1.2 'JetBrains Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-search-empty { margin: 0; padding: 28px 16px; color: rgba(255,255,255,.32); font-size: 10.5px; text-align: center; }
 .conversation-search-empty.error { color: #ff7e86; }
+@keyframes search-modal-in { from { opacity: 0; transform: translateY(-8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
 .sidebar-heading { display: flex; height: 30px; flex: none; align-items: center; gap: 5px; padding: 0 7px; color: rgba(255,255,255,.42); font-size: 9.5px; font-weight: 700; text-transform: uppercase; }
 .section-toggle { display: flex; min-width: 0; flex: 1; align-items: center; gap: 4px; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; text-transform: uppercase; cursor: pointer; }

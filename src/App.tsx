@@ -481,6 +481,7 @@ export function App() {
   const [profilesRefreshing, setProfilesRefreshing] = useState(false)
   const [history, setHistory] = useState<HistorySession[]>([])
   const [historyQuery, setHistoryQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
   const [searchResults, setSearchResults] = useState<ConversationSearchResult[]>([])
   const [searchIndexState, setSearchIndexState] = useState<SearchIndexState>(EMPTY_SEARCH_INDEX_STATE)
   const [searchLoading, setSearchLoading] = useState(false)
@@ -760,11 +761,7 @@ export function App() {
   const activeSession = sessions.find((session) => session.id === activeSessionId)
   const activeSessionMuted = notificationSnapshot.mutedSessionIds.includes(activeSessionId)
   const activeProfile = profiles.find((profile) => profile.id === activeSession?.agentId)
-  const filteredHistory = history.filter((session) => {
-    const query = historyQuery.trim().toLocaleLowerCase()
-    if (!query) return true
-    return `${session.title} ${session.cwd} ${session.agentId} ${session.accountEmail ?? ''}`.toLocaleLowerCase().includes(query)
-  })
+  const filteredHistory = history
   const themeStyle = {
     '--acc': ACCENT_OPTIONS.find((option) => option.id === theme)?.color ?? ACCENT_OPTIONS[0].color,
     '--acc-ink': ACCENT_OPTIONS.find((option) => option.id === theme)?.ink ?? ACCENT_OPTIONS[0].ink,
@@ -861,10 +858,12 @@ export function App() {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.ctrlKey && event.code === 'KeyK') {
         event.preventDefault()
-        searchRef.current?.focus()
+        setSearchOpen(true)
+        window.requestAnimationFrame(() => searchRef.current?.focus())
       }
-      if (event.key === 'Escape' && document.activeElement === searchRef.current && historyQuery) {
+      if (event.key === 'Escape' && searchOpen) {
         event.preventDefault()
+        setSearchOpen(false)
         setHistoryQuery('')
       }
       if (event.key === 'Enter' && document.activeElement === searchRef.current && historyQuery.trim().length >= 2 && searchResults[0]) {
@@ -878,7 +877,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeSession, agentId, cwd, title, selectedAccount, selectedFolderId, historyQuery, searchResults])
+  }, [activeSession, agentId, cwd, title, selectedAccount, selectedFolderId, historyQuery, searchOpen, searchResults])
 
   const toggleSection = (section: SectionKey): void => {
     setSectionOpen((current) => {
@@ -1318,6 +1317,7 @@ export function App() {
     if (existing) {
       activateSession(existing.id)
       showConversation(existing.id, result.messageId)
+      setSearchOpen(false)
       setHistoryQuery('')
       return
     }
@@ -1342,6 +1342,7 @@ export function App() {
       view: 'conversation',
     })
     loadConversation(id, result.session.key, result.messageId)
+    setSearchOpen(false)
     setHistoryQuery('')
   }
 
@@ -1469,68 +1470,14 @@ export function App() {
 
       <div className="app-body" style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}>
         <aside className="sidebar scroll">
-          <div className="search-box">
+          <button className="search-box search-trigger" aria-label="Open conversation search" onClick={() => {
+            setSearchOpen(true)
+            window.requestAnimationFrame(() => searchRef.current?.focus())
+          }}>
             <Search size={14} aria-hidden="true" />
-            <input ref={searchRef} aria-label="Search conversations" placeholder="Search conversations" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} />
-            {historyQuery
-              ? <button className="search-clear" title="Clear search" onClick={() => setHistoryQuery('')}><X size={13} /></button>
-              : <kbd>Ctrl K</kbd>}
-          </div>
-          {historyQuery.trim().length >= 2 && (
-            <section className="conversation-search-panel" aria-label="Conversation search results">
-              <header>
-                <div>
-                  <strong>Conversation search</strong>
-                  <span>
-                    {searchIndexState.phase === 'indexing'
-                      ? `${searchIndexState.processedSources}/${searchIndexState.discoveredSources} files indexed`
-                      : `${searchIndexState.indexedMessages.toLocaleString()} messages indexed`}
-                  </span>
-                </div>
-                <button
-                  className="mini-icon-button"
-                  title="Rebuild search index"
-                  disabled={searchRebuilding || searchIndexState.phase === 'indexing'}
-                  onClick={rebuildConversationSearch}
-                >
-                  <RefreshCw className={searchRebuilding ? 'spinning' : ''} size={13} />
-                </button>
-              </header>
-              {searchIndexState.phase === 'indexing' && (
-                <span className="search-index-progress" aria-hidden="true">
-                  <span style={{ width: `${searchIndexState.discoveredSources
-                    ? Math.round(searchIndexState.processedSources / searchIndexState.discoveredSources * 100)
-                    : 0}%` }} />
-                </span>
-              )}
-              <div className="conversation-search-results">
-                {searchResults.map((result) => {
-                  const profile = profiles.find((item) => item.id === result.session.agentId)
-                  return (
-                    <button className="conversation-search-result" key={result.id} onClick={() => openSearchResult(result)}>
-                      <AgentAvatar agentId={result.session.agentId} className="neutral" color={profile?.color} preference={resolvedAgentIcon(result.session.agentId)} />
-                      <span className="conversation-search-copy">
-                        <span className="conversation-search-title">
-                          <strong>{result.session.title}</strong>
-                          <small>{result.role === 'user' ? 'You' : result.session.agentId}</small>
-                        </span>
-                        <span className="conversation-search-snippet"><HighlightedSearchSnippet text={result.snippet} /></span>
-                        <small>{result.session.accountEmail} · {result.session.cwd}</small>
-                      </span>
-                    </button>
-                  )
-                })}
-                {searchLoading && !searchResults.length && <p className="conversation-search-empty">Searching local conversations...</p>}
-                {!searchLoading && !searchError && !searchResults.length && searchIndexState.phase === 'indexing' && (
-                  <p className="conversation-search-empty">Indexing local conversations...</p>
-                )}
-                {!searchLoading && !searchError && !searchResults.length && searchIndexState.phase !== 'indexing' && (
-                  <p className="conversation-search-empty">No matching messages</p>
-                )}
-                {searchError && <p className="conversation-search-empty error">{searchError}</p>}
-              </div>
-            </section>
-          )}
+            <span>Search conversations</span>
+            <kbd>Ctrl K</kbd>
+          </button>
 
           <SectionHeading
             label="Folders"
@@ -1902,6 +1849,89 @@ export function App() {
           </footer>
         </section>
       </div>
+
+      {searchOpen && (
+        <div className="conversation-search-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            setSearchOpen(false)
+            setHistoryQuery('')
+          }
+        }}>
+          <section className="conversation-search-modal" role="dialog" aria-modal="true" aria-labelledby="conversation-search-title">
+            <div className="conversation-search-input">
+              <Search size={17} aria-hidden="true" />
+              <input
+                ref={searchRef}
+                autoFocus
+                aria-label="Search conversations"
+                placeholder="Search messages, titles, or paths"
+                value={historyQuery}
+                onChange={(event) => setHistoryQuery(event.target.value)}
+              />
+              {historyQuery && <button className="search-clear" title="Clear search" onClick={() => {
+                setHistoryQuery('')
+                window.requestAnimationFrame(() => searchRef.current?.focus())
+              }}><X size={14} /></button>}
+              <kbd>Esc</kbd>
+            </div>
+            <header>
+              <div>
+                <strong id="conversation-search-title">Conversation search</strong>
+                <span>
+                  {searchIndexState.phase === 'indexing'
+                    ? `${searchIndexState.processedSources}/${searchIndexState.discoveredSources} files indexed`
+                    : `${searchIndexState.indexedMessages.toLocaleString()} messages indexed`}
+                </span>
+              </div>
+              <div className="conversation-search-actions">
+                <button
+                  className="mini-icon-button"
+                  title="Rebuild search index"
+                  disabled={searchRebuilding || searchIndexState.phase === 'indexing'}
+                  onClick={rebuildConversationSearch}
+                >
+                  <RefreshCw className={searchRebuilding ? 'spinning' : ''} size={14} />
+                </button>
+                <button className="mini-icon-button" title="Close" onClick={() => {
+                  setSearchOpen(false)
+                  setHistoryQuery('')
+                }}><X size={15} /></button>
+              </div>
+            </header>
+            <span className="search-index-progress" aria-hidden="true">
+              <span style={{ width: `${searchIndexState.phase === 'indexing' && searchIndexState.discoveredSources
+                  ? Math.round(searchIndexState.processedSources / searchIndexState.discoveredSources * 100)
+                  : 0}%` }} />
+            </span>
+            <div className="conversation-search-results">
+              {historyQuery.trim().length >= 2 && searchResults.map((result) => {
+                const profile = profiles.find((item) => item.id === result.session.agentId)
+                return (
+                  <button className="conversation-search-result" key={result.id} onClick={() => openSearchResult(result)}>
+                    <AgentAvatar agentId={result.session.agentId} className="neutral" color={profile?.color} preference={resolvedAgentIcon(result.session.agentId)} />
+                    <span className="conversation-search-copy">
+                      <span className="conversation-search-title">
+                        <strong>{result.session.title}</strong>
+                        <small>{result.role === 'user' ? 'You' : result.session.agentId}</small>
+                      </span>
+                      <span className="conversation-search-snippet"><HighlightedSearchSnippet text={result.snippet} /></span>
+                      <small>{result.session.accountEmail} · {result.session.cwd}</small>
+                    </span>
+                  </button>
+                )
+              })}
+              {historyQuery.trim().length >= 2 && searchLoading && !searchResults.length && <p className="conversation-search-empty">Searching local conversations...</p>}
+              {historyQuery.trim().length >= 2 && !searchLoading && !searchError && !searchResults.length && searchIndexState.phase === 'indexing' && (
+                <p className="conversation-search-empty">Indexing local conversations...</p>
+              )}
+              {historyQuery.trim().length >= 2 && !searchLoading && !searchError && !searchResults.length && searchIndexState.phase !== 'indexing' && (
+                <p className="conversation-search-empty">No matching messages</p>
+              )}
+              {historyQuery.trim().length >= 2 && searchError && <p className="conversation-search-empty error">{searchError}</p>}
+            </div>
+          </section>
+        </div>
+      )}
 
       <button
         className={`floating-notifications ${notificationSnapshot.notifications.length ? 'has-items' : ''}`}
