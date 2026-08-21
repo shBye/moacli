@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import { attachImeOverlay } from './ime-overlay'
 import type { AgentAccount } from '../../electron/contracts'
@@ -15,6 +16,7 @@ interface TerminalPaneProps {
   resumeId?: string
   fontFamily: string
   fontSize: number
+  background: string
   foreground: string
   cursorColor: string
   activityStatusEnabled: boolean
@@ -26,7 +28,7 @@ const ACTIVE_SCROLLBACK = 5000
 const BACKGROUND_SCROLLBACK = 1500
 const MIN_STARTING_INDICATOR_MS = 650
 
-export function TerminalPane({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, fontFamily, fontSize, foreground, cursorColor, activityStatusEnabled, onActivity, onStateChange }: TerminalPaneProps) {
+export function TerminalPane({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, fontFamily, fontSize, background, foreground, cursorColor, activityStatusEnabled, onActivity, onStateChange }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -51,10 +53,10 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       fontSize,
       lineHeight: 1.3,
       scrollback: activeRef.current ? ACTIVE_SCROLLBACK : BACKGROUND_SCROLLBACK,
-      allowTransparency: true,
+      allowTransparency: false,
       allowProposedApi: false,
       theme: {
-        background: 'rgba(0,0,0,0)',
+        background,
         foreground,
         cursor: cursorColor,
         cursorAccent: '#111315',
@@ -75,6 +77,26 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     ptyIdRef.current = id
     terminal.loadAddon(fitAddon)
     terminal.open(container)
+    container.dataset.renderer = 'default'
+    let webglAddon: WebglAddon | undefined
+    let webglContextLossDisposable: { dispose: () => void } | undefined
+    try {
+      webglAddon = new WebglAddon()
+      webglContextLossDisposable = webglAddon.onContextLoss(() => {
+        webglContextLossDisposable?.dispose()
+        webglContextLossDisposable = undefined
+        webglAddon?.dispose()
+        webglAddon = undefined
+        container.dataset.renderer = 'fallback'
+      })
+      terminal.loadAddon(webglAddon)
+      container.dataset.renderer = 'webgl'
+    } catch {
+      webglContextLossDisposable?.dispose()
+      webglAddon?.dispose()
+      webglAddon = undefined
+      container.dataset.renderer = 'fallback'
+    }
     fitAddon.fit()
 
     const cursorStyleDisposable = agentId === 'codex'
@@ -229,6 +251,8 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       cursorStyleDisposable?.dispose()
       cursorBlinkOnDisposable?.dispose()
       cursorBlinkOffDisposable?.dispose()
+      webglContextLossDisposable?.dispose()
+      webglAddon?.dispose()
       disposeIme()
       inputDisposable.dispose()
       offData()
@@ -236,6 +260,7 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       offAttention()
       window.cliAgent.stopPty(id)
       terminal.dispose()
+      delete container.dataset.renderer
       terminalRef.current = null
       fitAddonRef.current = null
       ptyIdRef.current = ''
@@ -256,7 +281,7 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     if (!terminal) return
     terminal.options.fontFamily = fontFamily
     terminal.options.fontSize = fontSize
-    terminal.options.theme = { ...terminal.options.theme, foreground, cursor: cursorColor }
+    terminal.options.theme = { ...terminal.options.theme, background, foreground, cursor: cursorColor }
     requestAnimationFrame(() => {
       if (!terminalRef.current || !fitAddonRef.current) return
       fitAddonRef.current.fit()
@@ -265,7 +290,7 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
         window.cliAgent.resizePty(ptyIdRef.current, terminal.cols, terminal.rows)
       }
     })
-  }, [fontFamily, fontSize, foreground, cursorColor])
+  }, [fontFamily, fontSize, background, foreground, cursorColor])
 
   return <div className="terminal-container" ref={containerRef} />
 }

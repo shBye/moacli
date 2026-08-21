@@ -8,7 +8,7 @@ import { AttentionBridge } from './attention-bridge'
 
 const MAX_PTY_PROCESSES = 10
 const OUTPUT_BATCH_DELAY_MS = 8
-const MAX_OUTPUT_BATCH_LENGTH = 64 * 1024
+const MAX_OUTPUT_BATCH_LENGTH = 16 * 1024
 
 export interface PtyLifecycleExitEvent {
   request: StartPtyRequest
@@ -90,7 +90,7 @@ export class PtyManager {
         this.queueOutput(request.id, data)
       })
       instance.onExit(({ exitCode }) => {
-        this.flushOutput(request.id)
+        this.flushOutput(request.id, true)
         this.processes.delete(request.id)
         this.attentionBridge.release(request.id)
         const intentional = this.intentionalStops.delete(request.id)
@@ -134,22 +134,29 @@ export class PtyManager {
   private queueOutput(id: string, data: string): void {
     const output = (this.pendingOutput.get(id) ?? '') + data
     this.pendingOutput.set(id, output)
-    if (output.length >= MAX_OUTPUT_BATCH_LENGTH) {
-      this.flushOutput(id)
-      return
-    }
-    if (!this.outputTimer) {
-      this.outputTimer = setTimeout(() => {
-        this.outputTimer = undefined
-        for (const pendingId of [...this.pendingOutput.keys()]) this.flushOutput(pendingId)
-      }, OUTPUT_BATCH_DELAY_MS)
-    }
+    this.scheduleOutputFlush()
   }
 
-  private flushOutput(id: string): void {
-    const data = this.pendingOutput.get(id)
+  private scheduleOutputFlush(): void {
+    if (this.outputTimer || this.pendingOutput.size === 0) return
+    this.outputTimer = setTimeout(() => {
+      this.outputTimer = undefined
+      for (const pendingId of [...this.pendingOutput.keys()]) this.flushOutput(pendingId)
+      this.scheduleOutputFlush()
+    }, OUTPUT_BATCH_DELAY_MS)
+  }
+
+  private flushOutput(id: string, drain = false): void {
+    let data = this.pendingOutput.get(id)
     if (!data) return
-    this.pendingOutput.delete(id)
-    this.getWebContents()?.send('pty:data', { id, data })
+
+    do {
+      const chunk = data.slice(0, MAX_OUTPUT_BATCH_LENGTH)
+      data = data.slice(chunk.length)
+      this.getWebContents()?.send('pty:data', { id, data: chunk })
+    } while (drain && data.length > 0)
+
+    if (data.length > 0) this.pendingOutput.set(id, data)
+    else this.pendingOutput.delete(id)
   }
 }

@@ -292,8 +292,8 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .session-starting-bar::after { display: block; width: 28%; height: 100%; border-radius: 999px; background: var(--acc); content: ''; animation: session-loading 1.05s cubic-bezier(.4,0,.2,1) infinite; }
 .session-starting-label { font: 500 10px/1 'JetBrains Mono', monospace; }
 .terminal-container .xterm { height: 100%; padding: 0; }
-.terminal-container .xterm-viewport { scrollbar-color: rgba(255,255,255,.16) transparent; scrollbar-width: thin; background: transparent !important; }
-.terminal-container .xterm-screen { background: transparent; }
+.terminal-container .xterm-viewport { scrollbar-color: rgba(255,255,255,.16) transparent; scrollbar-width: thin; background: var(--terminal-bg, #090a0c) !important; }
+.terminal-container .xterm-screen { background: var(--terminal-bg, #090a0c); }
 .ime-composition { position: absolute; z-index: 20; display: none; overflow: visible; pointer-events: none; border-bottom: 1px solid var(--acc); color: #fff; background: rgba(43,51,55,.94); white-space: pre; }
 .ime-composition[data-visible="true"] { display: block; }
 

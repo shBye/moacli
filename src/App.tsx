@@ -1812,6 +1812,7 @@ export function App() {
                         resumeId={session.resumeId}
                         fontFamily={terminalFontFamily(appearance.terminalFont, appearance.localTerminalFont)}
                         fontSize={appearance.terminalFontSize}
+                        background={appearance.terminalBackground}
                         foreground={appearance.terminalForeground}
                         cursorColor={ACCENT_OPTIONS.find((option) => option.id === theme)?.color ?? ACCENT_OPTIONS[0].color}
                         activityStatusEnabled={profiles.some((profile) => (
