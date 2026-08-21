@@ -20,6 +20,7 @@ const execFileAsync = promisify(execFile)
 const MAX_SESSIONS_PER_AGENT = 30
 const SAMPLE_BYTES = 384 * 1024
 const JSONL_STREAM_BYTES = 256 * 1024
+const SEARCH_SYNC_DELAY_MS = 4000
 
 interface HistorySource {
   agentId: string
@@ -419,6 +420,8 @@ export class SessionHistoryService {
   private searchIndex: ConversationSearchIndex | null = null
   private searchSources: SearchIndexSource[] = []
   private searchSync: Promise<void> = Promise.resolve()
+  private pendingSearchSources: SearchIndexSource[] = []
+  private searchSyncTimer: ReturnType<typeof setTimeout> | undefined
   private searchState: SearchIndexState = {
     phase: 'idle',
     discoveredSources: 0,
@@ -431,6 +434,7 @@ export class SessionHistoryService {
   }
 
   initializeSearch(databasePath: string, onStateChanged: (state: SearchIndexState) => void): void {
+    this.cancelScheduledSearchSync()
     this.searchIndex?.close()
     try {
       this.searchIndex = new ConversationSearchIndex(databasePath, (state) => {
@@ -461,13 +465,33 @@ export class SessionHistoryService {
   async rebuildSearchIndex(accounts: AgentAccount[]): Promise<SearchIndexState> {
     if (!this.searchIndex) return this.searchState
     await this.list(accounts)
+    this.cancelScheduledSearchSync()
     await this.searchSync
     return this.searchIndex.rebuild(this.searchSources)
   }
 
   close(): void {
+    this.cancelScheduledSearchSync()
     this.searchIndex?.close()
     this.searchIndex = null
+  }
+
+  private scheduleSearchSync(sources: SearchIndexSource[]): void {
+    this.pendingSearchSources = sources
+    clearTimeout(this.searchSyncTimer)
+    this.searchSyncTimer = setTimeout(() => {
+      this.searchSyncTimer = undefined
+      const pending = this.pendingSearchSources
+      this.pendingSearchSources = []
+      if (!this.searchIndex) return
+      this.searchSync = this.searchIndex.synchronize(pending)
+    }, SEARCH_SYNC_DELAY_MS)
+  }
+
+  private cancelScheduledSearchSync(): void {
+    clearTimeout(this.searchSyncTimer)
+    this.searchSyncTimer = undefined
+    this.pendingSearchSources = []
   }
 
   async detectAccounts(): Promise<AgentAccount[]> {
@@ -581,7 +605,7 @@ export class SessionHistoryService {
           : () => iterateCodexConversation(source.path!),
       }]
     })
-    if (this.searchIndex) this.searchSync = this.searchIndex.synchronize(this.searchSources)
+    if (this.searchIndex) this.scheduleSearchSync(this.searchSources)
     return [...this.sessions.values()].sort((a, b) => b.updatedAt - a.updatedAt)
   }
 

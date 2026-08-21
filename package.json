@@ -1,7 +1,7 @@
 {
   "name": "moacli",
   "productName": "MoaCLI",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "A desktop workspace that brings CLI coding agents, accounts, sessions, and conversations together",
   "author": "shBye",
@@ -12,7 +12,7 @@
   },
   "main": "./dist/main/main.js",
   "scripts": {
-    "postinstall": "electron-rebuild -f --only better-sqlite3",
+    "postinstall": "node scripts/patch-xterm-ime.cjs && electron-rebuild -f --only better-sqlite3",
     "rebuild:native": "electron-rebuild -f --only better-sqlite3",
     "dev": "electron-vite dev",
     "start": "electron .",

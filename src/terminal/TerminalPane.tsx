@@ -3,6 +3,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import { attachImeOverlay } from './ime-overlay'
+import { cancelTerminalFocus, requestTerminalFocus } from './ime-focus'
 import type { AgentAccount } from '../../electron/contracts'
 
 interface TerminalPaneProps {
@@ -110,7 +111,7 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       ? terminal.parser.registerCsiHandler({ prefix: '?', final: 'l' }, (params) => params.length === 1 && params[0] === 12)
       : undefined
 
-    const disposeIme = attachImeOverlay(terminal)
+    const disposeIme = attachImeOverlay(terminal, id)
     let lastActivityReport = 0
     const reportActivity = (): void => {
       const now = Date.now()
@@ -249,7 +250,9 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       }
       if (receivedData) reportRunning()
       else fallbackReadyTimer = setTimeout(reportRunning, 1800)
-      if (activeRef.current) terminal.focus()
+      if (activeRef.current) requestTerminalFocus(id, () => {
+        if (!disposed) terminal.focus()
+      })
     }).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error)
       terminal.writeln(`\x1b[31mUnable to start session: ${message}\x1b[0m`)
@@ -270,6 +273,7 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       webglContextLossDisposable?.dispose()
       webglAddon?.dispose()
       disposeIme()
+      cancelTerminalFocus(id)
       inputDisposable.dispose()
       offData()
       offExit()
@@ -289,20 +293,39 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     if (!terminal) return
     terminal.options.cursorBlink = active
     terminal.options.scrollback = active ? ACTIVE_SCROLLBACK : BACKGROUND_SCROLLBACK
-    if (active) terminal.focus()
+    if (!active) return
+
+    let cancelFocus = (): void => undefined
+    const frame = requestAnimationFrame(() => {
+      const currentTerminal = terminalRef.current
+      const currentFitAddon = fitAddonRef.current
+      if (!currentTerminal || !currentFitAddon) return
+      currentFitAddon.fit()
+      currentTerminal.refresh(0, Math.max(0, currentTerminal.rows - 1))
+      if (ptyReadyRef.current && ptyIdRef.current) {
+        window.cliAgent.resizePty(ptyIdRef.current, currentTerminal.cols, currentTerminal.rows)
+      }
+      cancelFocus = requestTerminalFocus(ptyIdRef.current, () => terminalRef.current?.focus())
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+      cancelFocus()
+    }
   }, [active])
 
   useEffect(() => {
     if (!active || !revealLatestAt) return undefined
+    let cancelFocus = (): void => undefined
     const frame = requestAnimationFrame(() => {
       const terminal = terminalRef.current
       if (!terminal) return
       terminal.scrollToBottom()
-      terminal.focus()
+      cancelFocus = requestTerminalFocus(ptyIdRef.current, () => terminalRef.current?.focus())
     })
     const timer = window.setTimeout(() => terminalRef.current?.scrollToBottom(), 80)
     return () => {
       cancelAnimationFrame(frame)
+      cancelFocus()
       window.clearTimeout(timer)
     }
   }, [active, revealLatestAt])

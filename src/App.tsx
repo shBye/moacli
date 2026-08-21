@@ -506,6 +506,7 @@ export function App() {
   const [folderAssignments, setFolderAssignments] = useState<Record<string, string>>(savedFolderAssignments)
   const [folderOrders, setFolderOrders] = useState<Record<string, string[]>>(savedFolderOrders)
   const [selectedFolderId, setSelectedFolderId] = useState('prototype')
+  const [newSessionFolderId, setNewSessionFolderId] = useState('unsorted')
   const [newFolderName, setNewFolderName] = useState<string | null>(null)
   const [draggedSidebarItem, setDraggedSidebarItem] = useState<DraggedSidebarItem | null>(null)
   const [dragOverFolderId, setDragOverFolderId] = useState('')
@@ -889,7 +890,7 @@ export function App() {
       account: selectedAccount,
       purpose: 'session',
       resumeId: '',
-      folderId: selectedFolderId || 'unsorted',
+      folderId: newSessionFolderId || 'unsorted',
       historyKey: '',
       historyKeysAtStart: history.map((item) => item.key),
       conversation: null,
@@ -903,6 +904,7 @@ export function App() {
       revealLatestAt: 0,
     })
     setTitle('')
+    setNewSessionFolderId('unsorted')
   }
 
   useEffect(() => {
@@ -944,7 +946,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeSession, agentId, cwd, title, selectedAccount, selectedFolderId, historyQuery, searchOpen, searchResults])
+  }, [activeSession, agentId, cwd, title, selectedAccount, newSessionFolderId, historyQuery, searchOpen, searchResults])
 
   const toggleSection = (section: SectionKey): void => {
     setSectionOpen((current) => {
@@ -1327,7 +1329,7 @@ export function App() {
   }
 
   const resumeConversation = (historySession: HistorySession): void => {
-    const targetFolderId = selectedFolderId || folderAssignments[historySession.key] || 'unsorted'
+    const targetFolderId = folderAssignments[historySession.key] || 'unsorted'
     moveSidebarItem({ kind: 'history', key: historySession.key }, targetFolderId)
     const existing = sessions.find((session) => session.historyKey === historySession.key)
     if (existing) {
@@ -1561,7 +1563,10 @@ export function App() {
             actions={(
               <span className="heading-actions">
                 <button className="mini-icon-button" title="New folder" onClick={() => setNewFolderName('')}><FolderPlus size={13} /></button>
-                <button className="mini-icon-button" title="New session" onClick={() => setActiveSessionId('')}><Plus size={14} /></button>
+                <button className="mini-icon-button" title="New session" onClick={() => {
+                  setNewSessionFolderId('unsorted')
+                  setActiveSessionId('')
+                }}><Plus size={14} /></button>
               </span>
             )}
           />
@@ -1848,6 +1853,16 @@ export function App() {
                       <span>{cwd}</span>
                       <strong>Change</strong>
                     </button>
+                    <label className="launcher-field folder-field">
+                      <Folder size={15} />
+                      <span>Folder</span>
+                      <select value={newSessionFolderId} onChange={(event) => setNewSessionFolderId(event.target.value)}>
+                        <option value="unsorted">Unsorted</option>
+                        {folders.filter((folder) => folder.id !== 'unsorted').map((folder) => (
+                          <option key={folder.id} value={folder.id}>{folder.name}</option>
+                        ))}
+                      </select>
+                    </label>
                     <label className="launcher-field account-field">
                       <span className="account-color" style={{ '--agent': selectedProfile?.color ?? '#7e878d' } as CSSProperties} />
                       {agentId === 'powershell' ? (
@@ -1858,7 +1873,6 @@ export function App() {
                           {!agentAccounts.length && <option value="">Account setup required</option>}
                         </select>
                       )}
-                      <small>Save in {folders.find((folder) => folder.id === selectedFolderId)?.name ?? 'Unsorted'}</small>
                     </label>
                   </div>
                   <div className="start-row">

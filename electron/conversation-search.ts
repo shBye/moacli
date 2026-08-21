@@ -236,7 +236,9 @@ export class ConversationSearchIndex {
         failedSources += 1
       }
       processedSources += 1
-      this.updateState({ processedSources, failedSources })
+      if (processedSources === sources.length || processedSources % 5 === 0) {
+        this.updateState({ processedSources, failedSources })
+      }
       await yieldToEventLoop()
     }
 

@@ -1,6 +1,7 @@
 import type { Terminal } from '@xterm/xterm'
+import { beginTerminalComposition, endTerminalComposition } from './ime-focus'
 
-export function attachImeOverlay(terminal: Terminal): () => void {
+export function attachImeOverlay(terminal: Terminal, terminalId: string): () => void {
   const textarea = terminal.textarea
   const screen = terminal.element?.querySelector<HTMLElement>('.xterm-screen')
   if (!textarea || !screen) return () => undefined
@@ -36,6 +37,7 @@ export function attachImeOverlay(terminal: Terminal): () => void {
 
   const start = (): void => {
     composing = true
+    beginTerminalComposition(terminalId)
     overlay.textContent = ''
     overlay.dataset.visible = 'true'
     position()
@@ -46,6 +48,7 @@ export function attachImeOverlay(terminal: Terminal): () => void {
   }
   const end = (): void => {
     composing = false
+    endTerminalComposition(terminalId)
     overlay.textContent = ''
     delete overlay.dataset.visible
   }
@@ -56,6 +59,7 @@ export function attachImeOverlay(terminal: Terminal): () => void {
   const renderDisposable = terminal.onRender(position)
 
   return () => {
+    if (composing) endTerminalComposition(terminalId)
     textarea.removeEventListener('compositionstart', start)
     textarea.removeEventListener('compositionupdate', update)
     textarea.removeEventListener('compositionend', end)

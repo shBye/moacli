@@ -1,6 +1,34 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { CliAgentApi, NotificationActivation, NotificationSnapshot, PtyAttentionEvent, PtyDataEvent, PtyExitEvent, SearchIndexState, StartPtyRequest } from './contracts'
 
+type PtyDataCallback = (data: string) => void
+type PtyExitCallback = (exitCode: number) => void
+type PtyAttentionCallback = (reason: string) => void
+
+const ptyDataCallbacks = new Map<string, Set<PtyDataCallback>>()
+const ptyExitCallbacks = new Map<string, Set<PtyExitCallback>>()
+const ptyAttentionCallbacks = new Map<string, Set<PtyAttentionCallback>>()
+
+function subscribe<T>(listeners: Map<string, Set<T>>, id: string, callback: T): () => void {
+  const callbacks = listeners.get(id) ?? new Set<T>()
+  callbacks.add(callback)
+  listeners.set(id, callbacks)
+  return () => {
+    callbacks.delete(callback)
+    if (!callbacks.size) listeners.delete(id)
+  }
+}
+
+ipcRenderer.on('pty:data', (_event, payload: PtyDataEvent) => {
+  for (const callback of ptyDataCallbacks.get(payload.id) ?? []) callback(payload.data)
+})
+ipcRenderer.on('pty:exit', (_event, payload: PtyExitEvent) => {
+  for (const callback of ptyExitCallbacks.get(payload.id) ?? []) callback(payload.exitCode)
+})
+ipcRenderer.on('pty:attention', (_event, payload: PtyAttentionEvent) => {
+  for (const callback of ptyAttentionCallbacks.get(payload.id) ?? []) callback(payload.reason)
+})
+
 const api: CliAgentApi = {
   getProfiles: () => ipcRenderer.invoke('profiles:list'),
   detectAccounts: () => ipcRenderer.invoke('accounts:detect'),
@@ -21,27 +49,9 @@ const api: CliAgentApi = {
   writePty: (id, data) => ipcRenderer.send('pty:write', { id, data }),
   resizePty: (id, cols, rows) => ipcRenderer.send('pty:resize', { id, cols, rows }),
   stopPty: (id) => ipcRenderer.send('pty:stop', { id }),
-  onPtyData: (id, callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, payload: PtyDataEvent) => {
-      if (payload.id === id) callback(payload.data)
-    }
-    ipcRenderer.on('pty:data', listener)
-    return () => ipcRenderer.removeListener('pty:data', listener)
-  },
-  onPtyExit: (id, callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, payload: PtyExitEvent) => {
-      if (payload.id === id) callback(payload.exitCode)
-    }
-    ipcRenderer.on('pty:exit', listener)
-    return () => ipcRenderer.removeListener('pty:exit', listener)
-  },
-  onPtyAttention: (id, callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, payload: PtyAttentionEvent) => {
-      if (payload.id === id) callback(payload.reason)
-    }
-    ipcRenderer.on('pty:attention', listener)
-    return () => ipcRenderer.removeListener('pty:attention', listener)
-  },
+  onPtyData: (id, callback) => subscribe(ptyDataCallbacks, id, callback),
+  onPtyExit: (id, callback) => subscribe(ptyExitCallbacks, id, callback),
+  onPtyAttention: (id, callback) => subscribe(ptyAttentionCallbacks, id, callback),
   onHistoryChanged: (callback) => {
     const listener = (): void => callback()
     ipcRenderer.on('history:changed', listener)
