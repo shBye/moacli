@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { Bot, UserRound } from 'lucide-react'
 import type { ConversationHistory } from '../../electron/contracts'
 
@@ -9,7 +9,7 @@ interface ConversationViewProps {
   highlightMessageId: string
 }
 
-export function ConversationView({ conversation, loading, error, highlightMessageId }: ConversationViewProps) {
+function ConversationViewComponent({ conversation, loading, error, highlightMessageId }: ConversationViewProps) {
   const messageRefs = useRef(new Map<string, HTMLElement>())
 
   useEffect(() => {
@@ -53,3 +53,5 @@ export function ConversationView({ conversation, loading, error, highlightMessag
     </section>
   )
 }
+
+export const ConversationView = memo(ConversationViewComponent)

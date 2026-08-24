@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
@@ -30,7 +30,7 @@ const TERMINAL_SCROLLBACK = 10000
 const MIN_STARTING_INDICATOR_MS = 650
 const CODEX_MOUSE_TRACKING_MODES = new Set([9, 1000, 1002, 1003, 1005, 1006, 1015, 1016])
 
-export function TerminalPane({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, revealLatestAt, fontFamily, fontSize, background, foreground, cursorColor, activityStatusEnabled, onActivity, onStateChange }: TerminalPaneProps) {
+function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, revealLatestAt, fontFamily, fontSize, background, foreground, cursorColor, activityStatusEnabled, onActivity, onStateChange }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -38,9 +38,11 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
   const ptyReadyRef = useRef(false)
   const activeRef = useRef(active)
   const activityRef = useRef(onActivity)
+  const stateChangeRef = useRef(onStateChange)
   const activityStatusEnabledRef = useRef(activityStatusEnabled)
   activeRef.current = active
   activityRef.current = onActivity
+  stateChangeRef.current = onStateChange
   activityStatusEnabledRef.current = activityStatusEnabled
 
   useEffect(() => {
@@ -159,12 +161,12 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       }
       runningReported = true
       clearTimeout(fallbackReadyTimer)
-      if (interactionState === 'running') onStateChange('running')
+      if (interactionState === 'running') stateChangeRef.current('running')
     }
     const reportInteractionState = (state: typeof interactionState, detail?: string): void => {
       if (!activityStatusEnabledRef.current || purpose !== 'session' || disposed) return
       interactionState = state
-      onStateChange(state, detail)
+      stateChangeRef.current(state, detail)
     }
     const offData = window.cliAgent.onPtyData(id, (data) => {
       reportActivity()
@@ -177,7 +179,7 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     })
     const offExit = window.cliAgent.onPtyExit(id, (exitCode) => {
       terminal.write(`\r\n\x1b[90m[process exited: ${exitCode}]\x1b[0m\r\n`)
-      onStateChange('stopped', `exit ${exitCode}`)
+      stateChangeRef.current('stopped', `exit ${exitCode}`)
     })
     const offAttention = window.cliAgent.onPtyAttention(id, (reason) => {
       reportInteractionState('needs_attention', reason)
@@ -261,7 +263,7 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     const resizeObserver = new ResizeObserver(resize)
     resizeObserver.observe(container)
 
-    onStateChange('starting')
+    stateChangeRef.current('starting')
     void window.cliAgent.startPty({
       id,
       sessionId,
@@ -288,7 +290,7 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     }).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error)
       terminal.writeln(`\x1b[31mUnable to start session: ${message}\x1b[0m`)
-      onStateChange('stopped', message)
+      stateChangeRef.current('stopped', message)
     })
 
     return () => {
@@ -380,3 +382,23 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
 
   return <div className="terminal-container" ref={containerRef} />
 }
+
+function terminalPanePropsEqual(previous: TerminalPaneProps, next: TerminalPaneProps): boolean {
+  return previous.active === next.active
+    && previous.sessionId === next.sessionId
+    && previous.agentId === next.agentId
+    && previous.cwd === next.cwd
+    && previous.title === next.title
+    && previous.account?.id === next.account?.id
+    && previous.purpose === next.purpose
+    && previous.resumeId === next.resumeId
+    && previous.revealLatestAt === next.revealLatestAt
+    && previous.fontFamily === next.fontFamily
+    && previous.fontSize === next.fontSize
+    && previous.background === next.background
+    && previous.foreground === next.foreground
+    && previous.cursorColor === next.cursorColor
+    && previous.activityStatusEnabled === next.activityStatusEnabled
+}
+
+export const TerminalPane = memo(TerminalPaneComponent, terminalPanePropsEqual)

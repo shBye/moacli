@@ -106,6 +106,16 @@ interface FolderDropIndicator {
   edge: 'before' | 'after'
 }
 
+type FolderEntryView =
+  | { kind: 'session'; orderKey: string; session: RuntimeSession }
+  | { kind: 'history'; orderKey: string; historySession: HistorySession }
+
+interface FolderView {
+  entries: FolderEntryView[]
+  sessionCount: number
+  historyCount: number
+}
+
 interface RuntimeSession {
   id: string
   agentId: string
@@ -147,6 +157,7 @@ const FOLDERS_STORAGE_KEY = 'cli-agent-manager.folders'
 const FOLDER_ASSIGNMENTS_STORAGE_KEY = 'cli-agent-manager.folder-assignments'
 const FOLDER_ORDERS_STORAGE_KEY = 'cli-agent-manager.folder-orders'
 const FOLDER_PANE_HEIGHT_STORAGE_KEY = 'cli-agent-manager.folder-pane-height'
+const MAX_RUNTIME_SESSIONS_STORAGE_KEY = 'cli-agent-manager.max-runtime-sessions'
 const AGENT_ICONS_STORAGE_KEY = 'cli-agent-manager.agent-icons'
 const AGENT_COLOR_SWATCHES = [
   '#30363D', '#56616B', '#8B949E', '#D8DEE4',
@@ -155,7 +166,9 @@ const AGENT_COLOR_SWATCHES = [
   '#3276A8', '#4A68B3', '#6454B2', '#8656A7',
   '#A34F87', '#9B5A45', '#3E6F73', '#5E6673',
 ]
-const MAX_RUNTIME_SESSIONS = 10
+const DEFAULT_MAX_RUNTIME_SESSIONS = 10
+const MIN_RUNTIME_SESSIONS = 1
+const MAX_RUNTIME_SESSIONS_LIMIT = 30
 const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000
 const SESSION_SWEEP_INTERVAL_MS = 60 * 1000
 const DEFAULT_SIDEBAR_WIDTH = 288
@@ -318,6 +331,14 @@ const LazyTerminalPane = lazy(() => import('./terminal/TerminalPane').then((modu
 
 function DynamicLucideIcon({ name, size }: { name: LucideIconName; size?: number }) {
   return <Suspense fallback={<span className="dynamic-icon-placeholder" />}><LazyDynamicLucideIcon name={name} size={size} /></Suspense>
+}
+
+function savedMaxRuntimeSessions(): number {
+  const raw = localStorage.getItem(MAX_RUNTIME_SESSIONS_STORAGE_KEY)
+  if (raw === null) return DEFAULT_MAX_RUNTIME_SESSIONS
+  const stored = Number(raw)
+  if (!Number.isFinite(stored)) return DEFAULT_MAX_RUNTIME_SESSIONS
+  return Math.min(MAX_RUNTIME_SESSIONS_LIMIT, Math.max(MIN_RUNTIME_SESSIONS, Math.round(stored)))
 }
 
 function contrastColor(background: string): string {
@@ -513,6 +534,7 @@ export function App() {
   const [sidebarWidth, setSidebarWidth] = useState(savedSidebarWidth)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true')
   const [folderPaneHeight, setFolderPaneHeight] = useState(savedFolderPaneHeight)
+  const [maxRuntimeSessions, setMaxRuntimeSessions] = useState(savedMaxRuntimeSessions)
   const [theme, setTheme] = useState<AccentTheme>(savedTheme)
   const [appearance, setAppearance] = useState<AppearancePreferences>(loadAppearance)
   const [localFonts, setLocalFonts] = useState<string[]>([])
@@ -528,6 +550,7 @@ export function App() {
   const sessionActivityTimesRef = useRef(new Map<string, number>())
   const appBodyRef = useRef<HTMLDivElement>(null)
   const folderTreeRef = useRef<HTMLElement>(null)
+  const folderSessionRefs = useRef(new Map<string, HTMLDivElement>())
   const sidebarWidthRef = useRef(sidebarWidth)
   const folderPaneHeightRef = useRef(folderPaneHeight)
   const profileRefreshInFlight = useRef(false)
@@ -809,20 +832,98 @@ export function App() {
     () => profiles.find((profile) => profile.id === agentId),
     [profiles, agentId],
   )
-  const agentAccounts = accounts.filter((account) => account.agentId === agentId)
-  const selectedAccount = accounts.find((account) => account.id === accountId)
-  const activeSession = sessions.find((session) => session.id === activeSessionId)
+  const profilesById = useMemo(
+    () => new Map(profiles.map((profile) => [profile.id, profile])),
+    [profiles],
+  )
+  const historyByKey = useMemo(
+    () => new Map(history.map((session) => [session.key, session])),
+    [history],
+  )
+  const notificationsBySessionId = useMemo(
+    () => new Map(notificationSnapshot.notifications.map((notification) => [notification.sessionId, notification])),
+    [notificationSnapshot.notifications],
+  )
+  const folderViews = useMemo(() => {
+    const sessionsByFolder = new Map<string, RuntimeSession[]>()
+    const historyKeysByFolder = new Map<string, Set<string>>()
+    for (const session of sessions) {
+      const folderId = session.folderId || 'unsorted'
+      const groupedSessions = sessionsByFolder.get(folderId) ?? []
+      groupedSessions.push(session)
+      sessionsByFolder.set(folderId, groupedSessions)
+      if (session.historyKey) {
+        const keys = historyKeysByFolder.get(folderId) ?? new Set<string>()
+        keys.add(session.historyKey)
+        historyKeysByFolder.set(folderId, keys)
+      }
+    }
+
+    const assignedHistoryByFolder = new Map<string, HistorySession[]>()
+    for (const historySession of history) {
+      const folderId = folderAssignments[historySession.key]
+      if (!folderId || historyKeysByFolder.get(folderId)?.has(historySession.key)) continue
+      const groupedHistory = assignedHistoryByFolder.get(folderId) ?? []
+      groupedHistory.push(historySession)
+      assignedHistoryByFolder.set(folderId, groupedHistory)
+    }
+
+    return new Map(folders.map((folder) => {
+      const folderSessions = sessionsByFolder.get(folder.id) ?? []
+      const assignedHistory = assignedHistoryByFolder.get(folder.id) ?? []
+      const folderOrder = new Map((folderOrders[folder.id] ?? []).map((key, index) => [key, index]))
+      const entries: FolderEntryView[] = [
+        ...folderSessions.map((session) => ({
+          kind: 'session' as const,
+          orderKey: session.historyKey ? `history:${session.historyKey}` : `session:${session.id}`,
+          session,
+        })),
+        ...assignedHistory.map((historySession) => ({
+          kind: 'history' as const,
+          orderKey: `history:${historySession.key}`,
+          historySession,
+        })),
+      ]
+      entries.sort((left, right) => (
+        (folderOrder.get(left.orderKey) ?? Number.MAX_SAFE_INTEGER)
+        - (folderOrder.get(right.orderKey) ?? Number.MAX_SAFE_INTEGER)
+      ))
+      return [folder.id, {
+        entries,
+        sessionCount: folderSessions.length,
+        historyCount: assignedHistory.length,
+      }]
+    }))
+  }, [folderAssignments, folderOrders, folders, history, sessions])
+  const agentAccounts = useMemo(
+    () => accounts.filter((account) => account.agentId === agentId),
+    [accounts, agentId],
+  )
+  const selectedAccount = useMemo(
+    () => accounts.find((account) => account.id === accountId),
+    [accounts, accountId],
+  )
+  const activeSession = useMemo(
+    () => sessions.find((session) => session.id === activeSessionId),
+    [sessions, activeSessionId],
+  )
   const activeSessionMuted = notificationSnapshot.mutedSessionIds.includes(activeSessionId)
-  const activeProfile = profiles.find((profile) => profile.id === activeSession?.agentId)
+  const activeProfile = activeSession ? profilesById.get(activeSession.agentId) : undefined
   const filteredHistory = history
-  const themeStyle = {
-    '--acc': ACCENT_OPTIONS.find((option) => option.id === theme)?.color ?? ACCENT_OPTIONS[0].color,
-    '--acc-ink': ACCENT_OPTIONS.find((option) => option.id === theme)?.ink ?? ACCENT_OPTIONS[0].ink,
+  const accentOption = ACCENT_OPTIONS.find((option) => option.id === theme) ?? ACCENT_OPTIONS[0]
+  const terminalFont = terminalFontFamily(appearance.terminalFont, appearance.localTerminalFont)
+  const statusAwareAgents = useMemo(
+    () => new Set(profiles.filter((profile) => profile.attention.status === 'supported').map((profile) => profile.id)),
+    [profiles],
+  )
+  const themeStyle = useMemo(() => ({
+    '--acc': accentOption.color,
+    '--acc-ink': accentOption.ink,
     '--app-bg': appearance.appBackground,
     '--app-fg': appearance.appForeground,
     '--terminal-bg': appearance.terminalBackground,
     '--ui-font': uiFontFamily(appearance.uiFont, appearance.localUiFont),
-  } as CSSProperties
+  }) as CSSProperties, [accentOption, appearance])
 
   useEffect(() => {
     window.cliAgent.updateNotificationContext({
@@ -839,23 +940,48 @@ export function App() {
     sessionActivityTimesRef.current.set(id, Date.now())
   }
 
+  const revealSessionFolder = (session: RuntimeSession): void => {
+    const folderId = folders.some((folder) => folder.id === session.folderId) ? session.folderId : 'unsorted'
+    setSectionOpen((current) => {
+      if (current.folders) return current
+      const next = { ...current, folders: true }
+      localStorage.setItem(SECTION_STORAGE_KEY, JSON.stringify(next))
+      return next
+    })
+    setSelectedFolderId(folderId)
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        folderSessionRefs.current.get(session.id)?.scrollIntoView({ block: 'nearest' })
+      })
+    })
+  }
+
   const addRuntimeSession = (session: Omit<RuntimeSession, 'id' | 'createdAt' | 'lastViewedAt' | 'lastActivityAt'>): string => {
     const id = crypto.randomUUID()
     const now = Date.now()
     sessionActivityTimesRef.current.set(id, now)
     const nextSession: RuntimeSession = { ...session, id, createdAt: now, lastViewedAt: now, lastActivityAt: now }
     setSessions((current) => {
-      if (current.length < MAX_RUNTIME_SESSIONS) return [...current, nextSession]
-      const candidates = current.filter((item) => item.id !== activeSessionId)
-      const victim = (candidates.length ? candidates : current)
-        .reduce((oldest, item) => item.lastViewedAt < oldest.lastViewedAt ? item : oldest)
-      return [...current.filter((item) => item.id !== victim.id), nextSession]
+      const overflow = current.length - maxRuntimeSessions + 1
+      if (overflow <= 0) return [...current, nextSession]
+      const victims = [...current]
+        .sort((left, right) => {
+          if (left.id === activeSessionId) return 1
+          if (right.id === activeSessionId) return -1
+          return left.lastViewedAt - right.lastViewedAt
+        })
+        .slice(0, overflow)
+      const victimIds = new Set(victims.map((item) => item.id))
+      for (const victim of victims) sessionActivityTimesRef.current.delete(victim.id)
+      return [...current.filter((item) => !victimIds.has(item.id)), nextSession]
     })
     setActiveSessionId(id)
     return id
   }
 
-  const activateSession = (id: string): void => {
+  const activateSession = (id: string, revealFolder = false): void => {
+    const targetSession = sessionsRef.current.find((session) => session.id === id)
+    if (revealFolder && targetSession) revealSessionFolder(targetSession)
     const now = Date.now()
     setSessions((current) => current.map((session) => {
       if (session.id === id) {
@@ -1100,6 +1226,12 @@ export function App() {
       saveAppearance(next)
       return next
     })
+  }
+
+  const changeMaxRuntimeSessions = (value: number): void => {
+    const next = Math.min(MAX_RUNTIME_SESSIONS_LIMIT, Math.max(MIN_RUNTIME_SESSIONS, Math.round(value)))
+    setMaxRuntimeSessions(next)
+    localStorage.setItem(MAX_RUNTIME_SESSIONS_STORAGE_KEY, String(next))
   }
 
   const discoverLocalFonts = (): void => {
@@ -1630,27 +1762,8 @@ export function App() {
           {sectionOpen.folders && (
             <nav className="folder-tree" ref={folderTreeRef} aria-label="Folders" style={{ height: `${folderPaneHeightRef.current}px` }}>
               {folders.map((folder) => {
-                const folderSessions = sessions.filter((session) => session.folderId === folder.id)
-                const sessionHistoryKeys = new Set(folderSessions.map((session) => session.historyKey).filter(Boolean))
-                const assignedHistory = history.filter((item) => (
-                  folderAssignments[item.key] === folder.id && !sessionHistoryKeys.has(item.key)
-                ))
-                const folderOrder = new Map((folderOrders[folder.id] ?? []).map((key, index) => [key, index]))
-                const folderEntries = [
-                  ...folderSessions.map((session) => ({
-                    kind: 'session' as const,
-                    orderKey: session.historyKey ? `history:${session.historyKey}` : `session:${session.id}`,
-                    session,
-                  })),
-                  ...assignedHistory.map((historySession) => ({
-                    kind: 'history' as const,
-                    orderKey: `history:${historySession.key}`,
-                    historySession,
-                  })),
-                ].sort((left, right) => (
-                  (folderOrder.get(left.orderKey) ?? Number.MAX_SAFE_INTEGER)
-                  - (folderOrder.get(right.orderKey) ?? Number.MAX_SAFE_INTEGER)
-                ))
+                const folderView = folderViews.get(folder.id) ?? { entries: [], sessionCount: 0, historyCount: 0 }
+                const folderEntryCount = folderView.sessionCount + folderView.historyCount
                 return (
                   <div
                     className={`folder-node ${dragOverFolderId === folder.id ? 'drop-target' : ''}`}
@@ -1677,23 +1790,27 @@ export function App() {
                     <button className={`tree-row ${selectedFolderId === folder.id ? 'active' : ''}`} aria-expanded={selectedFolderId === folder.id} onClick={() => setSelectedFolderId((current) => current === folder.id ? '' : folder.id)}>
                       {selectedFolderId === folder.id ? <FolderOpen size={15} /> : <Folder size={15} />}
                       <span>{folder.name}</span>
-                      {(folderSessions.length + assignedHistory.length) > 0 && <small className="folder-count">{folderSessions.length + assignedHistory.length}</small>}
+                      {folderEntryCount > 0 && <small className="folder-count">{folderEntryCount}</small>}
                     </button>
                     <div className={`folder-contents ${selectedFolderId === folder.id ? 'open' : ''}`}>
                       <div className="folder-contents-inner">
-                    {folderEntries.map((entry) => {
+                    {folderView.entries.map((entry) => {
                       const dropClass = folderDropIndicator?.folderId === folder.id && folderDropIndicator.orderKey === entry.orderKey
                         ? `drop-${folderDropIndicator.edge}`
                         : ''
                       if (entry.kind === 'session') {
                         const { session } = entry
-                        const profile = profiles.find((item) => item.id === session.agentId)
-                        const sessionNotification = notificationSnapshot.notifications.find((notification) => notification.sessionId === session.id)
+                        const profile = profilesById.get(session.agentId)
+                        const sessionNotification = notificationsBySessionId.get(session.id)
                         return (
                           <div
                             className={`session-row folder-entry ${activeSessionId === session.id ? 'active' : ''} ${draggedSidebarItem?.kind === 'session' && draggedSidebarItem.key === session.id ? 'dragging' : ''} ${removingFolderEntry === `session:${session.id}` ? 'removing' : ''} ${dropClass}`}
                             draggable
                             key={entry.orderKey}
+                            ref={(element) => {
+                              if (element) folderSessionRefs.current.set(session.id, element)
+                              else folderSessionRefs.current.delete(session.id)
+                            }}
                             onDragStart={(event) => startSidebarDrag(event, { kind: 'session', key: session.id })}
                             onDragEnd={finishSidebarDrag}
                             onDragOver={(event) => dragOverFolderEntry(event, folder.id, entry.orderKey)}
@@ -1720,7 +1837,7 @@ export function App() {
                       }
 
                       const { historySession } = entry
-                      const profile = profiles.find((item) => item.id === historySession.agentId)
+                      const profile = profilesById.get(historySession.agentId)
                       return (
                         <div
                           className={`session-row folder-entry history-entry ${draggedSidebarItem?.kind === 'history' && draggedSidebarItem.key === historySession.key ? 'dragging' : ''} ${removingFolderEntry === `history:${historySession.key}` ? 'removing' : ''} ${dropClass}`}
@@ -1742,7 +1859,7 @@ export function App() {
                         </div>
                       )
                     })}
-                    {!folderSessions.length && !assignedHistory.length && <p className="folder-empty">No conversations</p>}
+                    {!folderEntryCount && <p className="folder-empty">No conversations</p>}
                       </div>
                     </div>
                   </div>
@@ -1845,9 +1962,9 @@ export function App() {
               <div className="session-chrome">
                 <nav className="session-tabs scroll" role="tablist" aria-label="Open sessions">
                   {sessions.map((session) => {
-                    const profile = profiles.find((item) => item.id === session.agentId)
-                    const sessionNotification = notificationSnapshot.notifications.find((notification) => notification.sessionId === session.id)
-                    const historyResumeId = history.find((item) => item.key === session.historyKey)?.resumeId ?? ''
+                    const profile = profilesById.get(session.agentId)
+                    const sessionNotification = notificationsBySessionId.get(session.id)
+                    const historyResumeId = historyByKey.get(session.historyKey)?.resumeId ?? ''
                     const canRestart = session.state !== 'starting' && (
                       session.purpose !== 'session' || session.agentId === 'powershell' || Boolean(session.resumeId || historyResumeId)
                     )
@@ -1863,7 +1980,7 @@ export function App() {
                           role="tab"
                           aria-selected={activeSessionId === session.id}
                           title={`${session.title}\n${session.cwd}`}
-                          onClick={() => activateSession(session.id)}
+                          onClick={() => activateSession(session.id, true)}
                         >
                           <AgentAvatar agentId={session.agentId} className="tinted" color={profile?.color ?? '#7e878d'} preference={resolvedAgentIcon(session.agentId)} />
                           <span className={`state-dot ${session.state}`} />
@@ -2002,14 +2119,12 @@ export function App() {
                           purpose={session.purpose}
                           resumeId={session.resumeId}
                           revealLatestAt={session.revealLatestAt}
-                          fontFamily={terminalFontFamily(appearance.terminalFont, appearance.localTerminalFont)}
+                          fontFamily={terminalFont}
                           fontSize={appearance.terminalFontSize}
                           background={appearance.terminalBackground}
                           foreground={appearance.terminalForeground}
-                          cursorColor={ACCENT_OPTIONS.find((option) => option.id === theme)?.color ?? ACCENT_OPTIONS[0].color}
-                          activityStatusEnabled={profiles.some((profile) => (
-                            profile.id === session.agentId && profile.attention.status === 'supported'
-                          ))}
+                          cursorColor={accentOption.color}
+                          activityStatusEnabled={statusAwareAgents.has(session.agentId)}
                           onActivity={() => recordSessionActivity(session.id)}
                           onStateChange={(state, detail) => updateSession(session.id, { state, statusDetail: detail ?? '' })}
                         />
@@ -2040,7 +2155,7 @@ export function App() {
           <footer className="status-bar">
             <span className={`status-pill ${activeSession?.state ?? 'idle'}`}><span className="status-dot" />{stateLabel(activeSession?.state ?? 'idle')}</span>
             <span>{activeSession ? activeProfile?.version ?? activeSession.agentId : 'No session'}</span>
-            <span>{sessions.length}/{MAX_RUNTIME_SESSIONS} open</span>
+            <span>{sessions.length}/{maxRuntimeSessions} open</span>
             <span className="status-right">{activeSession ? (
               <SessionClock
                 session={activeSession}
@@ -2106,7 +2221,7 @@ export function App() {
             </span>
             <div className="conversation-search-results">
               {historyQuery.trim().length >= 2 && searchResults.map((result) => {
-                const profile = profiles.find((item) => item.id === result.session.agentId)
+                const profile = profilesById.get(result.session.agentId)
                 return (
                   <button className="conversation-search-result" key={result.id} onClick={() => openSearchResult(result)}>
                     <AgentAvatar agentId={result.session.agentId} className="neutral" color={profile?.color} preference={resolvedAgentIcon(result.session.agentId)} />
@@ -2175,7 +2290,7 @@ export function App() {
             </header>
             <div className="notification-list scroll">
               {notificationSnapshot.notifications.map((notification) => {
-                const profile = profiles.find((item) => item.id === notification.agentId)
+                const profile = profilesById.get(notification.agentId)
                 return (
                   <div className={`notification-row ${notification.type}`} key={notification.id}>
                     <button className="notification-open" onClick={() => openNotification(notification)}>
@@ -2259,6 +2374,17 @@ export function App() {
                   </div>
                 </div>
                 <div className="appearance-grid">
+                  <label className="appearance-field">
+                    <span>Maximum tabs</span>
+                    <input
+                      type="number"
+                      min={MIN_RUNTIME_SESSIONS}
+                      max={MAX_RUNTIME_SESSIONS_LIMIT}
+                      step="1"
+                      value={maxRuntimeSessions}
+                      onChange={(event) => changeMaxRuntimeSessions(Number(event.target.value))}
+                    />
+                  </label>
                   <label className="appearance-field">
                     <span>Interface font</span>
                     <select value={appearance.uiFont} onChange={(event) => changeAppearance({ uiFont: event.target.value as UiFontId })}>
@@ -2405,7 +2531,7 @@ export function App() {
               </section>
               <div className="account-fields" hidden={settingsSection !== 'accounts'}>
               {draftAccounts.map((account, index) => {
-                const profile = profiles.find((item) => item.id === account.agentId)
+                const profile = profilesById.get(account.agentId)
                 return (
                   <div className="account-row" key={account.id}>
                     <AgentAvatar agentId={account.agentId} className="tinted" color={profile?.color ?? '#7e878d'} preference={resolvedAgentIcon(account.agentId)} />
@@ -2450,7 +2576,7 @@ export function App() {
       {iconPickerAgentId && (
         <Suspense fallback={null}>
           <LazyLucideIconPicker
-            agentLabel={profiles.find((profile) => profile.id === iconPickerAgentId)?.label ?? iconPickerAgentId}
+            agentLabel={profilesById.get(iconPickerAgentId)?.label ?? iconPickerAgentId}
             currentIconName={agentIcons[iconPickerAgentId]?.mode === 'lucide' ? agentIcons[iconPickerAgentId]?.iconName : undefined}
             onClose={() => setIconPickerAgentId('')}
             onSelect={(name) => {
