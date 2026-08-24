@@ -1,6 +1,7 @@
 import {
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -20,6 +21,7 @@ import {
   CheckCheck,
   ChevronDown,
   ChevronRight,
+  Download,
   Folder,
   FolderOpen,
   FolderPlus,
@@ -45,6 +47,7 @@ import moaCliIcon from './assets/moacli-icon.png'
 import type {
   AgentAccount,
   AgentHealth,
+  AppUpdateInfo,
   AppNotification,
   ConversationHistory,
   ConversationSearchResult,
@@ -75,7 +78,7 @@ type SessionState = 'idle' | 'starting' | 'running' | 'processing' | 'needs_atte
 type SessionView = 'cli' | 'conversation'
 type AgentIconMode = 'monogram' | 'lucide' | 'custom'
 type SectionKey = 'folders' | 'recent' | 'agents'
-type SettingsSection = 'appearance' | 'notifications' | 'icons' | 'accounts'
+type SettingsSection = 'appearance' | 'updates' | 'notifications' | 'icons' | 'accounts'
 
 interface AgentIconPreference {
   mode: AgentIconMode
@@ -513,6 +516,11 @@ export function App() {
   const [accountId, setAccountId] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('appearance')
+  const [appVersion, setAppVersion] = useState('')
+  const [appUpdate, setAppUpdate] = useState<AppUpdateInfo | null>(null)
+  const [updateChecking, setUpdateChecking] = useState(false)
+  const [updateOpening, setUpdateOpening] = useState(false)
+  const [updateError, setUpdateError] = useState('')
   const [notificationSnapshot, setNotificationSnapshot] = useState<NotificationSnapshot>(EMPTY_NOTIFICATION_SNAPSHOT)
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
   const [folders, setFolders] = useState<LogicalFolder[]>(savedFolders)
@@ -557,6 +565,7 @@ export function App() {
   const historyRefreshInFlight = useRef(false)
   const historyRefreshQueued = useRef(false)
   const searchRequestId = useRef(0)
+  const updateCheckInFlight = useRef(false)
   accountsRef.current = accounts
   sessionsRef.current = sessions
   activeSessionIdRef.current = activeSessionId
@@ -590,6 +599,37 @@ export function App() {
     })
   }
 
+  const checkAppUpdate = useCallback(async (force = false): Promise<void> => {
+    if (updateCheckInFlight.current) return
+    updateCheckInFlight.current = true
+    setUpdateChecking(true)
+    setUpdateError('')
+    try {
+      const info = await window.cliAgent.checkForAppUpdate(force)
+      setAppUpdate(info)
+      setAppVersion(info.currentVersion)
+    } catch (error) {
+      setUpdateError(error instanceof Error ? error.message : String(error))
+    } finally {
+      updateCheckInFlight.current = false
+      setUpdateChecking(false)
+    }
+  }, [])
+
+  const openAppUpdateDownload = async (): Promise<void> => {
+    if (updateOpening) return
+    setUpdateOpening(true)
+    setUpdateError('')
+    try {
+      const opened = await window.cliAgent.downloadAppUpdate()
+      if (!opened) await checkAppUpdate(true)
+    } catch (error) {
+      setUpdateError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setUpdateOpening(false)
+    }
+  }
+
   const refreshHistory = (accountList?: AgentAccount[]): void => {
     if (historyRefreshInFlight.current) {
       historyRefreshQueued.current = true
@@ -616,6 +656,20 @@ export function App() {
       }
     })
   }
+
+  useEffect(() => {
+    let mounted = true
+    void window.cliAgent.getAppVersion().then((version) => {
+      if (mounted) setAppVersion(version)
+    })
+    const initialCheck = window.setTimeout(() => void checkAppUpdate(), 3_500)
+    const periodicCheck = window.setInterval(() => void checkAppUpdate(), 6 * 60 * 60_000)
+    return () => {
+      mounted = false
+      window.clearTimeout(initialCheck)
+      window.clearInterval(periodicCheck)
+    }
+  }, [checkAppUpdate])
 
   useEffect(() => {
     refreshProfiles()
@@ -1723,8 +1777,10 @@ export function App() {
           >
             {sidebarCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
           </button>
-          <img className="brand-logo" src={moaCliIcon} alt="" draggable={false} />
-          <strong>MoaCLI</strong>
+          <div className="titlebar-app-identity">
+            <img className="brand-logo" src={moaCliIcon} alt="" draggable={false} />
+            <strong>MoaCLI</strong>
+          </div>
         </div>
         <div className="window-controls" onDoubleClick={(event) => event.stopPropagation()}>
           <button title="Minimize" onClick={() => window.cliAgent.minimizeWindow()}><Minus size={16} /></button>
@@ -2156,6 +2212,14 @@ export function App() {
             <span className={`status-pill ${activeSession?.state ?? 'idle'}`}><span className="status-dot" />{stateLabel(activeSession?.state ?? 'idle')}</span>
             <span>{activeSession ? activeProfile?.version ?? activeSession.agentId : 'No session'}</span>
             <span>{sessions.length}/{maxRuntimeSessions} open</span>
+            {appUpdate?.updateAvailable && (
+              <button
+                className="status-update"
+                disabled={updateOpening}
+                title={`Download MoaCLI v${appUpdate.latestVersion}`}
+                onClick={() => void openAppUpdateDownload()}
+              ><Download size={11} />v{appUpdate.latestVersion} available</button>
+            )}
             <span className="status-right">{activeSession ? (
               <SessionClock
                 session={activeSession}
@@ -2326,12 +2390,16 @@ export function App() {
         }}>
           <section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="account-settings-title">
             <header>
-              <div><h2 id="account-settings-title">Settings</h2><p>Manage notifications, agent accounts, icons, and the interface theme.</p></div>
+              <div><h2 id="account-settings-title">Settings</h2><p>Manage the interface, updates, notifications, and agent accounts.</p></div>
               <button className="icon-button" title="Close" onClick={() => setSettingsOpen(false)}><X size={16} /></button>
             </header>
             <div className="settings-layout">
               <nav className="settings-nav" aria-label="Settings sections">
                 <button className={settingsSection === 'appearance' ? 'active' : ''} onClick={() => setSettingsSection('appearance')}><Palette size={15} />Appearance</button>
+                <button className={settingsSection === 'updates' ? 'active' : ''} onClick={() => {
+                  setSettingsSection('updates')
+                  if (!appUpdate && !updateChecking) void checkAppUpdate()
+                }}><Download size={15} />Updates</button>
                 <button className={settingsSection === 'notifications' ? 'active' : ''} onClick={() => setSettingsSection('notifications')}><Bell size={15} />Notifications</button>
                 <button className={settingsSection === 'icons' ? 'active' : ''} onClick={() => setSettingsSection('icons')}><Shapes size={15} />Agent icons</button>
                 <button className={settingsSection === 'accounts' ? 'active' : ''} onClick={() => setSettingsSection('accounts')}><LogIn size={15} />Accounts</button>
@@ -2428,6 +2496,46 @@ export function App() {
                   <AppearanceColor label="Terminal background" value={appearance.terminalBackground} onChange={(terminalBackground) => changeAppearance({ terminalBackground })} />
                   <AppearanceColor label="Terminal foreground" value={appearance.terminalForeground} onChange={(terminalForeground) => changeAppearance({ terminalForeground })} />
                 </div>
+              </section>
+              <section className="update-settings" aria-labelledby="update-settings-title" hidden={settingsSection !== 'updates'}>
+                <div className="update-settings-heading">
+                  <div>
+                    <h3 id="update-settings-title">App updates</h3>
+                    <p>Check GitHub Releases for a newer MoaCLI installer.</p>
+                  </div>
+                  <button className="appearance-reset" disabled={updateChecking} onClick={() => void checkAppUpdate(true)}>
+                    <RefreshCw className={updateChecking ? 'spinning' : ''} size={13} />{updateChecking ? 'Checking' : 'Check again'}
+                  </button>
+                </div>
+                <div className="update-version-card">
+                  <div className="update-version-row">
+                    <span>Installed</span>
+                    <strong>{appVersion ? `v${appVersion}` : 'Loading...'}</strong>
+                  </div>
+                  <div className="update-version-row">
+                    <span>Latest release</span>
+                    <strong>{appUpdate ? `v${appUpdate.latestVersion}` : 'Not checked'}</strong>
+                  </div>
+                  <div className={`update-state ${appUpdate?.updateAvailable ? 'available' : ''} ${updateError ? 'error' : ''}`}>
+                    {updateChecking
+                      ? 'Checking for updates...'
+                      : updateError
+                        ? `Update check failed: ${updateError}`
+                        : appUpdate?.updateAvailable
+                          ? `MoaCLI v${appUpdate.latestVersion} is ready to download.`
+                          : appUpdate
+                            ? 'You are using the latest release.'
+                            : 'Updates are checked automatically after launch.'}
+                  </div>
+                </div>
+                {appUpdate?.updateAvailable && (
+                  <button className="update-download" disabled={updateOpening} onClick={() => void openAppUpdateDownload()}>
+                    <Download size={14} />{updateOpening ? 'Opening download...' : `Download v${appUpdate.latestVersion}`}
+                  </button>
+                )}
+                <p className="update-note">
+                  The installer opens in your browser and does not interrupt running sessions. Because this build is unsigned, Windows SmartScreen may ask you to confirm it.
+                </p>
               </section>
               <section className="notification-settings" aria-labelledby="notification-settings-title" hidden={settingsSection !== 'notifications'}>
                 <div className="notification-settings-heading">

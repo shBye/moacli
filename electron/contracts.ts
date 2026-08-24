@@ -160,6 +160,16 @@ export interface TerminalClipboardContent {
   values?: string[]
 }
 
+export interface AppUpdateInfo {
+  currentVersion: string
+  latestVersion: string
+  updateAvailable: boolean
+  releaseUrl: string
+  installerUrl: string
+  publishedAt: string
+  checkedAt: number
+}
+
 export interface CliAgentApi {
   getProfiles: () => Promise<AgentHealth[]>
   detectAccounts: () => Promise<AgentAccount[]>
@@ -190,6 +200,9 @@ export interface CliAgentApi {
   updateNotificationContext: (context: NotificationContext) => void
   onNotificationsChanged: (callback: (snapshot: NotificationSnapshot) => void) => () => void
   onNotificationActivated: (callback: (activation: NotificationActivation) => void) => () => void
+  getAppVersion: () => Promise<string>
+  checkForAppUpdate: (force?: boolean) => Promise<AppUpdateInfo>
+  downloadAppUpdate: () => Promise<boolean>
   minimizeWindow: () => void
   toggleMaximizeWindow: () => void
   closeWindow: () => void

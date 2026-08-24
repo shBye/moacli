@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, session } from 'electron'
 import { getAgentHealth } from './agent-profiles'
+import { checkForAppUpdate, downloadAppUpdate } from './app-updates'
 import { AttentionBridge } from './attention-bridge'
 import type { AgentAccount, NotificationContext, NotificationSettings, SearchIndexState, StartPtyRequest } from './contracts'
 import { NotificationCenter } from './notification-center'
@@ -208,6 +209,9 @@ ipcMain.handle('notifications:mute-session', (_event, payload: { sessionId: stri
   notifications().setSessionMuted(payload.sessionId, payload.muted)
 ))
 ipcMain.on('notifications:context', (_event, context: NotificationContext) => notifications().updateContext(context))
+ipcMain.handle('updates:version', () => app.getVersion())
+ipcMain.handle('updates:check', (_event, force = false) => checkForAppUpdate(force === true))
+ipcMain.handle('updates:download', () => downloadAppUpdate())
 ipcMain.on('window:minimize', (event) => {
   if (event.sender === mainWindow?.webContents) mainWindow.minimize()
 })

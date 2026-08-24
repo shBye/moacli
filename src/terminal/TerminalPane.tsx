@@ -147,6 +147,9 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
     let receivedData = false
     let runningReported = false
     let resizeTimer: ReturnType<typeof setTimeout> | undefined
+    let resizeFrame: number | undefined
+    let lastObservedWidth = 0
+    let lastObservedHeight = 0
     let keepBottomUntil = 0
     const startingIndicatorShownAt = performance.now()
     let fallbackReadyTimer: ReturnType<typeof setTimeout> | undefined
@@ -247,18 +250,39 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
     })
 
     const resize = (): void => {
+      const width = Math.round(container.clientWidth)
+      const height = Math.round(container.clientHeight)
+      if (width < 40 || height < 40) return
+      if (width === lastObservedWidth && height === lastObservedHeight) return
+      lastObservedWidth = width
+      lastObservedHeight = height
       clearTimeout(resizeTimer)
+      if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame)
       resizeTimer = setTimeout(() => {
-        if (disposed || container.clientWidth < 40 || container.clientHeight < 40) return
-        const buffer = terminal.buffer.active
-        const wasAtBottom = buffer.viewportY >= buffer.baseY || performance.now() <= keepBottomUntil
-        fitAddon.fit()
-        if (started) window.cliAgent.resizePty(id, terminal.cols, terminal.rows)
-        if (!wasAtBottom) return
+        resizeFrame = requestAnimationFrame(() => {
+          resizeFrame = undefined
+          if (disposed || container.clientWidth < 40 || container.clientHeight < 40) return
 
-        keepBottomUntil = performance.now() + 600
-        terminal.scrollToBottom()
-      }, 40)
+          const before = terminal.buffer.active
+          const distanceFromBottom = Math.max(0, before.baseY - before.viewportY)
+          const wasAtBottom = distanceFromBottom <= 1 || performance.now() <= keepBottomUntil
+          const previousCols = terminal.cols
+          const previousRows = terminal.rows
+          if (wasAtBottom) terminal.scrollToBottom()
+          fitAddon.fit()
+          if (started && (terminal.cols !== previousCols || terminal.rows !== previousRows)) {
+            window.cliAgent.resizePty(id, terminal.cols, terminal.rows)
+          }
+
+          if (wasAtBottom) {
+            keepBottomUntil = performance.now() + 600
+            terminal.scrollToBottom()
+          } else {
+            const after = terminal.buffer.active
+            terminal.scrollToLine(Math.max(0, after.baseY - distanceFromBottom))
+          }
+        })
+      }, 24)
     }
     const resizeObserver = new ResizeObserver(resize)
     resizeObserver.observe(container)
@@ -296,6 +320,7 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
     return () => {
       disposed = true
       clearTimeout(resizeTimer)
+      if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame)
       clearTimeout(fallbackReadyTimer)
       clearTimeout(minimumIndicatorTimer)
       resizeObserver.disconnect()

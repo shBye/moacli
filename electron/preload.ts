@@ -75,6 +75,9 @@ const api: CliAgentApi = {
     ipcRenderer.on('notifications:activate', listener)
     return () => ipcRenderer.removeListener('notifications:activate', listener)
   },
+  getAppVersion: () => ipcRenderer.invoke('updates:version'),
+  checkForAppUpdate: (force?: boolean) => ipcRenderer.invoke('updates:check', force),
+  downloadAppUpdate: () => ipcRenderer.invoke('updates:download'),
   minimizeWindow: () => ipcRenderer.send('window:minimize'),
   toggleMaximizeWindow: () => ipcRenderer.send('window:toggle-maximize'),
   closeWindow: () => ipcRenderer.send('window:close'),
