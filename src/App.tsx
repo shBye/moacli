@@ -119,6 +119,7 @@ interface RuntimeSession {
   conversationLoading: boolean
   conversationError: string
   terminalEnabled: boolean
+  terminalRevision: number
   highlightMessageId: string
   state: SessionState
   statusDetail: string
@@ -790,7 +791,7 @@ export function App() {
         claimedHistoryKeys.add(match.key)
         assignments[match.key] = session.folderId
         changed = true
-        result.push({ ...session, historyKey: match.key })
+        result.push({ ...session, historyKey: match.key, resumeId: session.resumeId || match.resumeId })
         return result
       }, [])
       .sort((left, right) => left.createdAt - right.createdAt)
@@ -867,11 +868,39 @@ export function App() {
   }
 
   const closeSession = (id: string): void => {
+    const currentSessions = sessionsRef.current
+    const closedIndex = currentSessions.findIndex((session) => session.id === id)
+    const remainingSessions = currentSessions.filter((session) => session.id !== id)
+    const adjacentSessionId = remainingSessions[Math.min(Math.max(0, closedIndex), remainingSessions.length - 1)]?.id ?? ''
     sessionActivityTimesRef.current.delete(id)
-    setSessions((current) => current.filter((session) => session.id !== id))
-    setActiveSessionId((current) => current === id ? '' : current)
+    sessionsRef.current = remainingSessions
+    setSessions(remainingSessions)
+    setActiveSessionId((current) => current === id ? adjacentSessionId : current)
     void window.cliAgent.acknowledgeSessionNotification(id).then(acceptNotificationSnapshot)
     void window.cliAgent.setSessionNotificationMuted(id, false).then(acceptNotificationSnapshot)
+  }
+
+  const restartSession = (id: string): void => {
+    const session = sessionsRef.current.find((item) => item.id === id)
+    if (!session || session.state === 'starting') return
+    const historyResumeId = history.find((item) => item.key === session.historyKey)?.resumeId ?? ''
+    const resumeId = session.resumeId || historyResumeId
+    if (session.purpose === 'session' && session.agentId !== 'powershell' && !resumeId) return
+
+    const now = Date.now()
+    sessionActivityTimesRef.current.set(id, now)
+    updateSession(id, {
+      resumeId,
+      terminalEnabled: true,
+      terminalRevision: session.terminalRevision + 1,
+      state: 'starting',
+      statusDetail: 'Restarting CLI session',
+      view: 'cli',
+      revealLatestAt: now,
+      lastActivityAt: now,
+    })
+    void window.cliAgent.acknowledgeSessionNotification(id).then(acceptNotificationSnapshot)
+    refreshProfiles()
   }
 
   const startSession = (): void => {
@@ -892,6 +921,7 @@ export function App() {
       conversationLoading: false,
       conversationError: '',
       terminalEnabled: true,
+      terminalRevision: 0,
       highlightMessageId: '',
       state: 'idle',
       statusDetail: '',
@@ -1353,6 +1383,7 @@ export function App() {
       conversationLoading: false,
       conversationError: '',
       terminalEnabled: true,
+      terminalRevision: 0,
       highlightMessageId: '',
       state: 'idle',
       statusDetail: '',
@@ -1410,6 +1441,7 @@ export function App() {
       conversationLoading: true,
       conversationError: '',
       terminalEnabled: false,
+      terminalRevision: 0,
       highlightMessageId: result.messageId,
       state: 'idle',
       statusDetail: 'Conversation opened from search',
@@ -1487,6 +1519,7 @@ export function App() {
       conversationLoading: false,
       conversationError: '',
       terminalEnabled: true,
+      terminalRevision: 0,
       highlightMessageId: '',
       state: 'idle',
       statusDetail: '',
@@ -1785,8 +1818,51 @@ export function App() {
 
         <section className="workspace">
           <div className="content-stage">
-            {activeSession && (
-              <header className="session-context">
+            {sessions.length > 0 && (
+              <div className="session-chrome">
+                <nav className="session-tabs scroll" role="tablist" aria-label="Open sessions">
+                  {sessions.map((session) => {
+                    const profile = profiles.find((item) => item.id === session.agentId)
+                    const sessionNotification = notificationSnapshot.notifications.find((notification) => notification.sessionId === session.id)
+                    const historyResumeId = history.find((item) => item.key === session.historyKey)?.resumeId ?? ''
+                    const canRestart = session.state !== 'starting' && (
+                      session.purpose !== 'session' || session.agentId === 'powershell' || Boolean(session.resumeId || historyResumeId)
+                    )
+                    const restartTitle = canRestart
+                      ? 'Restart CLI session (clears terminal scrollback and unsent input)'
+                      : session.state === 'starting'
+                        ? 'CLI session is starting'
+                        : 'Waiting for a resumable conversation ID'
+                    return (
+                      <div className={`session-tab ${activeSessionId === session.id ? 'active' : ''} ${session.state}`} key={session.id}>
+                        <button
+                          className="session-tab-select"
+                          role="tab"
+                          aria-selected={activeSessionId === session.id}
+                          title={`${session.title}\n${session.cwd}`}
+                          onClick={() => activateSession(session.id)}
+                        >
+                          <AgentAvatar agentId={session.agentId} className="tinted" color={profile?.color ?? '#7e878d'} preference={resolvedAgentIcon(session.agentId)} />
+                          <span className={`state-dot ${session.state}`} />
+                          <span className="session-tab-title">{session.title}</span>
+                          {sessionNotification && (
+                            <span className={`session-tab-notification ${sessionNotification.type}`} title={notificationTypeLabel(sessionNotification)}>
+                              <NotificationTypeIcon notification={sessionNotification} size={11} />
+                            </span>
+                          )}
+                        </button>
+                        <div className="session-tab-actions">
+                          <button className="session-tab-action" title={restartTitle} disabled={!canRestart} onClick={() => restartSession(session.id)}>
+                            <RefreshCw className={session.state === 'starting' ? 'spinning' : ''} size={12} />
+                          </button>
+                          <button className="session-tab-action close" title="Close session" onClick={() => closeSession(session.id)}><X size={13} /></button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </nav>
+                {activeSession && (
+                  <header className="session-context">
                   <div className="session-summary">
                     <AgentAvatar agentId={activeSession.agentId} className="header" color={activeProfile?.color ?? '#7e878d'} preference={resolvedAgentIcon(activeSession.agentId)} />
                     <h1 title={activeSession.title}>{activeSession.title}</h1>
@@ -1815,7 +1891,6 @@ export function App() {
                         {activeSessionMuted ? <BellOff size={14} /> : <Bell size={14} />}
                       </button>
                     )}
-                    <button className="icon-button context-close" title="Close session" onClick={() => closeSession(activeSession.id)}><X size={15} /></button>
                   </div>
                   <div className="session-subnav">
                     <nav className="view-tabs" aria-label="Session views">
@@ -1825,7 +1900,9 @@ export function App() {
                       </button>
                     </nav>
                   </div>
-              </header>
+                  </header>
+                )}
+              </div>
             )}
             {!activeSession && (
               <div className="launcher scroll">
@@ -1892,6 +1969,7 @@ export function App() {
                     {session.terminalEnabled && (
                       <Suspense fallback={null}>
                         <LazyTerminalPane
+                          key={session.terminalRevision}
                           active={activeSessionId === session.id && session.view === 'cli'}
                           sessionId={session.id}
                           agentId={session.agentId}
