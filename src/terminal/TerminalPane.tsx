@@ -199,6 +199,14 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
         }
       })
     }
+    const textarea = terminal.textarea
+    const onPaste = (event: ClipboardEvent): void => {
+      if (event.clipboardData?.getData('text/plain')) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      pasteClipboard()
+    }
+    textarea?.addEventListener('paste', onPaste, true)
 
     const copySelection = (): boolean => {
       const selection = terminal.getSelection()
@@ -231,10 +239,6 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
         && event.code === 'KeyC'
         && copySelection()
       ) {
-        return false
-      }
-      if ((event.ctrlKey || event.metaKey) && event.code === 'KeyV') {
-        pasteClipboard()
         return false
       }
       return true
@@ -306,6 +310,7 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       offAttention()
       writeParsedDisposable.dispose()
       container.removeEventListener('wheel', onUserWheel)
+      textarea?.removeEventListener('paste', onPaste, true)
       window.cliAgent.stopPty(id)
       terminal.dispose()
       delete container.dataset.renderer
