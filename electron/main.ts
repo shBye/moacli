@@ -175,6 +175,9 @@ ipcMain.handle('clipboard:read-terminal', async () => {
     ? { kind: 'image', value: imageFiles[0], values: imageFiles }
     : { kind: 'empty', value: '' }
 })
+ipcMain.on('clipboard:write-terminal', (_event, text: string) => {
+  if (typeof text === 'string' && text) clipboard.writeText(text)
+})
 ipcMain.handle('directory:select', async (_event, defaultPath?: string) => {
   if (!mainWindow) return null
   const result = await dialog.showOpenDialog(mainWindow, {

@@ -45,6 +45,7 @@ const api: CliAgentApi = {
     return () => ipcRenderer.removeListener('search:index-changed', listener)
   },
   readTerminalClipboard: () => ipcRenderer.invoke('clipboard:read-terminal'),
+  writeTerminalClipboard: (text: string) => ipcRenderer.send('clipboard:write-terminal', text),
   startPty: (request: StartPtyRequest) => ipcRenderer.invoke('pty:start', request),
   writePty: (id, data) => ipcRenderer.send('pty:write', { id, data }),
   resizePty: (id, cols, rows) => ipcRenderer.send('pty:resize', { id, cols, rows }),

@@ -172,6 +172,7 @@ export interface CliAgentApi {
   rebuildSearchIndex: (accounts: AgentAccount[]) => Promise<SearchIndexState>
   onSearchIndexChanged: (callback: (state: SearchIndexState) => void) => () => void
   readTerminalClipboard: () => Promise<TerminalClipboardContent>
+  writeTerminalClipboard: (text: string) => void
   startPty: (request: StartPtyRequest) => Promise<void>
   writePty: (id: string, data: string) => void
   resizePty: (id: string, cols: number, rows: number) => void

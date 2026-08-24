@@ -26,9 +26,9 @@ interface TerminalPaneProps {
   onStateChange: (state: 'starting' | 'running' | 'processing' | 'needs_attention' | 'stopped', detail?: string) => void
 }
 
-const ACTIVE_SCROLLBACK = 5000
-const BACKGROUND_SCROLLBACK = 1500
+const TERMINAL_SCROLLBACK = 10000
 const MIN_STARTING_INDICATOR_MS = 650
+const CODEX_MOUSE_TRACKING_MODES = new Set([9, 1000, 1002, 1003, 1005, 1006, 1015, 1016])
 
 export function TerminalPane({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, revealLatestAt, fontFamily, fontSize, background, foreground, cursorColor, activityStatusEnabled, onActivity, onStateChange }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -54,7 +54,7 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       fontFamily,
       fontSize,
       lineHeight: 1.3,
-      scrollback: activeRef.current ? ACTIVE_SCROLLBACK : BACKGROUND_SCROLLBACK,
+      scrollback: TERMINAL_SCROLLBACK,
       allowTransparency: false,
       allowProposedApi: false,
       theme: {
@@ -104,11 +104,24 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     const cursorStyleDisposable = agentId === 'codex'
       ? terminal.parser.registerCsiHandler({ intermediates: ' ', final: 'q' }, () => true)
       : undefined
-    const cursorBlinkOnDisposable = agentId === 'codex'
-      ? terminal.parser.registerCsiHandler({ prefix: '?', final: 'h' }, (params) => params.length === 1 && params[0] === 12)
+    const codexPrivateModeOnDisposable = agentId === 'codex'
+      ? terminal.parser.registerCsiHandler({ prefix: '?', final: 'h' }, (params) => {
+          if (params.length === 1 && params[0] === 12) return true
+          // Codex enables terminal mouse reporting, which makes xterm require
+          // Shift+drag for text selection. Keep normal left-drag selection in
+          // the desktop shell by declining Codex mouse tracking modes.
+          return params.length > 0 && params.every((param) => (
+            typeof param === 'number' && CODEX_MOUSE_TRACKING_MODES.has(param)
+          ))
+        })
       : undefined
-    const cursorBlinkOffDisposable = agentId === 'codex'
-      ? terminal.parser.registerCsiHandler({ prefix: '?', final: 'l' }, (params) => params.length === 1 && params[0] === 12)
+    const codexPrivateModeOffDisposable = agentId === 'codex'
+      ? terminal.parser.registerCsiHandler({ prefix: '?', final: 'l' }, (params) => {
+          if (params.length === 1 && params[0] === 12) return true
+          return params.length > 0 && params.every((param) => (
+            typeof param === 'number' && CODEX_MOUSE_TRACKING_MODES.has(param)
+          ))
+        })
       : undefined
 
     const disposeIme = attachImeOverlay(terminal, id)
@@ -180,6 +193,13 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       })
     }
 
+    const copySelection = (): boolean => {
+      const selection = terminal.getSelection()
+      if (!selection) return false
+      window.cliAgent.writeTerminalClipboard(selection)
+      return true
+    }
+
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true
       if (
@@ -197,8 +217,12 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
         window.cliAgent.writePty(id, '\n')
         return false
       }
-      if (event.ctrlKey && event.shiftKey && event.code === 'KeyC' && terminal.hasSelection()) {
-        void navigator.clipboard.writeText(terminal.getSelection())
+      if (
+        (event.ctrlKey || event.metaKey)
+        && !event.altKey
+        && event.code === 'KeyC'
+        && copySelection()
+      ) {
         return false
       }
       if ((event.ctrlKey || event.metaKey) && event.code === 'KeyV') {
@@ -268,8 +292,8 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       clearTimeout(minimumIndicatorTimer)
       resizeObserver.disconnect()
       cursorStyleDisposable?.dispose()
-      cursorBlinkOnDisposable?.dispose()
-      cursorBlinkOffDisposable?.dispose()
+      codexPrivateModeOnDisposable?.dispose()
+      codexPrivateModeOffDisposable?.dispose()
       webglContextLossDisposable?.dispose()
       webglAddon?.dispose()
       disposeIme()
@@ -292,7 +316,6 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     const terminal = terminalRef.current
     if (!terminal) return
     terminal.options.cursorBlink = active
-    terminal.options.scrollback = active ? ACTIVE_SCROLLBACK : BACKGROUND_SCROLLBACK
     if (!active) return
 
     let cancelFocus = (): void => undefined
