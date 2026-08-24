@@ -145,8 +145,6 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     let receivedData = false
     let runningReported = false
     let resizeTimer: ReturnType<typeof setTimeout> | undefined
-    let bottomSettleTimer: ReturnType<typeof setTimeout> | undefined
-    let bottomSettleFrame: number | undefined
     let keepBottomUntil = 0
     const startingIndicatorShownAt = performance.now()
     let fallbackReadyTimer: ReturnType<typeof setTimeout> | undefined
@@ -171,9 +169,11 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     const offData = window.cliAgent.onPtyData(id, (data) => {
       reportActivity()
       receivedData = true
-      const keepAtBottom = performance.now() <= keepBottomUntil
-      terminal.write(data, keepAtBottom ? () => terminal.scrollToBottom() : undefined)
+      terminal.write(data)
       if (started) reportRunning()
+    })
+    const writeParsedDisposable = terminal.onWriteParsed(() => {
+      if (performance.now() <= keepBottomUntil) terminal.scrollToBottom()
     })
     const offExit = window.cliAgent.onPtyExit(id, (exitCode) => {
       terminal.write(`\r\n\x1b[90m[process exited: ${exitCode}]\x1b[0m\r\n`)
@@ -182,6 +182,13 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     const offAttention = window.cliAgent.onPtyAttention(id, (reason) => {
       reportInteractionState('needs_attention', reason)
     })
+    const cancelBottomLock = (): void => {
+      keepBottomUntil = 0
+    }
+    const onUserWheel = (event: WheelEvent): void => {
+      if (event.deltaY < 0) cancelBottomLock()
+    }
+    container.addEventListener('wheel', onUserWheel, { passive: true })
 
     const pasteClipboard = (): void => {
       void window.cliAgent.readTerminalClipboard().then((content) => {
@@ -202,6 +209,7 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
 
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true
+      if (event.key === 'PageUp' || event.key === 'Home') cancelBottomLock()
       if (
         agentId === 'codex'
         && event.key === 'Enter'
@@ -237,17 +245,13 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       resizeTimer = setTimeout(() => {
         if (disposed || container.clientWidth < 40 || container.clientHeight < 40) return
         const buffer = terminal.buffer.active
-        const wasAtBottom = buffer.viewportY >= buffer.baseY
+        const wasAtBottom = buffer.viewportY >= buffer.baseY || performance.now() <= keepBottomUntil
         fitAddon.fit()
         if (started) window.cliAgent.resizePty(id, terminal.cols, terminal.rows)
         if (!wasAtBottom) return
 
-        keepBottomUntil = performance.now() + 180
+        keepBottomUntil = performance.now() + 600
         terminal.scrollToBottom()
-        if (bottomSettleFrame !== undefined) cancelAnimationFrame(bottomSettleFrame)
-        bottomSettleFrame = requestAnimationFrame(() => terminal.scrollToBottom())
-        clearTimeout(bottomSettleTimer)
-        bottomSettleTimer = setTimeout(() => terminal.scrollToBottom(), 90)
       }, 40)
     }
     const resizeObserver = new ResizeObserver(resize)
@@ -286,8 +290,6 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
     return () => {
       disposed = true
       clearTimeout(resizeTimer)
-      clearTimeout(bottomSettleTimer)
-      if (bottomSettleFrame !== undefined) cancelAnimationFrame(bottomSettleFrame)
       clearTimeout(fallbackReadyTimer)
       clearTimeout(minimumIndicatorTimer)
       resizeObserver.disconnect()
@@ -302,6 +304,8 @@ export function TerminalPane({ active, sessionId, agentId, cwd, title, account, 
       offData()
       offExit()
       offAttention()
+      writeParsedDisposable.dispose()
+      container.removeEventListener('wheel', onUserWheel)
       window.cliAgent.stopPty(id)
       terminal.dispose()
       delete container.dataset.renderer

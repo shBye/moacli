@@ -1,6 +1,6 @@
 ---
 name: moacli-windows-release
-description: Build, validate, and publish the MoaCLI Windows NSIS installer. Use when Codex needs to bump a MoaCLI release version, run packaging, verify installer metadata and checksums, smoke-test the unpacked app, check tracked files for credentials or personal paths, create a version tag, or upload MoaCLI-Setup.exe to a GitHub Release.
+description: Build, validate, push, and publish the MoaCLI Windows NSIS installer. Use when Codex needs to bump a MoaCLI version, package or verify MoaCLI-Setup.exe, commit and push release source, create a version tag, or upload the installer to a GitHub Release without GitHub CLI.
 ---
 
 # MoaCLI Windows Release
@@ -17,7 +17,7 @@ Produce a reproducible Windows installer without committing build output, creden
 
 ## Build
 
-1. Choose the version with the user or infer only an unambiguous requested patch version.
+1. Choose the version with the user. When the current version is already published and the user requests a new installer or release without naming a version, increment only the patch segment.
 2. Update both package files with `npm.cmd version <version> --no-git-tag-version`.
 3. Run `npm.cmd ci` when dependencies are absent or lockfile fidelity must be re-established.
 4. Confirm both `node-pty` Windows x64 prebuilds and the Electron-compatible `better-sqlite3` binary documented in the release guide exist.
@@ -37,25 +37,28 @@ Record the version, byte size, SHA-256, and packaged SQLite path it reports. Tre
 
 Start `out\win-unpacked\MoaCLI.exe` and verify the window opens, profiles load, and a PowerShell session starts. Stop only the exact smoke-test executable after checking its resolved path. Run the NSIS installer when the user requests installation-flow verification.
 
-## Publish
+## Push and Publish
 
-1. Commit and push release source before tagging, only when requested.
-2. Create an annotated `v<version>` tag on the verified commit and push it.
-3. Prefer authenticated GitHub CLI publishing while deriving the repository dynamically:
+Respect the requested stopping point:
+
+- For "make an installer", stop after verification.
+- For "commit and push", commit only intended source and version files, then push `main`; do not infer permission to tag or publish.
+- For "upload/publish a release", push the verified source first, create and push annotated tag `v<version>`, then publish.
+
+Publish without GitHub CLI by running the repository-derived API helper from the repository root. Pass concise notes that describe the actual release:
 
 ```powershell
-$repo = gh repo view --json nameWithOwner --jq .nameWithOwner
-gh release create "v$version" .\out\MoaCLI-Setup.exe --repo $repo --title "MoaCLI v$version" --notes "Windows installer release. This build is not code-signed."
+powershell -ExecutionPolicy Bypass -File .codex\skills\moacli-windows-release\scripts\publish-release.ps1 -ReleaseNotes $notes
 ```
 
-4. If `gh` is unavailable, use the signed-in GitHub UI. Never extract, print, store, or commit a credential to publish a release.
-5. Publish a non-draft, non-prerelease release unless the user says otherwise.
-6. Verify `releases/latest/download/MoaCLI-Setup.exe` returns HTTP 200 and its content length matches the local file.
+The helper obtains the existing GitHub credential through `git credential fill`, keeps it only in process memory, derives the owner and repository from `origin`, and never prints the credential. If no credential is available, stop and offer to open the signed-in GitHub release page instead of introducing GitHub CLI.
+
+After publishing, run the helper with `-VerifyOnly` and confirm the remote asset byte size equals the local installer. Publish a non-draft, non-prerelease release unless the user says otherwise.
 
 ## Safety Rules
 
 - Do not commit `out/`, caches, logs, generated screenshots, account directories, or local CLI configuration.
 - Do not add a GitHub token, credential-helper output, local email, or personal absolute path to commands saved in the repository.
-- Do not overwrite an existing release asset without confirming it belongs to the same version. Replace it only when the user explicitly requests an upgrade or correction.
+- Do not overwrite an existing release asset with different bytes unless the user explicitly requests a correction; the publisher requires `-ReplaceExistingAsset` for that case.
 - Do not claim code signing. The current build is unsigned.
 - Do not tag or publish when typecheck, package, verifier, or smoke testing fails.

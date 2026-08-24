@@ -27,6 +27,8 @@ import {
   LogIn,
   Minus,
   Palette,
+  PanelLeftClose,
+  PanelLeftOpen,
   Play,
   Plus,
   RefreshCw,
@@ -140,6 +142,7 @@ const ACCOUNT_STORAGE_KEY = 'cli-agent-manager.account-overrides'
 const SECTION_STORAGE_KEY = 'cli-agent-manager.sidebar-sections'
 const THEME_STORAGE_KEY = 'cli-agent-manager.theme'
 const SIDEBAR_WIDTH_STORAGE_KEY = 'cli-agent-manager.sidebar-width'
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'cli-agent-manager.sidebar-collapsed'
 const FOLDERS_STORAGE_KEY = 'cli-agent-manager.folders'
 const FOLDER_ASSIGNMENTS_STORAGE_KEY = 'cli-agent-manager.folder-assignments'
 const FOLDER_ORDERS_STORAGE_KEY = 'cli-agent-manager.folder-orders'
@@ -508,6 +511,7 @@ export function App() {
   const [activeSessionId, setActiveSessionId] = useState('')
   const [sectionOpen, setSectionOpen] = useState<SectionState>(() => loadJson(SECTION_STORAGE_KEY, DEFAULT_SECTIONS))
   const [sidebarWidth, setSidebarWidth] = useState(savedSidebarWidth)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true')
   const [folderPaneHeight, setFolderPaneHeight] = useState(savedFolderPaneHeight)
   const [theme, setTheme] = useState<AccentTheme>(savedTheme)
   const [appearance, setAppearance] = useState<AppearancePreferences>(loadAppearance)
@@ -986,6 +990,14 @@ export function App() {
     sidebarWidthRef.current = width
     setSidebarWidth(width)
     localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(width))
+  }
+
+  const toggleSidebar = (): void => {
+    setSidebarCollapsed((current) => {
+      const next = !current
+      localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(next))
+      return next
+    })
   }
 
   const beginSidebarResize = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -1568,6 +1580,17 @@ export function App() {
     <main className="app-shell" data-theme={theme} style={themeStyle}>
       <header className="titlebar" onDoubleClick={() => window.cliAgent.toggleMaximizeWindow()}>
         <div className="titlebar-brand">
+          <button
+            className="titlebar-sidebar-toggle"
+            title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+            aria-label={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+            aria-expanded={!sidebarCollapsed}
+            aria-controls="app-sidebar"
+            onDoubleClick={(event) => event.stopPropagation()}
+            onClick={toggleSidebar}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+          </button>
           <img className="brand-logo" src={moaCliIcon} alt="" draggable={false} />
           <strong>MoaCLI</strong>
         </div>
@@ -1578,8 +1601,8 @@ export function App() {
         </div>
       </header>
 
-      <div className="app-body" ref={appBodyRef} style={{ '--sidebar-width': `${sidebarWidthRef.current}px` } as CSSProperties}>
-        <aside className="sidebar scroll">
+      <div className={`app-body ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`} ref={appBodyRef} style={{ '--sidebar-width': `${sidebarWidthRef.current}px` } as CSSProperties}>
+        <aside className="sidebar scroll" id="app-sidebar" aria-hidden={sidebarCollapsed}>
           <button className="search-box search-trigger" aria-label="Open conversation search" onClick={() => {
             setSearchOpen(true)
             window.requestAnimationFrame(() => searchRef.current?.focus())
