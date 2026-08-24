@@ -77,8 +77,11 @@ if (-not $release) {
   $release = Invoke-RestMethod -Method Post -Uri "$repositoryApi/releases" -Headers $headers -ContentType 'application/json' -Body $payload
 }
 
-$assets = @(Invoke-RestMethod -Method Get -Uri "$repositoryApi/releases/$($release.id)/assets" -Headers $headers)
-$existingAsset = $assets | Where-Object { $_.name -eq $installer.Name } | Select-Object -First 1
+$assetResponse = Invoke-RestMethod -Method Get -Uri "$repositoryApi/releases/$($release.id)/assets" -Headers $headers
+$assets = if ($null -eq $assetResponse) { @() } else { @($assetResponse) }
+$existingAsset = $assets | Where-Object {
+  $null -ne $_ -and $_.PSObject.Properties.Name -contains 'name' -and $_.name -eq $installer.Name
+} | Select-Object -First 1
 if ($existingAsset -and [long]$existingAsset.size -eq $installer.Length) {
   [pscustomobject]@{
     Tag = $tag
