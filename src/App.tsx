@@ -6,12 +6,10 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type ComponentType,
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
-  type LazyExoticComponent,
   type ReactNode,
 } from 'react'
 import {
@@ -20,7 +18,6 @@ import {
   BellOff,
   Check,
   CheckCheck,
-  ChevronLeft,
   ChevronDown,
   ChevronRight,
   Folder,
@@ -42,7 +39,6 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react'
-import dynamicIconImports from 'lucide-react/dynamicIconImports'
 import moaCliIcon from './assets/moacli-icon.png'
 import type {
   AgentAccount,
@@ -71,11 +67,10 @@ import {
   type UiFontId,
 } from './appearance'
 import { ConversationView } from './history/ConversationView'
-import { TerminalPane } from './terminal/TerminalPane'
+import type { LucideIconName } from './icons/LucideIconBrowser'
 
 type SessionState = 'idle' | 'starting' | 'running' | 'processing' | 'needs_attention' | 'stopped'
 type SessionView = 'cli' | 'conversation'
-type LucideIconName = keyof typeof dynamicIconImports
 type AgentIconMode = 'monogram' | 'lucide' | 'custom'
 type SectionKey = 'folders' | 'recent' | 'agents'
 type SettingsSection = 'appearance' | 'notifications' | 'icons' | 'accounts'
@@ -149,7 +144,6 @@ const FOLDER_ASSIGNMENTS_STORAGE_KEY = 'cli-agent-manager.folder-assignments'
 const FOLDER_ORDERS_STORAGE_KEY = 'cli-agent-manager.folder-orders'
 const FOLDER_PANE_HEIGHT_STORAGE_KEY = 'cli-agent-manager.folder-pane-height'
 const AGENT_ICONS_STORAGE_KEY = 'cli-agent-manager.agent-icons'
-const LUCIDE_ICON_PAGE_SIZE = 120
 const AGENT_COLOR_SWATCHES = [
   '#30363D', '#56616B', '#8B949E', '#D8DEE4',
   '#8E3B46', '#C54B5B', '#D86F45', '#B47724',
@@ -302,7 +296,7 @@ function savedAgentIcons(): Record<string, AgentIconPreference> {
       continue
     }
     const iconName = candidate.mode === 'lucide' ? candidate.iconName : legacyModes[candidate.mode ?? '']
-    if (iconName && iconName in dynamicIconImports) {
+    if (iconName && /^[a-z0-9-]+$/.test(iconName)) {
       result[agentId] = { mode: 'lucide', iconName: iconName as LucideIconName, backgroundColor }
     }
   }
@@ -314,18 +308,12 @@ function agentMonogram(agentId: string): string {
     ?? agentId.slice(0, 2).toUpperCase()
 }
 
-const LUCIDE_ICON_NAMES = Object.keys(dynamicIconImports) as LucideIconName[]
-type DynamicIconComponent = ComponentType<{ size?: string | number }>
-const dynamicIconComponents = new Map<LucideIconName, LazyExoticComponent<DynamicIconComponent>>()
+const LazyDynamicLucideIcon = lazy(() => import('./icons/LucideIconBrowser').then((module) => ({ default: module.DynamicLucideIcon })))
+const LazyLucideIconPicker = lazy(() => import('./icons/LucideIconBrowser').then((module) => ({ default: module.LucideIconPicker })))
+const LazyTerminalPane = lazy(() => import('./terminal/TerminalPane').then((module) => ({ default: module.TerminalPane })))
 
 function DynamicLucideIcon({ name, size }: { name: LucideIconName; size?: number }) {
-  let Icon = dynamicIconComponents.get(name)
-  if (!Icon) {
-    const load = dynamicIconImports[name] as unknown as () => Promise<{ default: DynamicIconComponent }>
-    Icon = lazy(load)
-    dynamicIconComponents.set(name, Icon)
-  }
-  return <Suspense fallback={<span className="dynamic-icon-placeholder" />}><Icon size={size} /></Suspense>
+  return <Suspense fallback={<span className="dynamic-icon-placeholder" />}><LazyDynamicLucideIcon name={name} size={size} /></Suspense>
 }
 
 function contrastColor(background: string): string {
@@ -404,7 +392,7 @@ function HighlightedSearchSnippet({ text }: { text: string }) {
   )
 }
 
-function SessionClock({ session }: { session: RuntimeSession }) {
+function SessionClock({ session, getLastActivityAt }: { session: RuntimeSession, getLastActivityAt: () => number }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
@@ -415,7 +403,7 @@ function SessionClock({ session }: { session: RuntimeSession }) {
     : session.state === 'needs_attention'
       ? 'waiting for input'
       : 'idle'
-  return <span>{activityLabel} {formatElapsed(now - session.lastActivityAt)} · closes after 30 min in background</span>
+  return <span>{activityLabel} {formatElapsed(now - getLastActivityAt())} · closes after 30 min in background</span>
 }
 
 interface SectionHeadingProps {
@@ -528,12 +516,15 @@ export function App() {
   const [iconPickerAgentId, setIconPickerAgentId] = useState('')
   const [agentColorPicker, setAgentColorPicker] = useState<AgentColorPickerState | null>(null)
   const [agentColorDraft, setAgentColorDraft] = useState('')
-  const [lucideIconQuery, setLucideIconQuery] = useState('')
-  const [lucideIconPage, setLucideIconPage] = useState(0)
   const searchRef = useRef<HTMLInputElement>(null)
   const accountsRef = useRef(accounts)
   const sessionsRef = useRef(sessions)
   const activeSessionIdRef = useRef(activeSessionId)
+  const sessionActivityTimesRef = useRef(new Map<string, number>())
+  const appBodyRef = useRef<HTMLDivElement>(null)
+  const folderTreeRef = useRef<HTMLElement>(null)
+  const sidebarWidthRef = useRef(sidebarWidth)
+  const folderPaneHeightRef = useRef(folderPaneHeight)
   const profileRefreshInFlight = useRef(false)
   const historyRefreshInFlight = useRef(false)
   const historyRefreshQueued = useRef(false)
@@ -549,15 +540,6 @@ export function App() {
   const resolvedAgentIcon = (agent: string): AgentIconPreference => {
     return agentIcons[agent] ?? { mode: 'monogram' }
   }
-  const filteredLucideIconNames = useMemo(() => {
-    const query = lucideIconQuery.trim().toLocaleLowerCase()
-    return query ? LUCIDE_ICON_NAMES.filter((name) => name.includes(query)) : LUCIDE_ICON_NAMES
-  }, [lucideIconQuery])
-  const lucideIconPageCount = Math.max(1, Math.ceil(filteredLucideIconNames.length / LUCIDE_ICON_PAGE_SIZE))
-  const visibleLucideIconNames = filteredLucideIconNames.slice(
-    lucideIconPage * LUCIDE_ICON_PAGE_SIZE,
-    (lucideIconPage + 1) * LUCIDE_ICON_PAGE_SIZE,
-  )
   const colorPickerProfile = agentColorPicker
     ? profiles.find((profile) => profile.id === agentColorPicker.agentId)
     : undefined
@@ -717,7 +699,7 @@ export function App() {
     const reconcileProfiles = (): void => {
       if (document.visibilityState === 'visible') refreshProfiles()
     }
-    const timer = window.setInterval(reconcileProfiles, 60_000)
+    const timer = window.setInterval(reconcileProfiles, 5 * 60_000)
     window.addEventListener('focus', reconcileProfiles)
     document.addEventListener('visibilitychange', reconcileProfiles)
     return () => {
@@ -848,9 +830,14 @@ export function App() {
     setSessions((current) => current.map((session) => session.id === id ? { ...session, ...update } : session))
   }
 
+  const recordSessionActivity = (id: string): void => {
+    sessionActivityTimesRef.current.set(id, Date.now())
+  }
+
   const addRuntimeSession = (session: Omit<RuntimeSession, 'id' | 'createdAt' | 'lastViewedAt' | 'lastActivityAt'>): string => {
     const id = crypto.randomUUID()
     const now = Date.now()
+    sessionActivityTimesRef.current.set(id, now)
     const nextSession: RuntimeSession = { ...session, id, createdAt: now, lastViewedAt: now, lastActivityAt: now }
     setSessions((current) => {
       if (current.length < MAX_RUNTIME_SESSIONS) return [...current, nextSession]
@@ -865,14 +852,22 @@ export function App() {
 
   const activateSession = (id: string): void => {
     const now = Date.now()
-    setSessions((current) => current.map((session) => (
-      session.id === id || session.id === activeSessionId ? { ...session, lastViewedAt: now } : session
-    )))
+    setSessions((current) => current.map((session) => {
+      if (session.id === id) {
+        return {
+          ...session,
+          lastViewedAt: now,
+          lastActivityAt: sessionActivityTimesRef.current.get(id) ?? session.lastActivityAt,
+        }
+      }
+      return session.id === activeSessionId ? { ...session, lastViewedAt: now } : session
+    }))
     setActiveSessionId(id)
     void window.cliAgent.acknowledgeSessionNotification(id).then(acceptNotificationSnapshot)
   }
 
   const closeSession = (id: string): void => {
+    sessionActivityTimesRef.current.delete(id)
     setSessions((current) => current.filter((session) => session.id !== id))
     setActiveSessionId((current) => current === id ? '' : current)
     void window.cliAgent.acknowledgeSessionNotification(id).then(acceptNotificationSnapshot)
@@ -958,6 +953,7 @@ export function App() {
 
   const setAndSaveSidebarWidth = (next: number): void => {
     const width = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, next))
+    sidebarWidthRef.current = width
     setSidebarWidth(width)
     localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(width))
   }
@@ -971,10 +967,12 @@ export function App() {
 
     const onPointerMove = (moveEvent: PointerEvent): void => {
       latestWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, startWidth + moveEvent.clientX - startX))
-      setSidebarWidth(latestWidth)
+      sidebarWidthRef.current = latestWidth
+      appBodyRef.current?.style.setProperty('--sidebar-width', `${latestWidth}px`)
     }
     const finish = (): void => {
       document.body.classList.remove('sidebar-resizing')
+      setSidebarWidth(latestWidth)
       localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(latestWidth))
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', finish)
@@ -1003,6 +1001,7 @@ export function App() {
   const setAndSaveFolderPaneHeight = (next: number): void => {
     const availableMaximum = Math.max(MIN_FOLDER_PANE_HEIGHT, Math.min(MAX_FOLDER_PANE_HEIGHT, window.innerHeight - 260))
     const height = Math.min(availableMaximum, Math.max(MIN_FOLDER_PANE_HEIGHT, next))
+    folderPaneHeightRef.current = height
     setFolderPaneHeight(height)
     localStorage.setItem(FOLDER_PANE_HEIGHT_STORAGE_KEY, String(height))
   }
@@ -1017,10 +1016,12 @@ export function App() {
     const onPointerMove = (moveEvent: PointerEvent): void => {
       const availableMaximum = Math.max(MIN_FOLDER_PANE_HEIGHT, Math.min(MAX_FOLDER_PANE_HEIGHT, window.innerHeight - 260))
       latestHeight = Math.min(availableMaximum, Math.max(MIN_FOLDER_PANE_HEIGHT, startHeight + moveEvent.clientY - startY))
-      setFolderPaneHeight(latestHeight)
+      folderPaneHeightRef.current = latestHeight
+      if (folderTreeRef.current) folderTreeRef.current.style.height = `${latestHeight}px`
     }
     const finish = (): void => {
       document.body.classList.remove('folder-pane-resizing')
+      setFolderPaneHeight(latestHeight)
       localStorage.setItem(FOLDER_PANE_HEIGHT_STORAGE_KEY, String(latestHeight))
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', finish)
@@ -1544,7 +1545,7 @@ export function App() {
         </div>
       </header>
 
-      <div className="app-body" style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}>
+      <div className="app-body" ref={appBodyRef} style={{ '--sidebar-width': `${sidebarWidthRef.current}px` } as CSSProperties}>
         <aside className="sidebar scroll">
           <button className="search-box search-trigger" aria-label="Open conversation search" onClick={() => {
             setSearchOpen(true)
@@ -1571,7 +1572,7 @@ export function App() {
             )}
           />
           {sectionOpen.folders && (
-            <nav className="folder-tree" aria-label="Folders" style={{ height: `${folderPaneHeight}px` }}>
+            <nav className="folder-tree" ref={folderTreeRef} aria-label="Folders" style={{ height: `${folderPaneHeightRef.current}px` }}>
               {folders.map((folder) => {
                 const folderSessions = sessions.filter((session) => session.folderId === folder.id)
                 const sessionHistoryKeys = new Set(folderSessions.map((session) => session.historyKey).filter(Boolean))
@@ -1889,27 +1890,29 @@ export function App() {
                 <div className={`runtime-session ${activeSessionId === session.id ? 'active' : ''}`} key={session.id}>
                   <div className={`terminal-view ${session.view === 'cli' ? 'active' : ''}`}>
                     {session.terminalEnabled && (
-                      <TerminalPane
-                        active={activeSessionId === session.id && session.view === 'cli'}
-                        sessionId={session.id}
-                        agentId={session.agentId}
-                        cwd={session.cwd}
-                        title={session.title}
-                        account={session.account}
-                        purpose={session.purpose}
-                        resumeId={session.resumeId}
-                        revealLatestAt={session.revealLatestAt}
-                        fontFamily={terminalFontFamily(appearance.terminalFont, appearance.localTerminalFont)}
-                        fontSize={appearance.terminalFontSize}
-                        background={appearance.terminalBackground}
-                        foreground={appearance.terminalForeground}
-                        cursorColor={ACCENT_OPTIONS.find((option) => option.id === theme)?.color ?? ACCENT_OPTIONS[0].color}
-                        activityStatusEnabled={profiles.some((profile) => (
-                          profile.id === session.agentId && profile.attention.status === 'supported'
-                        ))}
-                        onActivity={() => updateSession(session.id, { lastActivityAt: Date.now() })}
-                        onStateChange={(state, detail) => updateSession(session.id, { state, statusDetail: detail ?? '' })}
-                      />
+                      <Suspense fallback={null}>
+                        <LazyTerminalPane
+                          active={activeSessionId === session.id && session.view === 'cli'}
+                          sessionId={session.id}
+                          agentId={session.agentId}
+                          cwd={session.cwd}
+                          title={session.title}
+                          account={session.account}
+                          purpose={session.purpose}
+                          resumeId={session.resumeId}
+                          revealLatestAt={session.revealLatestAt}
+                          fontFamily={terminalFontFamily(appearance.terminalFont, appearance.localTerminalFont)}
+                          fontSize={appearance.terminalFontSize}
+                          background={appearance.terminalBackground}
+                          foreground={appearance.terminalForeground}
+                          cursorColor={ACCENT_OPTIONS.find((option) => option.id === theme)?.color ?? ACCENT_OPTIONS[0].color}
+                          activityStatusEnabled={profiles.some((profile) => (
+                            profile.id === session.agentId && profile.attention.status === 'supported'
+                          ))}
+                          onActivity={() => recordSessionActivity(session.id)}
+                          onStateChange={(state, detail) => updateSession(session.id, { state, statusDetail: detail ?? '' })}
+                        />
+                      </Suspense>
                     )}
                     {session.terminalEnabled && (session.state === 'idle' || session.state === 'starting') && (
                       <div className="session-starting" role="status" aria-label="Connecting to CLI session">
@@ -1919,12 +1922,14 @@ export function App() {
                     )}
                   </div>
                   <div className={`conversation-tab ${session.view === 'conversation' ? 'active' : ''}`}>
-                    <ConversationView
-                      conversation={session.conversation}
-                      loading={session.conversationLoading}
-                      error={session.conversationError}
-                      highlightMessageId={session.highlightMessageId}
-                    />
+                    {activeSessionId === session.id && session.view === 'conversation' && (
+                      <ConversationView
+                        conversation={session.conversation}
+                        loading={session.conversationLoading}
+                        error={session.conversationError}
+                        highlightMessageId={session.highlightMessageId}
+                      />
+                    )}
                   </div>
                 </div>
               ))}
@@ -1935,7 +1940,12 @@ export function App() {
             <span className={`status-pill ${activeSession?.state ?? 'idle'}`}><span className="status-dot" />{stateLabel(activeSession?.state ?? 'idle')}</span>
             <span>{activeSession ? activeProfile?.version ?? activeSession.agentId : 'No session'}</span>
             <span>{sessions.length}/{MAX_RUNTIME_SESSIONS} open</span>
-            <span className="status-right">{activeSession ? <SessionClock session={activeSession} /> : detectedVersions}</span>
+            <span className="status-right">{activeSession ? (
+              <SessionClock
+                session={activeSession}
+                getLastActivityAt={() => sessionActivityTimesRef.current.get(activeSession.id) ?? activeSession.lastActivityAt}
+              />
+            ) : detectedVersions}</span>
           </footer>
         </section>
       </div>
@@ -2265,8 +2275,6 @@ export function App() {
                           </button>
                           <button className={mode === 'lucide' ? 'active' : ''} role="radio" aria-checked={mode === 'lucide'} title="Choose a Lucide icon" onClick={() => {
                             setIconPickerAgentId(profile.id)
-                            setLucideIconQuery('')
-                            setLucideIconPage(0)
                           }}>
                           {mode === 'lucide' && agentIcons[profile.id]?.iconName
                             ? <DynamicLucideIcon name={agentIcons[profile.id].iconName as LucideIconName} size={14} />
@@ -2339,50 +2347,17 @@ export function App() {
       )}
 
       {iconPickerAgentId && (
-        <div className="icon-picker-backdrop" role="presentation" onMouseDown={(event) => {
-          if (event.target === event.currentTarget) setIconPickerAgentId('')
-        }}>
-          <section className="icon-picker-modal" role="dialog" aria-modal="true" aria-labelledby="lucide-picker-title">
-            <header>
-              <div>
-                <h2 id="lucide-picker-title">Lucide icons</h2>
-                <p>{profiles.find((profile) => profile.id === iconPickerAgentId)?.label ?? iconPickerAgentId}</p>
-              </div>
-              <button className="icon-button" title="Close" onClick={() => setIconPickerAgentId('')}><X size={16} /></button>
-            </header>
-            <label className="icon-picker-search">
-              <Search size={14} aria-hidden="true" />
-              <input autoFocus value={lucideIconQuery} placeholder="Search icon names" onChange={(event) => {
-                setLucideIconQuery(event.target.value)
-                setLucideIconPage(0)
-              }} />
-            </label>
-            <div className="lucide-icon-grid scroll">
-              {visibleLucideIconNames.map((name) => (
-                <button
-                  className={agentIcons[iconPickerAgentId]?.mode === 'lucide' && agentIcons[iconPickerAgentId]?.iconName === name ? 'active' : ''}
-                  title={name}
-                  key={name}
-                  onClick={() => {
-                    changeAgentIcon(iconPickerAgentId, { mode: 'lucide', iconName: name })
-                    setIconPickerAgentId('')
-                  }}
-                >
-                  <DynamicLucideIcon name={name} size={18} />
-                </button>
-              ))}
-              {!visibleLucideIconNames.length && <p className="icon-picker-empty">No matching icons</p>}
-            </div>
-            <footer>
-              <span>{filteredLucideIconNames.length.toLocaleString()} icons</span>
-              <div className="icon-picker-pagination">
-                <button title="Previous page" disabled={lucideIconPage === 0} onClick={() => setLucideIconPage((current) => Math.max(0, current - 1))}><ChevronLeft size={15} /></button>
-                <span>{Math.min(lucideIconPage + 1, lucideIconPageCount)} / {lucideIconPageCount}</span>
-                <button title="Next page" disabled={lucideIconPage >= lucideIconPageCount - 1} onClick={() => setLucideIconPage((current) => Math.min(lucideIconPageCount - 1, current + 1))}><ChevronRight size={15} /></button>
-              </div>
-            </footer>
-          </section>
-        </div>
+        <Suspense fallback={null}>
+          <LazyLucideIconPicker
+            agentLabel={profiles.find((profile) => profile.id === iconPickerAgentId)?.label ?? iconPickerAgentId}
+            currentIconName={agentIcons[iconPickerAgentId]?.mode === 'lucide' ? agentIcons[iconPickerAgentId]?.iconName : undefined}
+            onClose={() => setIconPickerAgentId('')}
+            onSelect={(name) => {
+              changeAgentIcon(iconPickerAgentId, { mode: 'lucide', iconName: name })
+              setIconPickerAgentId('')
+            }}
+          />
+        </Suspense>
       )}
 
       {agentColorPicker && (
