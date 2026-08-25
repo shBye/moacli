@@ -9,6 +9,7 @@ interface SessionRuntimeStageProps {
   activeSessionId: string
   terminalFontFamily: string
   terminalFontSize: number
+  terminalRenderer: 'dom' | 'webgl'
   terminalBackground: string
   terminalForeground: string
   cursorColor: string
@@ -22,6 +23,7 @@ export function SessionRuntimeStage({
   activeSessionId,
   terminalFontFamily,
   terminalFontSize,
+  terminalRenderer,
   terminalBackground,
   terminalForeground,
   cursorColor,
@@ -46,6 +48,7 @@ export function SessionRuntimeStage({
                   account={session.account}
                   purpose={session.purpose}
                   resumeId={session.resumeId}
+                  renderer={terminalRenderer}
                   revealLatestAt={session.revealLatestAt}
                   fontFamily={terminalFontFamily}
                   fontSize={terminalFontSize}

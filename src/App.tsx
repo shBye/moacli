@@ -9,9 +9,7 @@ import {
   type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react'
-import {
-  Settings2,
-} from 'lucide-react'
+import { X } from 'lucide-react'
 import type {
   AgentAccount,
   AgentHealth,
@@ -28,6 +26,8 @@ import {
   DEFAULT_APPEARANCE,
   loadAppearance,
   saveAppearance,
+  TERMINAL_FONT_SIZE_MAX,
+  TERMINAL_FONT_SIZE_MIN,
   terminalFontFamily,
   uiFontFamily,
   type AppearancePreferences,
@@ -256,6 +256,7 @@ export function App() {
   const [cwd, setCwd] = useState('C:\\git_workspace')
   const [sessions, setSessions] = useState<RuntimeSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState('')
+  const [launcherOpen, setLauncherOpen] = useState(false)
   const [sectionOpen, setSectionOpen] = useState<SidebarSectionState>(() => loadJson(SECTION_STORAGE_KEY, DEFAULT_SECTIONS))
   const {
     sidebarWidth,
@@ -281,6 +282,10 @@ export function App() {
   const [iconPickerAgentId, setIconPickerAgentId] = useState('')
   const [agentColorPicker, setAgentColorPicker] = useState<AgentColorPickerState | null>(null)
   const [agentColorDraft, setAgentColorDraft] = useState('')
+  const [windowMaximized, setWindowMaximized] = useState(false)
+  const [zoomNotice, setZoomNotice] = useState<number | null>(null)
+  const zoomNoticeTimer = useRef<number>()
+  const activateSessionRef = useRef<(id: string, revealFolder?: boolean) => void>(() => undefined)
   const searchRef = useRef<HTMLInputElement>(null)
   const accountsRef = useRef(accounts)
   const sessionsRef = useRef(sessions)
@@ -693,6 +698,12 @@ export function App() {
     setActiveSessionId(id)
     void window.cliAgent.acknowledgeSessionNotification(id).then(acceptNotificationSnapshot)
   }
+  activateSessionRef.current = activateSession
+
+  const openSessionLauncher = (): void => {
+    setNewSessionFolderId('unsorted')
+    setLauncherOpen(true)
+  }
 
   const reorderSessionTabs = (next: RuntimeSession[]): void => {
     sessionsRef.current = next
@@ -762,6 +773,7 @@ export function App() {
     })
     setTitle('')
     setNewSessionFolderId('unsorted')
+    setLauncherOpen(false)
   }
 
   useEffect(() => {
@@ -774,11 +786,96 @@ export function App() {
       const cutoff = Date.now() - SESSION_IDLE_TIMEOUT_MS
       const notifiedSessionIds = new Set(notificationSnapshot.notifications.map((notification) => notification.sessionId))
       setSessions((current) => current.filter((session) => (
-        session.id === activeSessionId || notifiedSessionIds.has(session.id) || session.lastViewedAt >= cutoff
+        session.id === activeSessionId
+        || notifiedSessionIds.has(session.id)
+        || session.lastViewedAt >= cutoff
+        // A session whose terminal is still producing or receiving output is
+        // in use even when it has not been viewed — never sweep active work.
+        || (sessionActivityTimesRef.current.get(session.id) ?? session.lastActivityAt) >= cutoff
       )))
     }, SESSION_SWEEP_INTERVAL_MS)
     return () => window.clearInterval(timer)
   }, [activeSessionId, notificationSnapshot.notifications])
+
+  useEffect(() => {
+    let mounted = true
+    void window.cliAgent.isWindowMaximized().then((maximized) => {
+      if (mounted) setWindowMaximized(maximized)
+    })
+    const offMaximized = window.cliAgent.onWindowMaximizedChanged(setWindowMaximized)
+    return () => {
+      mounted = false
+      offMaximized()
+    }
+  }, [])
+
+  useEffect(() => {
+    const adjustTerminalFontSize = (delta: number): void => {
+      setAppearance((current) => {
+        const nextSize = delta === 0
+          ? DEFAULT_APPEARANCE.terminalFontSize
+          : Math.min(TERMINAL_FONT_SIZE_MAX, Math.max(TERMINAL_FONT_SIZE_MIN, current.terminalFontSize + delta))
+        window.clearTimeout(zoomNoticeTimer.current)
+        setZoomNotice(nextSize)
+        zoomNoticeTimer.current = window.setTimeout(() => setZoomNotice(null), 1200)
+        if (nextSize === current.terminalFontSize) return current
+        const next = { ...current, terminalFontSize: nextSize }
+        saveAppearance(next)
+        return next
+      })
+    }
+    const onZoomKeyDown = (event: KeyboardEvent): void => {
+      if (!event.ctrlKey || event.altKey || event.metaKey) return
+      const delta = event.key === '=' || event.key === '+'
+        ? 1
+        : event.key === '-' || event.key === '_'
+          ? -1
+          : event.key === '0' ? 0 : null
+      if (delta === null) return
+      event.preventDefault()
+      adjustTerminalFontSize(delta)
+    }
+    let lastWheelZoomAt = 0
+    const onZoomWheel = (event: WheelEvent): void => {
+      if (!event.ctrlKey || event.deltaY === 0) return
+      event.preventDefault()
+      const now = performance.now()
+      if (now - lastWheelZoomAt < 60) return
+      lastWheelZoomAt = now
+      adjustTerminalFontSize(event.deltaY < 0 ? 1 : -1)
+    }
+    window.addEventListener('keydown', onZoomKeyDown)
+    window.addEventListener('wheel', onZoomWheel, { passive: false })
+    return () => {
+      window.removeEventListener('keydown', onZoomKeyDown)
+      window.removeEventListener('wheel', onZoomWheel)
+      window.clearTimeout(zoomNoticeTimer.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    const onTabShortcut = (event: KeyboardEvent): void => {
+      if (!event.ctrlKey || event.altKey || event.metaKey) return
+      const list = sessionsRef.current
+      if (event.key === 'Tab') {
+        event.preventDefault()
+        if (list.length < 2) return
+        const index = list.findIndex((session) => session.id === activeSessionIdRef.current)
+        const next = list[(index + (event.shiftKey ? -1 : 1) + list.length) % list.length]
+        if (next) activateSessionRef.current(next.id)
+        return
+      }
+      if (!event.shiftKey && /^[1-9]$/.test(event.key)) {
+        if (!list.length) return
+        const target = event.key === '9' ? list[list.length - 1] : list[Number(event.key) - 1]
+        if (!target) return
+        event.preventDefault()
+        activateSessionRef.current(target.id)
+      }
+    }
+    window.addEventListener('keydown', onTabShortcut)
+    return () => window.removeEventListener('keydown', onTabShortcut)
+  }, [])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -791,19 +888,18 @@ export function App() {
         event.preventDefault()
         setSearchOpen(false)
         setHistoryQuery('')
-      }
-      if (event.key === 'Enter' && document.activeElement === searchRef.current && historyQuery.trim().length >= 2 && searchResults[0]) {
+      } else if (event.key === 'Escape' && launcherOpen) {
         event.preventDefault()
-        openSearchResult(searchResults[0])
+        setLauncherOpen(false)
       }
-      if (event.ctrlKey && event.key === 'Enter' && !activeSession) {
+      if (event.ctrlKey && event.key === 'Enter' && (launcherOpen || !activeSession)) {
         event.preventDefault()
         startSession()
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeSession, agentId, cwd, title, selectedAccount, newSessionFolderId, historyQuery, searchOpen, searchResults])
+  }, [activeSession, agentId, cwd, title, selectedAccount, newSessionFolderId, searchOpen, launcherOpen])
 
   const toggleSection = (section: SidebarSectionKey): void => {
     setSectionOpen((current) => {
@@ -917,6 +1013,41 @@ export function App() {
     setFolders((items) => [...items, { id, name }])
     setSelectedFolderId(id)
     setNewFolderName(null)
+  }
+
+  const renameFolder = (folderId: string, name: string): void => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    setFolders((items) => items.map((folder) => folder.id === folderId ? { ...folder, name: trimmed } : folder))
+  }
+
+  const removeFolder = (folderId: string): void => {
+    if (folderId === 'unsorted') return
+    setFolders((items) => items.filter((folder) => folder.id !== folderId))
+    setFolderAssignments((current) => Object.fromEntries(
+      Object.entries(current).map(([key, value]) => [key, value === folderId ? 'unsorted' : value]),
+    ))
+    setSessions((current) => current.map((session) => (
+      session.folderId === folderId ? { ...session, folderId: 'unsorted' } : session
+    )))
+    setFolderOrders((current) => {
+      if (!(folderId in current)) return current
+      const next = { ...current }
+      const orphaned = next[folderId] ?? []
+      delete next[folderId]
+      next.unsorted = [...(next.unsorted ?? []), ...orphaned.filter((key) => !(next.unsorted ?? []).includes(key))]
+      return next
+    })
+    setSelectedFolderId((current) => current === folderId ? 'unsorted' : current)
+    setNewSessionFolderId((current) => current === folderId ? 'unsorted' : current)
+  }
+
+  const openAccountSettings = (): void => {
+    setDraftAccounts(accountsRef.current)
+    setAccountSaveNotice(null)
+    setNotificationPanelOpen(false)
+    setSettingsSection('accounts')
+    setSettingsOpen(true)
   }
 
   const setHistoryFolder = (historyKey: string, folderId: string): void => {
@@ -1284,10 +1415,44 @@ export function App() {
   const detectedVersions = profiles.filter((profile) => profile.available && profile.id !== 'powershell')
     .slice(0, 2).map((profile) => `${profile.id} ${profile.version ?? 'detected'}`).join(' · ')
 
+  const launcherElement = (
+    <SessionLauncher
+      profiles={profiles}
+      agentId={agentId}
+      agentIcons={agentIcons}
+      title={title}
+      cwd={cwd}
+      folders={folders}
+      folderId={newSessionFolderId}
+      accountId={accountId}
+      accounts={agentAccounts}
+      selectedProfile={selectedProfile}
+      selectedAccount={selectedAccount}
+      onAgentChange={setAgentId}
+      onTitleChange={setTitle}
+      onSelectWorkingDirectory={selectWorkingDirectory}
+      onFolderChange={setNewSessionFolderId}
+      onAccountChange={setAccountId}
+      onStart={startSession}
+      onOpenAccountSettings={openAccountSettings}
+    />
+  )
+
   return (
-    <main className="app-shell" data-theme={theme} style={themeStyle}>
+    <main className={`app-shell ${windowMaximized ? 'maximized' : ''}`} data-theme={theme} style={themeStyle}>
       <AppTitlebar
         sidebarCollapsed={sidebarCollapsed}
+        maximized={windowMaximized}
+        notificationsEnabled={notificationSnapshot.settings.enabled}
+        notificationCount={notificationSnapshot.notifications.length}
+        notificationPanelOpen={notificationPanelOpen}
+        onToggleNotifications={() => setNotificationPanelOpen((current) => !current)}
+        onOpenSettings={() => {
+          setDraftAccounts(accounts)
+          setAccountSaveNotice(null)
+          setNotificationPanelOpen(false)
+          setSettingsOpen(true)
+        }}
         onToggleSidebar={toggleSidebar}
         onMinimize={() => window.cliAgent.minimizeWindow()}
         onToggleMaximize={() => window.cliAgent.toggleMaximizeWindow()}
@@ -1327,10 +1492,10 @@ export function App() {
           }}
           onToggleSection={toggleSection}
           onNewFolder={() => setNewFolderName('')}
-          onNewSession={() => {
-            setNewSessionFolderId('unsorted')
-            setActiveSessionId('')
-          }}
+          onNewSession={openSessionLauncher}
+          onRenameFolder={renameFolder}
+          onRemoveFolder={removeFolder}
+          onOpenAccountSettings={openAccountSettings}
           onToggleFolder={(folderId) => setSelectedFolderId((current) => current === folderId ? '' : folderId)}
           onFolderDragEnter={setDragOverFolderId}
           onFolderDragLeave={() => {
@@ -1382,6 +1547,7 @@ export function App() {
                     onRestart={restartSession}
                     onClose={closeSession}
                     onReorder={reorderSessionTabs}
+                    onNewSession={openSessionLauncher}
                   />
                 </Suspense>
                 {activeSession && (
@@ -1400,32 +1566,13 @@ export function App() {
                 )}
               </div>
             )}
-            {!activeSession && (
-              <SessionLauncher
-                profiles={profiles}
-                agentId={agentId}
-                agentIcons={agentIcons}
-                title={title}
-                cwd={cwd}
-                folders={folders}
-                folderId={newSessionFolderId}
-                accountId={accountId}
-                accounts={agentAccounts}
-                selectedProfile={selectedProfile}
-                selectedAccount={selectedAccount}
-                onAgentChange={setAgentId}
-                onTitleChange={setTitle}
-                onSelectWorkingDirectory={selectWorkingDirectory}
-                onFolderChange={setNewSessionFolderId}
-                onAccountChange={setAccountId}
-                onStart={startSession}
-              />
-            )}
+            {!activeSession && !sessions.length && launcherElement}
             <SessionRuntimeStage
               sessions={sessions}
               activeSessionId={activeSessionId}
               terminalFontFamily={terminalFont}
               terminalFontSize={appearance.terminalFontSize}
+              terminalRenderer={appearance.terminalRenderer}
               terminalBackground={appearance.terminalBackground}
               terminalForeground={appearance.terminalForeground}
               cursorColor={accentOption.color}
@@ -1433,6 +1580,9 @@ export function App() {
               onActivity={recordSessionActivity}
               onStateChange={(sessionId, state, detail) => updateSession(sessionId, { state, statusDetail: detail ?? '' })}
             />
+            {zoomNotice !== null && (
+              <div className="zoom-notice" role="status">Terminal {zoomNotice}px</div>
+            )}
           </div>
 
           <StatusBar
@@ -1450,6 +1600,23 @@ export function App() {
           />
         </section>
       </div>
+
+      {launcherOpen && sessions.length > 0 && (
+        <div
+          className="launcher-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setLauncherOpen(false)
+          }}
+        >
+          <section className="launcher-modal" role="dialog" aria-modal="true" aria-label="Start a new session">
+            <button className="icon-button launcher-modal-close" title="Close (Esc)" onClick={() => setLauncherOpen(false)}>
+              <X size={15} />
+            </button>
+            {launcherElement}
+          </section>
+        </div>
+      )}
 
       {searchOpen && (
         <ConversationSearchModal
@@ -1477,19 +1644,11 @@ export function App() {
         open={notificationPanelOpen}
         profilesById={profilesById}
         agentIcons={agentIcons}
-        onToggle={() => setNotificationPanelOpen((current) => !current)}
         onClose={() => setNotificationPanelOpen(false)}
         onClear={() => void window.cliAgent.clearNotifications().then(acceptNotificationSnapshot)}
         onOpen={openNotification}
         onDismiss={(notificationId) => void window.cliAgent.dismissNotification(notificationId).then(acceptNotificationSnapshot)}
       />
-
-      <button className="floating-settings" title="Settings" onClick={() => {
-        setDraftAccounts(accounts)
-        setAccountSaveNotice(null)
-        setNotificationPanelOpen(false)
-        setSettingsOpen(true)
-      }}><Settings2 size={16} /></button>
 
       {settingsOpen && (
         <SettingsModal

@@ -1,8 +1,14 @@
-import { Minus, PanelLeftClose, PanelLeftOpen, Square, X } from 'lucide-react'
+import { Bell, BellOff, Copy, Minus, PanelLeftClose, PanelLeftOpen, Settings2, Square, X } from 'lucide-react'
 import moaCliIcon from '../assets/moacli-icon.png'
 
 interface AppTitlebarProps {
   sidebarCollapsed: boolean
+  maximized: boolean
+  notificationsEnabled: boolean
+  notificationCount: number
+  notificationPanelOpen: boolean
+  onToggleNotifications: () => void
+  onOpenSettings: () => void
   onToggleSidebar: () => void
   onMinimize: () => void
   onToggleMaximize: () => void
@@ -11,6 +17,12 @@ interface AppTitlebarProps {
 
 export function AppTitlebar({
   sidebarCollapsed,
+  maximized,
+  notificationsEnabled,
+  notificationCount,
+  notificationPanelOpen,
+  onToggleNotifications,
+  onOpenSettings,
   onToggleSidebar,
   onMinimize,
   onToggleMaximize,
@@ -35,10 +47,29 @@ export function AppTitlebar({
           <strong>MoaCLI</strong>
         </div>
       </div>
-      <div className="window-controls" onDoubleClick={(event) => event.stopPropagation()}>
-        <button title="Minimize" onClick={onMinimize}><Minus size={16} /></button>
-        <button title="Maximize or restore" onClick={onToggleMaximize}><Square size={12} /></button>
-        <button className="window-close" title="Close" onClick={onClose}><X size={16} /></button>
+      <div className="titlebar-trailing" onDoubleClick={(event) => event.stopPropagation()}>
+        <div className="titlebar-actions">
+          <button
+            className={`titlebar-action ${notificationCount ? 'has-items' : ''}`}
+            title={notificationsEnabled ? 'Notifications' : 'Notifications are off'}
+            aria-label="Notifications"
+            aria-expanded={notificationPanelOpen}
+            onClick={onToggleNotifications}
+          >
+            {notificationsEnabled ? <Bell size={15} /> : <BellOff size={15} />}
+            {notificationCount > 0 && <span className="notification-count">{notificationCount}</span>}
+          </button>
+          <button className="titlebar-action" title="Settings" aria-label="Settings" onClick={onOpenSettings}>
+            <Settings2 size={15} />
+          </button>
+        </div>
+        <div className="window-controls">
+          <button title="Minimize" onClick={onMinimize}><Minus size={16} /></button>
+          <button title={maximized ? 'Restore' : 'Maximize'} onClick={onToggleMaximize}>
+            {maximized ? <Copy size={12} style={{ transform: 'scaleX(-1)' }} /> : <Square size={12} />}
+          </button>
+          <button className="window-close" title="Close" onClick={onClose}><X size={16} /></button>
+        </div>
       </div>
     </header>
   )

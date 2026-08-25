@@ -1,6 +1,10 @@
-import { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
+import { SearchAddon } from '@xterm/addon-search'
+import { WebLinksAddon } from '@xterm/addon-web-links'
+import type { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
+import { ChevronDown, ChevronUp, X } from 'lucide-react'
 import { attachImeLifecycle } from './ime-lifecycle'
 import { beginTerminalComposition, cancelTerminalFocus, endTerminalComposition, requestTerminalFocus } from './ime-focus'
 import { createTerminalOptions } from './terminal-options'
@@ -16,6 +20,7 @@ interface TerminalPaneProps {
   account?: AgentAccount
   purpose?: 'session' | 'login'
   resumeId?: string
+  renderer: 'dom' | 'webgl'
   revealLatestAt: number
   fontFamily: string
   fontSize: number
@@ -28,14 +33,38 @@ interface TerminalPaneProps {
 }
 
 const MIN_STARTING_INDICATOR_MS = 650
+const INACTIVE_OUTPUT_FLUSH_MS = 250
+const STARTUP_FOLLOW_WINDOW_MS = 15_000
+const STARTUP_FOLLOW_EXTEND_MS = 1200
+const TERMINAL_ZOOM_KEYS = new Set(['=', '+', '-', '_', '0'])
 const CODEX_MOUSE_TRACKING_MODES = new Set([9, 1000, 1002, 1003, 1005, 1006, 1015, 1016])
 
-function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, revealLatestAt, fontFamily, fontSize, background, foreground, cursorColor, activityStatusEnabled, onActivity, onStateChange }: TerminalPaneProps) {
+function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, renderer, revealLatestAt, fontFamily, fontSize, background, foreground, cursorColor, activityStatusEnabled, onActivity, onStateChange }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const searchAddonRef = useRef<SearchAddon | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const flushInactiveOutputRef = useRef<() => void>(() => undefined)
+  const openSearchRef = useRef<() => void>(() => undefined)
   const ptyIdRef = useRef('')
   const ptyReadyRef = useRef(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  openSearchRef.current = () => {
+    setSearchOpen(true)
+    requestAnimationFrame(() => searchInputRef.current?.select())
+  }
+  const closeSearch = (): void => {
+    setSearchOpen(false)
+    terminalRef.current?.clearSelection()
+    terminalRef.current?.focus()
+  }
+  const findInTerminal = (direction: 'next' | 'previous', query = searchQuery): void => {
+    if (!query) return
+    if (direction === 'next') searchAddonRef.current?.findNext(query)
+    else searchAddonRef.current?.findPrevious(query)
+  }
   const activeRef = useRef(active)
   const activityRef = useRef(onActivity)
   const stateChangeRef = useRef(onStateChange)
@@ -62,9 +91,17 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
     fitAddonRef.current = fitAddon
     ptyIdRef.current = id
     terminal.loadAddon(fitAddon)
+    const searchAddon = new SearchAddon()
+    terminal.loadAddon(searchAddon)
+    searchAddonRef.current = searchAddon
+    terminal.loadAddon(new WebLinksAddon((event, uri) => {
+      event.preventDefault()
+      window.cliAgent.openExternal(uri)
+    }))
     terminal.open(container)
-    // xterm's built-in renderer is slightly less GPU-efficient than WebGL, but
-    // is considerably more reliable around Windows IME composition and resize.
+    // The built-in DOM renderer is the reliable default around Windows IME
+    // composition and resize; the WebGL addon is attached by its own effect
+    // when the GPU renderer is selected in appearance settings.
     container.dataset.renderer = 'default'
     fitAddon.fit()
 
@@ -120,6 +157,7 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
     let lastObservedWidth = 0
     let lastObservedHeight = 0
     let keepBottomUntil = 0
+    let startupFollowDeadline = 0
     const startingIndicatorShownAt = performance.now()
     let fallbackReadyTimer: ReturnType<typeof setTimeout> | undefined
     let minimumIndicatorTimer: ReturnType<typeof setTimeout> | undefined
@@ -140,16 +178,44 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       interactionState = state
       stateChangeRef.current(state, detail)
     }
+    let pendingInactiveOutput = ''
+    let pendingInactiveFlushTimer: ReturnType<typeof setTimeout> | undefined
+    const flushInactiveOutput = (): void => {
+      clearTimeout(pendingInactiveFlushTimer)
+      pendingInactiveFlushTimer = undefined
+      if (disposed || !pendingInactiveOutput) return
+      const output = pendingInactiveOutput
+      pendingInactiveOutput = ''
+      terminal.write(output)
+    }
+    flushInactiveOutputRef.current = flushInactiveOutput
     const offData = window.cliAgent.onPtyData(id, (data) => {
       reportActivity()
-      receivedData = true
-      terminal.write(data)
+      if (!receivedData) {
+        receivedData = true
+        // Pin the viewport to the newest output while the CLI restores its
+        // screen (resume replays, startup banners); scrolling up releases it.
+        startupFollowDeadline = performance.now() + STARTUP_FOLLOW_WINDOW_MS
+      }
+      if (performance.now() <= startupFollowDeadline) {
+        keepBottomUntil = Math.max(keepBottomUntil, performance.now() + STARTUP_FOLLOW_EXTEND_MS)
+      }
+      if (activeRef.current) {
+        flushInactiveOutput()
+        terminal.write(data)
+      } else {
+        // Hidden terminals coalesce output so busy background sessions do not
+        // steal frame time from the session being typed into.
+        pendingInactiveOutput += data
+        pendingInactiveFlushTimer ??= setTimeout(flushInactiveOutput, INACTIVE_OUTPUT_FLUSH_MS)
+      }
       if (started) reportRunning()
     })
     const writeParsedDisposable = terminal.onWriteParsed(() => {
       if (performance.now() <= keepBottomUntil) terminal.scrollToBottom()
     })
     const offExit = window.cliAgent.onPtyExit(id, (exitCode) => {
+      flushInactiveOutput()
       terminal.write(`\r\n\x1b[90m[process exited: ${exitCode}]\x1b[0m\r\n`)
       stateChangeRef.current('stopped', `exit ${exitCode}`)
     })
@@ -158,8 +224,10 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
     })
     const cancelBottomLock = (): void => {
       keepBottomUntil = 0
+      startupFollowDeadline = 0
     }
     const onUserWheel = (event: WheelEvent): void => {
+      if (event.ctrlKey) return
       if (event.deltaY < 0) cancelBottomLock()
     }
     container.addEventListener('wheel', onUserWheel, { passive: true })
@@ -180,6 +248,22 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true
       if (event.key === 'PageUp' || event.key === 'Home') cancelBottomLock()
+      if (event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey && event.code === 'KeyF') {
+        event.preventDefault()
+        openSearchRef.current()
+        return false
+      }
+      if (
+        event.ctrlKey && !event.altKey && !event.metaKey
+        && (
+          // Handled by app-level shortcuts: terminal zoom and tab switching.
+          TERMINAL_ZOOM_KEYS.has(event.key)
+          || event.key === 'Tab'
+          || (!event.shiftKey && /^[1-9]$/.test(event.key))
+        )
+      ) {
+        return false
+      }
       if (
         agentId === 'codex'
         && event.key === 'Enter'
@@ -280,6 +364,8 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame)
       clearTimeout(fallbackReadyTimer)
       clearTimeout(minimumIndicatorTimer)
+      clearTimeout(pendingInactiveFlushTimer)
+      flushInactiveOutputRef.current = () => undefined
       resizeObserver.disconnect()
       cursorStyleDisposable?.dispose()
       codexPrivateModeOnDisposable?.dispose()
@@ -298,16 +384,54 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       delete container.dataset.renderer
       terminalRef.current = null
       fitAddonRef.current = null
+      searchAddonRef.current = null
       ptyIdRef.current = ''
       ptyReadyRef.current = false
     }
   }, [sessionId, agentId, cwd, title, account?.id, purpose, resumeId])
 
   useEffect(() => {
+    if (renderer !== 'webgl') return undefined
+    const container = containerRef.current
+    const terminal = terminalRef.current
+    if (!container || !terminal) return undefined
+    let cancelled = false
+    let addon: WebglAddon | undefined
+    void import('@xterm/addon-webgl').then(({ WebglAddon: Webgl }) => {
+      if (cancelled || terminalRef.current !== terminal) return
+      try {
+        const webgl = new Webgl()
+        webgl.onContextLoss(() => {
+          // Fall back to the DOM renderer when the GPU context is lost.
+          webgl.dispose()
+          if (addon === webgl) addon = undefined
+          container.dataset.renderer = 'default'
+        })
+        terminal.loadAddon(webgl)
+        addon = webgl
+        container.dataset.renderer = 'webgl'
+      } catch {
+        container.dataset.renderer = 'default'
+      }
+    })
+    return () => {
+      cancelled = true
+      try {
+        addon?.dispose()
+      } catch {
+        // The terminal may already have disposed the addon with itself.
+      }
+      addon = undefined
+      container.dataset.renderer = 'default'
+    }
+  }, [renderer, sessionId, agentId, cwd, title, account?.id, purpose, resumeId])
+
+  useEffect(() => {
     const terminal = terminalRef.current
     if (!terminal) return
     terminal.options.cursorBlink = active
     if (!active) return
+    flushInactiveOutputRef.current()
 
     let cancelFocus = (): void => undefined
     const frame = requestAnimationFrame(() => {
@@ -365,16 +489,53 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
     terminal.options.fontSize = fontSize
     terminal.options.theme = { ...terminal.options.theme, background, foreground, cursor: cursorColor }
     requestAnimationFrame(() => {
-      if (!terminalRef.current || !fitAddonRef.current) return
-      fitAddonRef.current.fit()
-      terminal.refresh(0, Math.max(0, terminal.rows - 1))
+      const currentTerminal = terminalRef.current
+      const fitAddon = fitAddonRef.current
+      if (!currentTerminal || !fitAddon) return
+      const before = currentTerminal.buffer.active
+      const distanceFromBottom = Math.max(0, before.baseY - before.viewportY)
+      fitAddon.fit()
+      currentTerminal.refresh(0, Math.max(0, currentTerminal.rows - 1))
+      if (distanceFromBottom <= 1) {
+        currentTerminal.scrollToBottom()
+      } else {
+        const after = currentTerminal.buffer.active
+        currentTerminal.scrollToLine(Math.max(0, after.baseY - distanceFromBottom))
+      }
       if (ptyReadyRef.current && ptyIdRef.current) {
-        window.cliAgent.resizePty(ptyIdRef.current, terminal.cols, terminal.rows)
+        window.cliAgent.resizePty(ptyIdRef.current, currentTerminal.cols, currentTerminal.rows)
       }
     })
   }, [fontFamily, fontSize, background, foreground, cursorColor])
 
-  return <div className="terminal-container" ref={containerRef} />
+  return (
+    <div className="terminal-pane">
+      <div className="terminal-container" ref={containerRef} />
+      {searchOpen && (
+        <div className="terminal-search" role="search">
+          <input
+            ref={searchInputRef}
+            autoFocus
+            aria-label="Find in terminal"
+            placeholder="Find in terminal"
+            value={searchQuery}
+            onChange={(event) => {
+              setSearchQuery(event.target.value)
+              if (event.target.value) searchAddonRef.current?.findNext(event.target.value, { incremental: true })
+              else terminalRef.current?.clearSelection()
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') findInTerminal(event.shiftKey ? 'previous' : 'next')
+              if (event.key === 'Escape') closeSearch()
+            }}
+          />
+          <button title="Previous match (Shift+Enter)" onClick={() => findInTerminal('previous')}><ChevronUp size={13} /></button>
+          <button title="Next match (Enter)" onClick={() => findInTerminal('next')}><ChevronDown size={13} /></button>
+          <button title="Close (Esc)" onClick={closeSearch}><X size={13} /></button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function terminalPanePropsEqual(previous: TerminalPaneProps, next: TerminalPaneProps): boolean {
@@ -386,6 +547,7 @@ function terminalPanePropsEqual(previous: TerminalPaneProps, next: TerminalPaneP
     && previous.account?.id === next.account?.id
     && previous.purpose === next.purpose
     && previous.resumeId === next.resumeId
+    && previous.renderer === next.renderer
     && previous.revealLatestAt === next.revealLatestAt
     && previous.fontFamily === next.fontFamily
     && previous.fontSize === next.fontSize

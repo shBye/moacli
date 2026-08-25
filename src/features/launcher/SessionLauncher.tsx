@@ -24,6 +24,7 @@ interface SessionLauncherProps {
   onFolderChange: (folderId: string) => void
   onAccountChange: (accountId: string) => void
   onStart: () => void
+  onOpenAccountSettings: () => void
 }
 
 export function SessionLauncher({
@@ -44,6 +45,7 @@ export function SessionLauncher({
   onFolderChange,
   onAccountChange,
   onStart,
+  onOpenAccountSettings,
 }: SessionLauncherProps) {
   const startDisabled = !selectedProfile?.available
     || !cwd.trim()
@@ -101,11 +103,14 @@ export function SessionLauncher({
             <span className="account-color" style={{ '--agent': selectedProfile?.color ?? '#7e878d' } as CSSProperties} />
             {agentId === 'powershell' ? (
               <span>Local shell</span>
-            ) : (
+            ) : accounts.length ? (
               <select value={accountId} onChange={(event) => onAccountChange(event.target.value)}>
                 {accounts.map((account) => <option key={account.id} value={account.id}>{account.email}</option>)}
-                {!accounts.length && <option value="">Account setup required</option>}
               </select>
+            ) : (
+              <button className="account-setup-link" onClick={onOpenAccountSettings}>
+                No account connected yet — set one up
+              </button>
             )}
           </label>
         </div>

@@ -1,10 +1,13 @@
-import type {
-  DragEvent as ReactDragEvent,
-  KeyboardEvent as ReactKeyboardEvent,
-  PointerEvent as ReactPointerEvent,
-  Ref,
+import {
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type Ref,
 } from 'react'
-import { Folder, FolderOpen, FolderPlus, Plus, X } from 'lucide-react'
+import { Folder, FolderOpen, FolderPlus, Pencil, Plus, Trash2, X } from 'lucide-react'
 import type { AgentHealth, AppNotification, HistorySession } from '../../../electron/contracts'
 import { AgentAvatar } from '../../components/AgentAvatar'
 import { SectionHeading } from '../../components/SectionHeading'
@@ -53,6 +56,8 @@ interface SidebarFoldersSectionProps {
   onNewFolderNameChange: (name: string) => void
   onAddFolder: () => void
   onCancelNewFolder: () => void
+  onRenameFolder: (folderId: string, name: string) => void
+  onRemoveFolder: (folderId: string) => void
   onBeginResize: (event: ReactPointerEvent<HTMLDivElement>) => void
   onResetHeight: () => void
   onResizeWithKeyboard: (event: ReactKeyboardEvent<HTMLDivElement>) => void
@@ -98,10 +103,50 @@ export function SidebarFoldersSection({
   onNewFolderNameChange,
   onAddFolder,
   onCancelNewFolder,
+  onRenameFolder,
+  onRemoveFolder,
   onBeginResize,
   onResetHeight,
   onResizeWithKeyboard,
 }: SidebarFoldersSectionProps) {
+  const [renamingFolderId, setRenamingFolderId] = useState('')
+  const [renameDraft, setRenameDraft] = useState('')
+  const [confirmingFolderId, setConfirmingFolderId] = useState('')
+  const [confirmingCloseId, setConfirmingCloseId] = useState('')
+  const confirmTimer = useRef<number>()
+  useEffect(() => () => window.clearTimeout(confirmTimer.current), [])
+
+  const beginRename = (folder: LogicalFolder): void => {
+    setRenamingFolderId(folder.id)
+    setRenameDraft(folder.name)
+  }
+  const commitRename = (): void => {
+    if (renamingFolderId) onRenameFolder(renamingFolderId, renameDraft)
+    setRenamingFolderId('')
+  }
+  const requestRemoveFolder = (folderId: string, entryCount: number): void => {
+    window.clearTimeout(confirmTimer.current)
+    // Deleting a folder with contents moves them to Unsorted; ask for a
+    // second click so a stray hover-click cannot scatter a curated folder.
+    if (entryCount > 0 && confirmingFolderId !== folderId) {
+      setConfirmingFolderId(folderId)
+      confirmTimer.current = window.setTimeout(() => setConfirmingFolderId(''), 2600)
+      return
+    }
+    setConfirmingFolderId('')
+    onRemoveFolder(folderId)
+  }
+  const requestCloseSession = (session: RuntimeSession): void => {
+    window.clearTimeout(confirmTimer.current)
+    if (session.state === 'processing' && confirmingCloseId !== session.id) {
+      setConfirmingCloseId(session.id)
+      confirmTimer.current = window.setTimeout(() => setConfirmingCloseId(''), 2600)
+      return
+    }
+    setConfirmingCloseId('')
+    onCloseSession(session)
+  }
+
   return (
     <>
       <SectionHeading
@@ -135,11 +180,51 @@ export function SidebarFoldersSection({
                 onDragOver={(event) => onFolderDragOver(event, folder.id)}
                 onDrop={(event) => onDropIntoFolder(event, folder.id)}
               >
-                <button className={`tree-row ${selectedFolderId === folder.id ? 'active' : ''}`} aria-expanded={selectedFolderId === folder.id} onClick={() => onToggleFolder(folder.id)}>
-                  {selectedFolderId === folder.id ? <FolderOpen size={15} /> : <Folder size={15} />}
-                  <span>{folder.name}</span>
-                  {folderEntryCount > 0 && <small className="folder-count">{folderEntryCount}</small>}
-                </button>
+                {renamingFolderId === folder.id ? (
+                  <div className="new-folder-row folder-rename-row">
+                    <Folder size={15} />
+                    <input
+                      autoFocus
+                      aria-label="Rename folder"
+                      value={renameDraft}
+                      onChange={(event) => setRenameDraft(event.target.value)}
+                      onBlur={commitRename}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') commitRename()
+                        if (event.key === 'Escape') setRenamingFolderId('')
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className={`tree-row-shell ${confirmingFolderId === folder.id ? 'confirming-remove' : ''}`}>
+                    <button
+                      className={`tree-row ${selectedFolderId === folder.id ? 'active' : ''}`}
+                      aria-expanded={selectedFolderId === folder.id}
+                      onClick={() => onToggleFolder(folder.id)}
+                      onDoubleClick={() => beginRename(folder)}
+                    >
+                      {selectedFolderId === folder.id ? <FolderOpen size={15} /> : <Folder size={15} />}
+                      <span>{folder.name}</span>
+                      {folderEntryCount > 0 && <small className="folder-count">{folderEntryCount}</small>}
+                    </button>
+                    <span className="tree-row-actions">
+                      <button className="mini-icon-button" title="Rename folder" onClick={() => beginRename(folder)}>
+                        <Pencil size={11} />
+                      </button>
+                      {folder.id !== 'unsorted' && (
+                        <button
+                          className={`mini-icon-button folder-remove ${confirmingFolderId === folder.id ? 'confirming' : ''}`}
+                          title={confirmingFolderId === folder.id
+                            ? 'Contents move to Unsorted — click again to delete'
+                            : 'Delete folder'}
+                          onClick={() => requestRemoveFolder(folder.id, folderEntryCount)}
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                )}
                 <div className={`folder-contents ${selectedFolderId === folder.id ? 'open' : ''}`}>
                   <div className="folder-contents-inner">
                     {folderView.entries.map((entry) => {
@@ -179,7 +264,14 @@ export function SidebarFoldersSection({
                                 <small>{session.cwd}</small>
                               </span>
                             </button>
-                            <button className="session-close" title="Remove from folder and close session" draggable={false} onClick={() => onCloseSession(session)}><X size={13} /></button>
+                            <button
+                              className={`session-close ${confirmingCloseId === session.id ? 'confirming' : ''}`}
+                              title={confirmingCloseId === session.id
+                                ? 'Session is still working — click again to close'
+                                : 'Remove from folder and close session'}
+                              draggable={false}
+                              onClick={() => requestCloseSession(session)}
+                            ><X size={13} /></button>
                           </div>
                         )
                       }
@@ -200,7 +292,7 @@ export function SidebarFoldersSection({
                             <AgentAvatar agentId={historySession.agentId} className="tinted" color={profile?.color ?? '#7e878d'} preference={resolvedAgentIcon(historySession.agentId)} />
                             <span className="session-copy">
                               <strong title={historySession.title}>{historySession.title}</strong>
-                              <small>{historySession.agentId} · {new Date(historySession.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</small>
+                              <small>{historySession.agentId} · {new Date(historySession.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</small>
                             </span>
                           </button>
                           <button className="session-close" title="Remove from folder" draggable={false} onClick={() => onRemoveHistory(historySession.key)}><X size={13} /></button>

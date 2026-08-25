@@ -1,6 +1,9 @@
 export type UiFontId = 'inter' | 'system' | 'jetbrains' | 'local'
 export type TerminalFontId = 'jetbrains' | 'cascadia' | 'consolas' | 'd2coding' | 'local'
-export type AccentTheme = 'amber' | 'periwinkle' | 'mint' | 'coral' | 'sky' | 'rose'
+export type TerminalRendererId = 'dom' | 'webgl'
+export type AccentTheme =
+  | 'amber' | 'periwinkle' | 'mint' | 'coral' | 'sky' | 'rose'
+  | 'champagne' | 'bordeaux' | 'jade' | 'copper' | 'ice'
 
 export interface AppearancePreferences {
   uiFont: UiFontId
@@ -8,11 +11,15 @@ export interface AppearancePreferences {
   terminalFont: TerminalFontId
   localTerminalFont: string
   terminalFontSize: number
+  terminalRenderer: TerminalRendererId
   appBackground: string
   appForeground: string
   terminalBackground: string
   terminalForeground: string
 }
+
+export const TERMINAL_FONT_SIZE_MIN = 10
+export const TERMINAL_FONT_SIZE_MAX = 18
 
 export interface AppearancePreset {
   id: string
@@ -30,6 +37,11 @@ export const ACCENT_OPTIONS: Array<{ id: AccentTheme; label: string; color: stri
   { id: 'coral', label: 'Coral', color: '#FF8A78', ink: '#25100C' },
   { id: 'sky', label: 'Sky', color: '#66BCE8', ink: '#071923' },
   { id: 'rose', label: 'Rose', color: '#F487B3', ink: '#250D17' },
+  { id: 'champagne', label: 'Champagne', color: '#D9C08A', ink: '#1D1608' },
+  { id: 'bordeaux', label: 'Bordeaux', color: '#C97786', ink: '#23090F' },
+  { id: 'jade', label: 'Jade', color: '#8FC7A9', ink: '#0A1810' },
+  { id: 'copper', label: 'Copper', color: '#D28E66', ink: '#200F06' },
+  { id: 'ice', label: 'Ice', color: '#A8C6DC', ink: '#0C151D' },
 ]
 
 export const UI_FONT_OPTIONS: Array<{ id: UiFontId; label: string; family: string }> = [
@@ -53,6 +65,7 @@ export const DEFAULT_APPEARANCE: AppearancePreferences = {
   terminalFont: 'jetbrains',
   localTerminalFont: '',
   terminalFontSize: 12,
+  terminalRenderer: 'dom',
   appBackground: '#121418',
   appForeground: '#E7E9EA',
   terminalBackground: '#090A0C',
@@ -65,6 +78,12 @@ export const APPEARANCE_PRESETS: AppearancePreset[] = [
   { id: 'deep-black', label: 'Deep black mint', accent: 'mint', colors: { appBackground: '#070809', appForeground: '#E5E7E8', terminalBackground: '#000000', terminalForeground: '#D0D4D7' } },
   { id: 'night-sky', label: 'Night sky', accent: 'sky', colors: { appBackground: '#111820', appForeground: '#E5EDF2', terminalBackground: '#070C11', terminalForeground: '#CAD8E0' } },
   { id: 'charcoal-rose', label: 'Charcoal rose', accent: 'rose', colors: { appBackground: '#181518', appForeground: '#EFE8EC', terminalBackground: '#0C090B', terminalForeground: '#D8CDD3' } },
+  { id: 'onyx-gold', label: 'Onyx gold', accent: 'champagne', colors: { appBackground: '#100E0B', appForeground: '#EAE5DA', terminalBackground: '#0A0806', terminalForeground: '#D8D1C2' } },
+  { id: 'velvet-bordeaux', label: 'Velvet bordeaux', accent: 'bordeaux', colors: { appBackground: '#161014', appForeground: '#EFE8EB', terminalBackground: '#0C0709', terminalForeground: '#DACFD4' } },
+  { id: 'jade-lounge', label: 'Jade lounge', accent: 'jade', colors: { appBackground: '#0F1512', appForeground: '#E6EBE8', terminalBackground: '#080C0A', terminalForeground: '#CDD8D1' } },
+  { id: 'espresso-copper', label: 'Espresso copper', accent: 'copper', colors: { appBackground: '#161110', appForeground: '#EDE6E1', terminalBackground: '#0C0908', terminalForeground: '#D9CEC6' } },
+  { id: 'platinum-slate', label: 'Platinum slate', accent: 'ice', colors: { appBackground: '#15181C', appForeground: '#ECEFF2', terminalBackground: '#0B0D10', terminalForeground: '#D0D7DD' } },
+  { id: 'midnight-indigo', label: 'Midnight indigo', accent: 'periwinkle', colors: { appBackground: '#12141E', appForeground: '#E9EBF4', terminalBackground: '#0A0B13', terminalForeground: '#CFD4E4' } },
 ]
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
@@ -78,8 +97,9 @@ export function loadAppearance(): AppearancePreferences {
       terminalFont: TERMINAL_FONT_OPTIONS.some((option) => option.id === stored.terminalFont) ? stored.terminalFont! : DEFAULT_APPEARANCE.terminalFont,
       localTerminalFont: validFontName(stored.localTerminalFont),
       terminalFontSize: Number.isFinite(stored.terminalFontSize)
-        ? Math.min(18, Math.max(10, Math.round(stored.terminalFontSize!)))
+        ? Math.min(TERMINAL_FONT_SIZE_MAX, Math.max(TERMINAL_FONT_SIZE_MIN, Math.round(stored.terminalFontSize!)))
         : DEFAULT_APPEARANCE.terminalFontSize,
+      terminalRenderer: stored.terminalRenderer === 'webgl' ? 'webgl' : DEFAULT_APPEARANCE.terminalRenderer,
       appBackground: validColor(stored.appBackground, DEFAULT_APPEARANCE.appBackground),
       appForeground: validColor(stored.appForeground, DEFAULT_APPEARANCE.appForeground),
       terminalBackground: validColor(stored.terminalBackground, DEFAULT_APPEARANCE.terminalBackground),

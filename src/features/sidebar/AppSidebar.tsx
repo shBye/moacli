@@ -65,6 +65,9 @@ interface AppSidebarProps {
   onNewFolderNameChange: (name: string) => void
   onAddFolder: () => void
   onCancelNewFolder: () => void
+  onRenameFolder: (folderId: string, name: string) => void
+  onRemoveFolder: (folderId: string) => void
+  onOpenAccountSettings: () => void
   onRefreshHistory: () => void
   onRefreshProfiles: () => void
   onBeginFolderPaneResize: (event: ReactPointerEvent<HTMLDivElement>) => void
@@ -121,6 +124,9 @@ export function AppSidebar({
   onNewFolderNameChange,
   onAddFolder,
   onCancelNewFolder,
+  onRenameFolder,
+  onRemoveFolder,
+  onOpenAccountSettings,
   onRefreshHistory,
   onRefreshProfiles,
   onBeginFolderPaneResize,
@@ -176,6 +182,8 @@ export function AppSidebar({
         onNewFolderNameChange={onNewFolderNameChange}
         onAddFolder={onAddFolder}
         onCancelNewFolder={onCancelNewFolder}
+        onRenameFolder={onRenameFolder}
+        onRemoveFolder={onRemoveFolder}
         onBeginResize={onBeginFolderPaneResize}
         onResetHeight={onResetFolderPaneHeight}
         onResizeWithKeyboard={onResizeFolderPaneWithKeyboard}
@@ -193,6 +201,7 @@ export function AppSidebar({
         onResume={onResumeConversation}
         onStartDrag={onStartItemDrag}
         onFinishDrag={onFinishItemDrag}
+        onOpenAccountSettings={onOpenAccountSettings}
       />
       <SidebarAgentsSection
         open={sections.agents}

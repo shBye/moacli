@@ -1,5 +1,5 @@
 import type { DragEvent as ReactDragEvent } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { MessagesSquare, RefreshCw } from 'lucide-react'
 import type { HistorySession } from '../../../electron/contracts'
 import { AgentAvatar } from '../../components/AgentAvatar'
 import { SectionHeading } from '../../components/SectionHeading'
@@ -20,6 +20,7 @@ interface SidebarRecentSectionProps {
   onResume: (session: HistorySession) => void
   onStartDrag: (event: ReactDragEvent<HTMLElement>, item: DraggedSidebarItem) => void
   onFinishDrag: () => void
+  onOpenAccountSettings: () => void
 }
 
 export function SidebarRecentSection({
@@ -35,6 +36,7 @@ export function SidebarRecentSection({
   onResume,
   onStartDrag,
   onFinishDrag,
+  onOpenAccountSettings,
 }: SidebarRecentSectionProps) {
   return (
     <>
@@ -60,13 +62,19 @@ export function SidebarRecentSection({
               <span className="session-copy">
                 <strong title={historySession.title}>{historySession.title}</strong>
                 <small>
-                  {historySession.agentId} · {new Date(historySession.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  {historySession.agentId} · {new Date(historySession.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                   {folderAssignments[historySession.key] && <span className="history-folder-label"> · {folders.find((folder) => folder.id === folderAssignments[historySession.key])?.name}</span>}
                 </small>
               </span>
             </button>
           ))}
-          {!history.length && <p className="no-history">No conversations found for connected accounts</p>}
+          {!history.length && (
+            <div className="sidebar-empty">
+              <MessagesSquare size={18} aria-hidden="true" />
+              <p>Past conversations from connected accounts show up here.</p>
+              <button onClick={onOpenAccountSettings}>Connect an account</button>
+            </div>
+          )}
         </nav>
       )}
     </>

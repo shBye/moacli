@@ -1,4 +1,4 @@
-import { Bell, BellOff, CheckCheck, X } from 'lucide-react'
+import { CheckCheck, X } from 'lucide-react'
 import type { AgentHealth, AppNotification, NotificationSnapshot } from '../../../electron/contracts'
 import { AgentAvatar } from '../../components/AgentAvatar'
 import type { AgentIconPreference } from '../agent-icons/types'
@@ -10,7 +10,6 @@ interface NotificationCenterProps {
   open: boolean
   profilesById: ReadonlyMap<string, AgentHealth>
   agentIcons: Readonly<Record<string, AgentIconPreference>>
-  onToggle: () => void
   onClose: () => void
   onClear: () => void
   onOpen: (notification: AppNotification) => void
@@ -18,7 +17,7 @@ interface NotificationCenterProps {
 }
 
 export function notificationTimeLabel(createdAt: number): string {
-  return new Date(createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  return new Date(createdAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
 export function NotificationCenter({
@@ -26,7 +25,6 @@ export function NotificationCenter({
   open,
   profilesById,
   agentIcons,
-  onToggle,
   onClose,
   onClear,
   onOpen,
@@ -35,17 +33,6 @@ export function NotificationCenter({
   const count = snapshot.notifications.length
   return (
     <>
-      <button
-        className={`floating-notifications ${count ? 'has-items' : ''}`}
-        title={snapshot.settings.enabled ? 'Notifications' : 'Notifications are off'}
-        aria-label="Notifications"
-        aria-expanded={open}
-        onClick={onToggle}
-      >
-        {snapshot.settings.enabled ? <Bell size={15} /> : <BellOff size={15} />}
-        {count > 0 && <span className="notification-count">{count}</span>}
-      </button>
-
       {open && (
         <>
           <button className="notification-dismiss-layer" aria-label="Close notifications" onClick={onClose} />

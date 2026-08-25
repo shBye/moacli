@@ -206,4 +206,7 @@ export interface CliAgentApi {
   minimizeWindow: () => void
   toggleMaximizeWindow: () => void
   closeWindow: () => void
+  isWindowMaximized: () => Promise<boolean>
+  onWindowMaximizedChanged: (callback: (maximized: boolean) => void) => () => void
+  openExternal: (url: string) => void
 }

@@ -1,7 +1,7 @@
-import { useRef, useState, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { AnimatePresence } from 'motion/react'
 import * as m from 'motion/react-m'
-import { RefreshCw, X } from 'lucide-react'
+import { Plus, RefreshCw, X } from 'lucide-react'
 import type { AgentHealth, AppNotification, HistorySession } from '../../../electron/contracts'
 import { AgentAvatar } from '../../components/AgentAvatar'
 import type { AgentIconPreference } from '../agent-icons/types'
@@ -28,6 +28,7 @@ interface SessionTabsProps {
   onRestart: (sessionId: string) => void
   onClose: (sessionId: string) => void
   onReorder: (sessions: RuntimeSession[]) => void
+  onNewSession: () => void
 }
 
 export function SessionTabs({
@@ -41,10 +42,27 @@ export function SessionTabs({
   onRestart,
   onClose,
   onReorder,
+  onNewSession,
 }: SessionTabsProps) {
   const draggedIdRef = useRef('')
   const [draggedId, setDraggedId] = useState('')
   const [dropHint, setDropHint] = useState<DropHint | null>(null)
+  const [confirmingCloseId, setConfirmingCloseId] = useState('')
+  const confirmCloseTimer = useRef<number>()
+  useEffect(() => () => window.clearTimeout(confirmCloseTimer.current), [])
+
+  const requestClose = (session: RuntimeSession): void => {
+    window.clearTimeout(confirmCloseTimer.current)
+    // Closing kills the CLI process: a session that is mid-task asks for a
+    // second click before it goes away.
+    if (session.state === 'processing' && confirmingCloseId !== session.id) {
+      setConfirmingCloseId(session.id)
+      confirmCloseTimer.current = window.setTimeout(() => setConfirmingCloseId(''), 2600)
+      return
+    }
+    setConfirmingCloseId('')
+    onClose(session.id)
+  }
 
   const finishDrag = (): void => {
     draggedIdRef.current = ''
@@ -134,22 +152,31 @@ export function SessionTabs({
                 />
                 <span className={`state-dot ${session.state}`} />
                 <span className="session-tab-title">{session.title}</span>
+              </button>
+              <div className="session-tab-trailing">
                 {sessionNotification && (
                   <span className={`session-tab-notification ${sessionNotification.type}`} title={notificationTypeLabel(sessionNotification)}>
                     <NotificationTypeIcon notification={sessionNotification} size={11} />
                   </span>
                 )}
-              </button>
-              <div className="session-tab-actions">
-                <button className="session-tab-action" title={restartTitle} disabled={!canRestart} onClick={() => onRestart(session.id)}>
-                  <RefreshCw className={session.state === 'starting' ? 'spinning' : ''} size={12} />
-                </button>
-                <button className="session-tab-action close" title="Close session" onClick={() => onClose(session.id)}><X size={13} /></button>
+                <div className="session-tab-actions">
+                  <button className="session-tab-action" title={restartTitle} disabled={!canRestart} onClick={() => onRestart(session.id)}>
+                    <RefreshCw className={session.state === 'starting' ? 'spinning' : ''} size={12} />
+                  </button>
+                  <button
+                    className={`session-tab-action close ${confirmingCloseId === session.id ? 'confirming' : ''}`}
+                    title={confirmingCloseId === session.id ? 'Session is still working — click again to close' : 'Close session'}
+                    onClick={() => requestClose(session)}
+                  ><X size={13} /></button>
+                </div>
               </div>
             </m.div>
           )
         })}
       </AnimatePresence>
+      <button className="session-tab-add" title="New session" aria-label="Start a new session" onClick={onNewSession}>
+        <Plus size={14} />
+      </button>
     </nav>
   )
 }

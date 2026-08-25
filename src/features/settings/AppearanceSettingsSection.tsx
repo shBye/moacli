@@ -3,10 +3,13 @@ import {
   ACCENT_OPTIONS,
   APPEARANCE_PRESETS,
   TERMINAL_FONT_OPTIONS,
+  TERMINAL_FONT_SIZE_MAX,
+  TERMINAL_FONT_SIZE_MIN,
   UI_FONT_OPTIONS,
   type AccentTheme,
   type AppearancePreferences,
   type TerminalFontId,
+  type TerminalRendererId,
   type UiFontId,
 } from '../../appearance'
 import { AppearanceColor } from '../../components/AppearanceColor'
@@ -48,7 +51,7 @@ export function AppearanceSettingsSection({
         <h3 id="appearance-settings-title">Appearance</h3>
         <button className="appearance-reset" title="Reset appearance" onClick={onReset}><RotateCcw size={13} />Reset</button>
       </div>
-      <div className="appearance-row">
+      <div className="appearance-row appearance-presets-row">
         <span>Accent</span>
         <div className="theme-segments">
           {ACCENT_OPTIONS.map((option) => (
@@ -100,6 +103,13 @@ export function AppearanceSettingsSection({
             {TERMINAL_FONT_OPTIONS.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}
           </select>
         </label>
+        <label className="appearance-field">
+          <span>Terminal renderer</span>
+          <select value={appearance.terminalRenderer} onChange={(event) => onAppearanceChange({ terminalRenderer: event.target.value as TerminalRendererId })}>
+            <option value="dom">Standard (best IME stability)</option>
+            <option value="webgl">GPU accelerated (WebGL)</option>
+          </select>
+        </label>
         {appearance.uiFont === 'local' && (
           <label className="appearance-field local-font-field">
             <span>Interface font family</span>
@@ -122,7 +132,7 @@ export function AppearanceSettingsSection({
       </div>
       <label className="terminal-font-size">
         <span>Terminal size</span>
-        <input type="range" min="10" max="18" step="1" value={appearance.terminalFontSize} onChange={(event) => onAppearanceChange({ terminalFontSize: Number(event.target.value) })} />
+        <input type="range" min={TERMINAL_FONT_SIZE_MIN} max={TERMINAL_FONT_SIZE_MAX} step="1" value={appearance.terminalFontSize} onChange={(event) => onAppearanceChange({ terminalFontSize: Number(event.target.value) })} />
         <output>{appearance.terminalFontSize}px</output>
       </label>
       <div className="appearance-colors">

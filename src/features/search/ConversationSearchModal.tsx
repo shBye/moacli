@@ -1,4 +1,4 @@
-import type { RefObject } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react'
 import { RefreshCw, Search, X } from 'lucide-react'
 import type { AgentHealth, ConversationSearchResult, SearchIndexState } from '../../../electron/contracts'
 import { AgentAvatar } from '../../components/AgentAvatar'
@@ -42,9 +42,37 @@ export function ConversationSearchModal({
   onOpenResult,
 }: ConversationSearchModalProps) {
   const searchActive = query.trim().length >= 2
+  const [activeIndex, setActiveIndex] = useState(0)
+  const resultRefs = useRef(new Map<number, HTMLButtonElement>())
+  useEffect(() => {
+    setActiveIndex(0)
+  }, [query, results])
+
   const clearQuery = (): void => {
     onQueryChange('')
     window.requestAnimationFrame(() => inputRef.current?.focus())
+  }
+
+  const moveSelection = (delta: number): void => {
+    if (!results.length) return
+    setActiveIndex((current) => {
+      const next = Math.min(results.length - 1, Math.max(0, current + delta))
+      resultRefs.current.get(next)?.scrollIntoView({ block: 'nearest' })
+      return next
+    })
+  }
+
+  const onInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      moveSelection(1)
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveSelection(-1)
+    } else if (event.key === 'Enter' && searchActive && results[activeIndex]) {
+      event.preventDefault()
+      onOpenResult(results[activeIndex])
+    }
   }
 
   return (
@@ -61,6 +89,7 @@ export function ConversationSearchModal({
             placeholder="Search messages, titles, or paths"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
+            onKeyDown={onInputKeyDown}
           />
           {query && <button className="search-clear" title="Clear search" onClick={clearQuery}><X size={14} /></button>}
           <kbd>Esc</kbd>
@@ -90,10 +119,19 @@ export function ConversationSearchModal({
           <span style={{ width: `${searchIndexProgress(indexState)}%` }} />
         </span>
         <div className="conversation-search-results">
-          {searchActive && results.map((result) => {
+          {searchActive && results.map((result, index) => {
             const profile = profilesById.get(result.session.agentId)
             return (
-              <button className="conversation-search-result" key={result.id} onClick={() => onOpenResult(result)}>
+              <button
+                className={`conversation-search-result ${index === activeIndex ? 'selected' : ''}`}
+                key={result.id}
+                ref={(element) => {
+                  if (element) resultRefs.current.set(index, element)
+                  else resultRefs.current.delete(index)
+                }}
+                onMouseMove={() => setActiveIndex(index)}
+                onClick={() => onOpenResult(result)}
+              >
                 <AgentAvatar
                   agentId={result.session.agentId}
                   className="neutral"

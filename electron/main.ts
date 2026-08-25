@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { existsSync, mkdirSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, session } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, session, shell } from 'electron'
 import { getAgentHealth } from './agent-profiles'
 import { checkForAppUpdate, downloadAppUpdate } from './app-updates'
 import { AttentionBridge } from './attention-bridge'
@@ -138,6 +138,8 @@ function createWindow(): void {
 
   mainWindow.once('ready-to-show', () => mainWindow?.show())
   mainWindow.on('closed', () => { mainWindow = null })
+  mainWindow.on('maximize', () => mainWindow?.webContents.send('window:maximized-changed', true))
+  mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window:maximized-changed', false))
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -222,6 +224,14 @@ ipcMain.on('window:toggle-maximize', (event) => {
 })
 ipcMain.on('window:close', (event) => {
   if (event.sender === mainWindow?.webContents) mainWindow.close()
+})
+ipcMain.handle('window:is-maximized', (event) => (
+  event.sender === mainWindow?.webContents ? mainWindow.isMaximized() : false
+))
+ipcMain.on('shell:open-external', (event, url: string) => {
+  if (event.sender !== mainWindow?.webContents) return
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return
+  void shell.openExternal(url)
 })
 
 app.whenReady().then(async () => {
