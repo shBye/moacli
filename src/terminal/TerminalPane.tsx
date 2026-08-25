@@ -1,9 +1,10 @@
 import { memo, useEffect, useRef } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
-import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
-import { attachImeOverlay } from './ime-overlay'
-import { cancelTerminalFocus, requestTerminalFocus } from './ime-focus'
+import { attachImeLifecycle } from './ime-lifecycle'
+import { beginTerminalComposition, cancelTerminalFocus, endTerminalComposition, requestTerminalFocus } from './ime-focus'
+import { createTerminalOptions } from './terminal-options'
+import { attachTerminalPaste } from './terminal-paste'
 import type { AgentAccount } from '../../electron/contracts'
 
 interface TerminalPaneProps {
@@ -26,7 +27,6 @@ interface TerminalPaneProps {
   onStateChange: (state: 'starting' | 'running' | 'processing' | 'needs_attention' | 'stopped', detail?: string) => void
 }
 
-const TERMINAL_SCROLLBACK = 10000
 const MIN_STARTING_INDICATOR_MS = 650
 const CODEX_MOUSE_TRACKING_MODES = new Set([9, 1000, 1002, 1003, 1005, 1006, 1015, 1016])
 
@@ -50,57 +50,22 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
     if (!container) return
 
     const id = crypto.randomUUID()
-    const terminal = new Terminal({
-      cursorBlink: activeRef.current,
-      cursorStyle: 'bar',
+    const terminal = new Terminal(createTerminalOptions({
       fontFamily,
       fontSize,
-      lineHeight: 1.3,
-      scrollback: TERMINAL_SCROLLBACK,
-      allowTransparency: false,
-      allowProposedApi: false,
-      theme: {
-        background,
-        foreground,
-        cursor: cursorColor,
-        cursorAccent: '#111315',
-        selectionBackground: '#36515E',
-        black: '#111315',
-        red: '#F87171',
-        green: '#6EE7B7',
-        yellow: '#FBBF24',
-        blue: '#7DD3FC',
-        magenta: '#C4B5FD',
-        cyan: '#67E8F9',
-        white: '#E7E9EA',
-      },
-    })
+      background,
+      foreground,
+      cursorColor,
+    }, activeRef.current))
     terminalRef.current = terminal
     const fitAddon = new FitAddon()
     fitAddonRef.current = fitAddon
     ptyIdRef.current = id
     terminal.loadAddon(fitAddon)
     terminal.open(container)
+    // xterm's built-in renderer is slightly less GPU-efficient than WebGL, but
+    // is considerably more reliable around Windows IME composition and resize.
     container.dataset.renderer = 'default'
-    let webglAddon: WebglAddon | undefined
-    let webglContextLossDisposable: { dispose: () => void } | undefined
-    try {
-      webglAddon = new WebglAddon()
-      webglContextLossDisposable = webglAddon.onContextLoss(() => {
-        webglContextLossDisposable?.dispose()
-        webglContextLossDisposable = undefined
-        webglAddon?.dispose()
-        webglAddon = undefined
-        container.dataset.renderer = 'fallback'
-      })
-      terminal.loadAddon(webglAddon)
-      container.dataset.renderer = 'webgl'
-    } catch {
-      webglContextLossDisposable?.dispose()
-      webglAddon?.dispose()
-      webglAddon = undefined
-      container.dataset.renderer = 'fallback'
-    }
     fitAddon.fit()
 
     const cursorStyleDisposable = agentId === 'codex'
@@ -126,7 +91,11 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
         })
       : undefined
 
-    const disposeIme = attachImeOverlay(terminal, id)
+    const disposeIme = attachImeLifecycle(terminal.textarea, {
+      begin: () => beginTerminalComposition(id),
+      end: () => endTerminalComposition(id),
+      refresh: () => terminal.refresh(0, Math.max(0, terminal.rows - 1)),
+    })
     let lastActivityReport = 0
     const reportActivity = (): void => {
       const now = Date.now()
@@ -195,27 +164,11 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
     }
     container.addEventListener('wheel', onUserWheel, { passive: true })
 
-    const pasteClipboard = (): void => {
-      void window.cliAgent.readTerminalClipboard().then((content) => {
-        if (content.kind === 'text') terminal.paste(content.value)
-        if (content.kind === 'image') {
-          const paths = content.values?.length ? content.values : [content.value]
-          terminal.paste(paths.map((path) => `"${path}"`).join(' '))
-        }
-      })
-    }
     const textarea = terminal.textarea
-    const onPaste = (event: ClipboardEvent): void => {
-      event.preventDefault()
-      event.stopImmediatePropagation()
-      const text = event.clipboardData?.getData('text/plain')
-      if (text) {
-        terminal.paste(text)
-        return
-      }
-      pasteClipboard()
-    }
-    textarea?.addEventListener('paste', onPaste, true)
+    const disposePaste = attachTerminalPaste(textarea, {
+      paste: (text) => terminal.paste(text),
+      readClipboard: () => window.cliAgent.readTerminalClipboard(),
+    })
 
     const copySelection = (): boolean => {
       const selection = terminal.getSelection()
@@ -331,8 +284,6 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       cursorStyleDisposable?.dispose()
       codexPrivateModeOnDisposable?.dispose()
       codexPrivateModeOffDisposable?.dispose()
-      webglContextLossDisposable?.dispose()
-      webglAddon?.dispose()
       disposeIme()
       cancelTerminalFocus(id)
       inputDisposable.dispose()
@@ -341,7 +292,7 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       offAttention()
       writeParsedDisposable.dispose()
       container.removeEventListener('wheel', onUserWheel)
-      textarea?.removeEventListener('paste', onPaste, true)
+      disposePaste()
       window.cliAgent.stopPty(id)
       terminal.dispose()
       delete container.dataset.renderer
