@@ -1,6 +1,7 @@
 import { LogIn, Plus, Trash2 } from 'lucide-react'
 import type { AgentAccount, AgentHealth } from '../../../electron/contracts'
 import { AgentAvatar } from '../../components/AgentAvatar'
+import { SelectBox } from '../../components/SelectBox'
 import type { AgentIconPreference } from '../agent-icons/types'
 
 interface AccountsSettingsSectionProps {
@@ -34,9 +35,13 @@ export function AccountsSettingsSection({
           <div className="account-row" key={account.id}>
             <AgentAvatar agentId={account.agentId} className="tinted" color={profile?.color ?? '#7e878d'} preference={resolvedPreference(account.agentId)} />
             <div className="account-inputs">
-              <select value={account.agentId} disabled={account.detected} onChange={(event) => onChange(index, { agentId: event.target.value })}>
-                {profiles.filter((item) => item.id !== 'powershell').map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}
-              </select>
+              <SelectBox
+                value={account.agentId}
+                options={profiles.filter((item) => item.id !== 'powershell').map((item) => ({ value: item.id, label: item.label }))}
+                ariaLabel={`Agent for ${account.email || `account ${index + 1}`}`}
+                disabled={account.detected}
+                onChange={(agentId) => onChange(index, { agentId })}
+              />
               <input type="email" value={account.email} readOnly={account.detected} placeholder="Account email" onChange={(event) => onChange(index, { email: event.target.value })} />
               <input value={account.configDir} readOnly={account.detected} placeholder="Isolated config directory" onChange={(event) => onChange(index, { configDir: event.target.value })} />
             </div>

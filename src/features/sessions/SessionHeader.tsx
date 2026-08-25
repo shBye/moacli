@@ -64,14 +64,26 @@ export function SessionHeader({
         )}
       </div>
       <div className="session-subnav">
-        <nav className="view-tabs" aria-label="Session views">
-          <button className={session.view === 'cli' ? 'active' : ''} onClick={onShowCli}>CLI</button>
+        <nav className="view-tabs" aria-label="Session views" role="tablist">
+          <button
+            className={session.view === 'cli' ? 'active' : ''}
+            type="button"
+            role="tab"
+            aria-selected={session.view === 'cli'}
+            onClick={onShowCli}
+          >
+            <span className="view-tab-label">CLI</span>
+          </button>
           <button
             className={session.view === 'conversation' ? 'active' : ''}
+            type="button"
+            role="tab"
+            aria-selected={session.view === 'conversation'}
             disabled={!session.historyKey}
             onClick={onShowConversation}
           >
-            Conversation {session.conversation?.messages.length ?? ''}
+            <span className="view-tab-label">Conversation</span>
+            {session.conversation && <small>{session.conversation.messages.length}</small>}
           </button>
         </nav>
       </div>

@@ -3,6 +3,7 @@ import { Folder, Play } from 'lucide-react'
 import type { AgentAccount, AgentHealth } from '../../../electron/contracts'
 import moaCliIcon from '../../assets/moacli-icon.png'
 import { AgentAvatar } from '../../components/AgentAvatar'
+import { SelectBox } from '../../components/SelectBox'
 import type { AgentIconPreference } from '../agent-icons/types'
 import type { LogicalFolder } from '../folders/types'
 
@@ -50,6 +51,11 @@ export function SessionLauncher({
   const startDisabled = !selectedProfile?.available
     || !cwd.trim()
     || (agentId !== 'powershell' && !selectedAccount)
+  const folderOptions = [
+    { value: 'unsorted', label: 'Unsorted' },
+    ...folders.filter((folder) => folder.id !== 'unsorted').map((folder) => ({ value: folder.id, label: folder.name })),
+  ]
+  const accountOptions = accounts.map((account) => ({ value: account.id, label: account.email }))
   return (
     <div className="launcher scroll">
       <div className="launcher-inner">
@@ -89,30 +95,23 @@ export function SessionLauncher({
             <span>{cwd}</span>
             <strong>Change</strong>
           </button>
-          <label className="launcher-field folder-field">
+          <div className="launcher-field folder-field">
             <Folder size={15} />
             <span>Folder</span>
-            <select value={folderId} onChange={(event) => onFolderChange(event.target.value)}>
-              <option value="unsorted">Unsorted</option>
-              {folders.filter((folder) => folder.id !== 'unsorted').map((folder) => (
-                <option key={folder.id} value={folder.id}>{folder.name}</option>
-              ))}
-            </select>
-          </label>
-          <label className="launcher-field account-field">
+            <SelectBox value={folderId} options={folderOptions} ariaLabel="Session folder" onChange={onFolderChange} />
+          </div>
+          <div className="launcher-field account-field">
             <span className="account-color" style={{ '--agent': selectedProfile?.color ?? '#7e878d' } as CSSProperties} />
             {agentId === 'powershell' ? (
               <span>Local shell</span>
             ) : accounts.length ? (
-              <select value={accountId} onChange={(event) => onAccountChange(event.target.value)}>
-                {accounts.map((account) => <option key={account.id} value={account.id}>{account.email}</option>)}
-              </select>
+              <SelectBox value={accountId} options={accountOptions} ariaLabel="Agent account" onChange={onAccountChange} />
             ) : (
               <button className="account-setup-link" onClick={onOpenAccountSettings}>
                 No account connected yet — set one up
               </button>
             )}
-          </label>
+          </div>
         </div>
         <div className="start-row">
           <button className="start-button" onClick={onStart} disabled={startDisabled}>

@@ -1577,6 +1577,7 @@ export function App() {
               terminalForeground={appearance.terminalForeground}
               cursorColor={accentOption.color}
               statusAwareAgents={statusAwareAgents}
+              onOpenExternal={window.cliAgent.openExternal}
               onActivity={recordSessionActivity}
               onStateChange={(sessionId, state, detail) => updateSession(sessionId, { state, statusDetail: detail ?? '' })}
             />

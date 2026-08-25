@@ -1,8 +1,8 @@
 import { lazy, Suspense } from 'react'
-import { ConversationView } from '../../history/ConversationView'
 import type { RuntimeSession, SessionState } from './types'
 
 const LazyTerminalPane = lazy(() => import('../../terminal/TerminalPane').then((module) => ({ default: module.TerminalPane })))
+const LazyConversationView = lazy(() => import('../conversation/ConversationView').then((module) => ({ default: module.ConversationView })))
 
 interface SessionRuntimeStageProps {
   sessions: readonly RuntimeSession[]
@@ -14,6 +14,7 @@ interface SessionRuntimeStageProps {
   terminalForeground: string
   cursorColor: string
   statusAwareAgents: ReadonlySet<string>
+  onOpenExternal: (url: string) => void
   onActivity: (sessionId: string) => void
   onStateChange: (sessionId: string, state: SessionState, detail?: string) => void
 }
@@ -28,6 +29,7 @@ export function SessionRuntimeStage({
   terminalForeground,
   cursorColor,
   statusAwareAgents,
+  onOpenExternal,
   onActivity,
   onStateChange,
 }: SessionRuntimeStageProps) {
@@ -70,12 +72,15 @@ export function SessionRuntimeStage({
           </div>
           <div className={`conversation-tab ${session.view === 'conversation' ? 'active' : ''}`}>
             {activeSessionId === session.id && session.view === 'conversation' && (
-              <ConversationView
-                conversation={session.conversation}
-                loading={session.conversationLoading}
-                error={session.conversationError}
-                highlightMessageId={session.highlightMessageId}
-              />
+              <Suspense fallback={<div className="history-placeholder">Loading conversation</div>}>
+                <LazyConversationView
+                  conversation={session.conversation}
+                  loading={session.conversationLoading}
+                  error={session.conversationError}
+                  highlightMessageId={session.highlightMessageId}
+                  onOpenExternal={onOpenExternal}
+                />
+              </Suspense>
             )}
           </div>
         </div>

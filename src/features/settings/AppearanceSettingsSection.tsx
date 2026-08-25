@@ -8,11 +8,16 @@ import {
   UI_FONT_OPTIONS,
   type AccentTheme,
   type AppearancePreferences,
-  type TerminalFontId,
   type TerminalRendererId,
-  type UiFontId,
 } from '../../appearance'
 import { AppearanceColor } from '../../components/AppearanceColor'
+import { SelectBox, type SelectBoxOption } from '../../components/SelectBox'
+import { createIntegerOptions } from '../../components/select-box-policy'
+
+const TERMINAL_RENDERER_OPTIONS: readonly SelectBoxOption<TerminalRendererId>[] = [
+  { value: 'dom', label: 'Standard (best IME stability)' },
+  { value: 'webgl', label: 'GPU accelerated (WebGL)' },
+]
 
 interface AppearanceSettingsSectionProps {
   visible: boolean
@@ -45,6 +50,8 @@ export function AppearanceSettingsSection({
   onDiscoverLocalFonts,
   onReset,
 }: AppearanceSettingsSectionProps) {
+  const maximumTabOptions = createIntegerOptions(minimumTabs, maximumTabsLimit)
+
   return (
     <section className="appearance-settings" aria-labelledby="appearance-settings-title" hidden={!visible}>
       <div className="appearance-heading">
@@ -80,36 +87,42 @@ export function AppearanceSettingsSection({
         </div>
       </div>
       <div className="appearance-grid">
-        <label className="appearance-field">
+        <div className="appearance-field">
           <span>Maximum tabs</span>
-          <input
-            type="number"
-            min={minimumTabs}
-            max={maximumTabsLimit}
-            step="1"
-            value={maximumTabs}
-            onChange={(event) => onMaximumTabsChange(Number(event.target.value))}
+          <SelectBox
+            value={String(maximumTabs)}
+            options={maximumTabOptions}
+            ariaLabel="Maximum tabs"
+            onChange={(value) => onMaximumTabsChange(Number(value))}
           />
-        </label>
-        <label className="appearance-field">
+        </div>
+        <div className="appearance-field">
           <span>Interface font</span>
-          <select value={appearance.uiFont} onChange={(event) => onAppearanceChange({ uiFont: event.target.value as UiFontId })}>
-            {UI_FONT_OPTIONS.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}
-          </select>
-        </label>
-        <label className="appearance-field">
+          <SelectBox
+            value={appearance.uiFont}
+            options={UI_FONT_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
+            ariaLabel="Interface font"
+            onChange={(uiFont) => onAppearanceChange({ uiFont })}
+          />
+        </div>
+        <div className="appearance-field">
           <span>Terminal font</span>
-          <select value={appearance.terminalFont} onChange={(event) => onAppearanceChange({ terminalFont: event.target.value as TerminalFontId })}>
-            {TERMINAL_FONT_OPTIONS.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}
-          </select>
-        </label>
-        <label className="appearance-field">
+          <SelectBox
+            value={appearance.terminalFont}
+            options={TERMINAL_FONT_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
+            ariaLabel="Terminal font"
+            onChange={(terminalFont) => onAppearanceChange({ terminalFont })}
+          />
+        </div>
+        <div className="appearance-field">
           <span>Terminal renderer</span>
-          <select value={appearance.terminalRenderer} onChange={(event) => onAppearanceChange({ terminalRenderer: event.target.value as TerminalRendererId })}>
-            <option value="dom">Standard (best IME stability)</option>
-            <option value="webgl">GPU accelerated (WebGL)</option>
-          </select>
-        </label>
+          <SelectBox
+            value={appearance.terminalRenderer}
+            options={TERMINAL_RENDERER_OPTIONS}
+            ariaLabel="Terminal renderer"
+            onChange={(terminalRenderer) => onAppearanceChange({ terminalRenderer })}
+          />
+        </div>
         {appearance.uiFont === 'local' && (
           <label className="appearance-field local-font-field">
             <span>Interface font family</span>
