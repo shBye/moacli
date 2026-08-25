@@ -197,18 +197,22 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
 
     const pasteClipboard = (): void => {
       void window.cliAgent.readTerminalClipboard().then((content) => {
-        if (content.kind === 'text') window.cliAgent.writePty(id, content.value)
+        if (content.kind === 'text') terminal.paste(content.value)
         if (content.kind === 'image') {
           const paths = content.values?.length ? content.values : [content.value]
-          window.cliAgent.writePty(id, paths.map((path) => `"${path}"`).join(' '))
+          terminal.paste(paths.map((path) => `"${path}"`).join(' '))
         }
       })
     }
     const textarea = terminal.textarea
     const onPaste = (event: ClipboardEvent): void => {
-      if (event.clipboardData?.getData('text/plain')) return
       event.preventDefault()
       event.stopImmediatePropagation()
+      const text = event.clipboardData?.getData('text/plain')
+      if (text) {
+        terminal.paste(text)
+        return
+      }
       pasteClipboard()
     }
     textarea?.addEventListener('paste', onPaste, true)
@@ -359,9 +363,23 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       const currentTerminal = terminalRef.current
       const currentFitAddon = fitAddonRef.current
       if (!currentTerminal || !currentFitAddon) return
+      const before = currentTerminal.buffer.active
+      const distanceFromBottom = Math.max(0, before.baseY - before.viewportY)
+      const previousCols = currentTerminal.cols
+      const previousRows = currentTerminal.rows
       currentFitAddon.fit()
       currentTerminal.refresh(0, Math.max(0, currentTerminal.rows - 1))
-      if (ptyReadyRef.current && ptyIdRef.current) {
+      if (distanceFromBottom <= 1) {
+        currentTerminal.scrollToBottom()
+      } else {
+        const after = currentTerminal.buffer.active
+        currentTerminal.scrollToLine(Math.max(0, after.baseY - distanceFromBottom))
+      }
+      if (
+        ptyReadyRef.current
+        && ptyIdRef.current
+        && (currentTerminal.cols !== previousCols || currentTerminal.rows !== previousRows)
+      ) {
         window.cliAgent.resizePty(ptyIdRef.current, currentTerminal.cols, currentTerminal.rows)
       }
       cancelFocus = requestTerminalFocus(ptyIdRef.current, () => terminalRef.current?.focus())

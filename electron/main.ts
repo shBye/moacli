@@ -159,6 +159,9 @@ ipcMain.handle('search:query', (_event, query: string) => sessionHistory.searchC
 ipcMain.handle('search:state', () => sessionHistory.getSearchIndexState())
 ipcMain.handle('search:rebuild', (_event, accounts: AgentAccount[]) => sessionHistory.rebuildSearchIndex(accounts))
 ipcMain.handle('clipboard:read-terminal', async () => {
+  const text = clipboard.readText()
+  if (text) return { kind: 'text', value: text }
+
   const image = clipboard.readImage()
   if (!image.isEmpty()) {
     const directory = join(app.getPath('temp'), 'moacli', 'pasted-images')
@@ -167,9 +170,6 @@ ipcMain.handle('clipboard:read-terminal', async () => {
     writeFileSync(imagePath, image.toPNG())
     return { kind: 'image', value: imagePath, values: [imagePath] }
   }
-
-  const text = clipboard.readText()
-  if (text) return { kind: 'text', value: text }
 
   const imageFiles = await readWindowsClipboardImageFiles()
   return imageFiles.length

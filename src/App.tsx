@@ -109,6 +109,11 @@ interface FolderDropIndicator {
   edge: 'before' | 'after'
 }
 
+interface SessionTabDropHint {
+  sessionId: string
+  edge: 'before' | 'after'
+}
+
 type FolderEntryView =
   | { kind: 'session'; orderKey: string; session: RuntimeSession }
   | { kind: 'history'; orderKey: string; historySession: HistorySession }
@@ -530,6 +535,8 @@ export function App() {
   const [newSessionFolderId, setNewSessionFolderId] = useState('unsorted')
   const [newFolderName, setNewFolderName] = useState<string | null>(null)
   const [draggedSidebarItem, setDraggedSidebarItem] = useState<DraggedSidebarItem | null>(null)
+  const [draggedSessionTabId, setDraggedSessionTabId] = useState('')
+  const [sessionTabDropHint, setSessionTabDropHint] = useState<SessionTabDropHint | null>(null)
   const [dragOverFolderId, setDragOverFolderId] = useState('')
   const [folderDropIndicator, setFolderDropIndicator] = useState<FolderDropIndicator | null>(null)
   const [removingFolderEntry, setRemovingFolderEntry] = useState('')
@@ -559,6 +566,10 @@ export function App() {
   const appBodyRef = useRef<HTMLDivElement>(null)
   const folderTreeRef = useRef<HTMLElement>(null)
   const folderSessionRefs = useRef(new Map<string, HTMLDivElement>())
+  const sessionTabRefs = useRef(new Map<string, HTMLDivElement>())
+  const draggedSessionTabIdRef = useRef('')
+  const sessionTabAnimationsRef = useRef(new Map<string, Animation>())
+  const sessionTabAnimationFrameRef = useRef<number | null>(null)
   const sidebarWidthRef = useRef(sidebarWidth)
   const folderPaneHeightRef = useRef(folderPaneHeight)
   const profileRefreshInFlight = useRef(false)
@@ -1014,7 +1025,14 @@ export function App() {
     const id = crypto.randomUUID()
     const now = Date.now()
     sessionActivityTimesRef.current.set(id, now)
-    const nextSession: RuntimeSession = { ...session, id, createdAt: now, lastViewedAt: now, lastActivityAt: now }
+    const nextSession: RuntimeSession = {
+      ...session,
+      id,
+      createdAt: now,
+      lastViewedAt: now,
+      lastActivityAt: now,
+      revealLatestAt: session.view === 'cli' ? now : session.revealLatestAt,
+    }
     setSessions((current) => {
       const overflow = current.length - maxRuntimeSessions + 1
       if (overflow <= 0) return [...current, nextSession]
@@ -1049,6 +1067,95 @@ export function App() {
     }))
     setActiveSessionId(id)
     void window.cliAgent.acknowledgeSessionNotification(id).then(acceptNotificationSnapshot)
+  }
+
+  const animateSessionTabReorder = (before: Map<string, number>): void => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (sessionTabAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(sessionTabAnimationFrameRef.current)
+    }
+    sessionTabAnimationFrameRef.current = window.requestAnimationFrame(() => {
+      sessionTabAnimationFrameRef.current = null
+      for (const animation of sessionTabAnimationsRef.current.values()) animation.cancel()
+      sessionTabAnimationsRef.current.clear()
+      for (const [sessionId, element] of sessionTabRefs.current) {
+        if (sessionId === draggedSessionTabIdRef.current) continue
+        const previousLeft = before.get(sessionId)
+        if (previousLeft === undefined) continue
+        const deltaX = previousLeft - element.getBoundingClientRect().left
+        if (Math.abs(deltaX) < 1) continue
+        const animation = element.animate(
+          [
+            { transform: `translateX(${deltaX}px)` },
+            { transform: 'translateX(0)' },
+          ],
+          { duration: 170, easing: 'cubic-bezier(.2,.75,.25,1)' },
+        )
+        sessionTabAnimationsRef.current.set(sessionId, animation)
+        animation.onfinish = () => {
+          if (sessionTabAnimationsRef.current.get(sessionId) === animation) {
+            sessionTabAnimationsRef.current.delete(sessionId)
+          }
+        }
+      }
+    })
+  }
+
+  const reorderSessionTab = (draggedId: string, targetId: string, edge: 'before' | 'after'): void => {
+    if (!draggedId || draggedId === targetId) return
+    const current = sessionsRef.current
+    const draggedIndex = current.findIndex((session) => session.id === draggedId)
+    if (draggedIndex < 0 || !current.some((session) => session.id === targetId)) return
+
+    const before = new Map<string, number>()
+    for (const [sessionId, element] of sessionTabRefs.current) {
+      before.set(sessionId, element.getBoundingClientRect().left)
+    }
+    const next = [...current]
+    const [dragged] = next.splice(draggedIndex, 1)
+    const targetIndex = next.findIndex((session) => session.id === targetId)
+    next.splice(targetIndex + (edge === 'after' ? 1 : 0), 0, dragged)
+    if (next.every((session, index) => session.id === current[index]?.id)) return
+
+    sessionsRef.current = next
+    setSessions(next)
+    animateSessionTabReorder(before)
+  }
+
+  const startSessionTabDrag = (event: ReactDragEvent<HTMLDivElement>, sessionId: string): void => {
+    if ((event.target as HTMLElement).closest('.session-tab-actions')) {
+      event.preventDefault()
+      return
+    }
+    draggedSessionTabIdRef.current = sessionId
+    setDraggedSessionTabId(sessionId)
+    setSessionTabDropHint(null)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('application/x-moacli-session-tab', sessionId)
+    event.dataTransfer.setData('text/plain', sessionId)
+  }
+
+  const dragOverSessionTab = (event: ReactDragEvent<HTMLDivElement>, targetId: string): void => {
+    const draggedId = draggedSessionTabIdRef.current
+    if (!draggedId) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    if (draggedId === targetId) {
+      setSessionTabDropHint(null)
+      return
+    }
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const edge = event.clientX < bounds.left + bounds.width / 2 ? 'before' : 'after'
+    setSessionTabDropHint((current) => (
+      current?.sessionId === targetId && current.edge === edge ? current : { sessionId: targetId, edge }
+    ))
+    reorderSessionTab(draggedId, targetId, edge)
+  }
+
+  const finishSessionTabDrag = (): void => {
+    draggedSessionTabIdRef.current = ''
+    setDraggedSessionTabId('')
+    setSessionTabDropHint(null)
   }
 
   const closeSession = (id: string): void => {
@@ -2029,8 +2136,27 @@ export function App() {
                       : session.state === 'starting'
                         ? 'CLI session is starting'
                         : 'Waiting for a resumable conversation ID'
+                    const tabDropClass = sessionTabDropHint?.sessionId === session.id
+                      ? `drop-${sessionTabDropHint.edge}`
+                      : ''
                     return (
-                      <div className={`session-tab ${activeSessionId === session.id ? 'active' : ''} ${session.state}`} key={session.id}>
+                      <div
+                        className={`session-tab ${activeSessionId === session.id ? 'active' : ''} ${session.state} ${draggedSessionTabId === session.id ? 'dragging' : ''} ${tabDropClass}`}
+                        draggable
+                        aria-grabbed={draggedSessionTabId === session.id}
+                        key={session.id}
+                        ref={(element) => {
+                          if (element) sessionTabRefs.current.set(session.id, element)
+                          else sessionTabRefs.current.delete(session.id)
+                        }}
+                        onDragStart={(event) => startSessionTabDrag(event, session.id)}
+                        onDragOver={(event) => dragOverSessionTab(event, session.id)}
+                        onDrop={(event) => {
+                          event.preventDefault()
+                          finishSessionTabDrag()
+                        }}
+                        onDragEnd={finishSessionTabDrag}
+                      >
                         <button
                           className="session-tab-select"
                           role="tab"
