@@ -6,6 +6,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, session, shell } from '
 import { getAgentHealth } from './agent-profiles'
 import { checkForAppUpdate, downloadAppUpdate } from './app-updates'
 import { AttentionBridge } from './attention-bridge'
+import { DelegationServer } from './delegation-server'
 import type { AgentAccount, NotificationContext, NotificationSettings, SearchIndexState, StartPtyRequest } from './contracts'
 import { NotificationCenter } from './notification-center'
 import { PtyManager } from './pty-manager'
@@ -27,6 +28,7 @@ const ptyManager = new PtyManager(
   ({ request, exitCode, intentional }) => notificationCenter?.handleExit(request, exitCode, intentional),
 )
 const sessionHistory = new SessionHistoryService()
+let delegationServer: DelegationServer | null = null
 const historyWatchers = new Map<string, FSWatcher>()
 let historyChangeTimer: ReturnType<typeof setTimeout> | undefined
 const CLIPBOARD_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'])
@@ -253,6 +255,13 @@ app.whenReady().then(async () => {
   } catch (error) {
     console.warn('Needs-attention hook server could not start', error)
   }
+  try {
+    delegationServer = new DelegationServer(app.getPath('userData'), app.getVersion())
+    await delegationServer.start()
+  } catch (error) {
+    delegationServer = null
+    console.warn('Delegation MCP server could not start', error)
+  }
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -265,6 +274,7 @@ app.on('before-quit', () => {
   notificationCenter?.dispose()
   ptyManager.stopAll()
   attentionBridge.dispose()
+  delegationServer?.dispose()
 })
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
