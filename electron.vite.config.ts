@@ -8,7 +8,11 @@ export default defineConfig({
     build: {
       outDir: 'dist/main',
       rollupOptions: {
-        input: resolve(__dirname, 'electron/main.ts'),
+        input: {
+          main: resolve(__dirname, 'electron/main.ts'),
+          // Entry for the PTY host utility process (utilityProcess.fork).
+          'pty-host': resolve(__dirname, 'electron/pty-host.ts'),
+        },
         external: ['node-pty'],
       },
     },

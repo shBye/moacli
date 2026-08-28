@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { CliAgentApi, NotificationActivation, NotificationSnapshot, PtyAttentionEvent, PtyDataEvent, PtyExitEvent, SearchIndexState, StartPtyRequest } from './contracts'
+import type { CliAgentApi, NotificationActivation, NotificationSnapshot, PtyAttentionEvent, PtyExitEvent, SearchIndexState, StartPtyRequest } from './contracts'
+import type { HostToRendererMessage, RendererToHostMessage } from './pty-host-protocol'
 
 type PtyDataCallback = (data: string) => void
 type PtyExitCallback = (exitCode: number) => void
@@ -19,9 +20,34 @@ function subscribe<T>(listeners: Map<string, Set<T>>, id: string, callback: T): 
   }
 }
 
-ipcRenderer.on('pty:data', (_event, payload: PtyDataEvent) => {
-  for (const callback of ptyDataCallbacks.get(payload.id) ?? []) callback(payload.data)
+// Terminal I/O flows over a MessagePort wired straight to the PTY host
+// utility process, so busy sessions never queue behind main-process work.
+let ptyHostPort: MessagePort | null = null
+const queuedPortMessages: RendererToHostMessage[] = []
+
+function postToPtyHost(message: RendererToHostMessage): void {
+  if (ptyHostPort) ptyHostPort.postMessage(message)
+  else queuedPortMessages.push(message)
+}
+
+ipcRenderer.on('pty-host:port', (event) => {
+  const port = event.ports[0]
+  if (!port) return
+  ptyHostPort?.close()
+  ptyHostPort = port
+  port.onmessage = (messageEvent: MessageEvent) => {
+    const message = messageEvent.data as HostToRendererMessage
+    if (message.type === 'data') {
+      for (const callback of ptyDataCallbacks.get(message.id) ?? []) callback(message.data)
+    } else if (message.type === 'exit') {
+      for (const callback of ptyExitCallbacks.get(message.id) ?? []) callback(message.exitCode)
+    }
+  }
+  for (const message of queuedPortMessages.splice(0)) port.postMessage(message)
 })
+ipcRenderer.send('pty-host:request-port')
+
+// The main process still reports exits directly when the PTY host itself dies.
 ipcRenderer.on('pty:exit', (_event, payload: PtyExitEvent) => {
   for (const callback of ptyExitCallbacks.get(payload.id) ?? []) callback(payload.exitCode)
 })
@@ -47,9 +73,9 @@ const api: CliAgentApi = {
   readTerminalClipboard: () => ipcRenderer.invoke('clipboard:read-terminal'),
   writeTerminalClipboard: (text: string) => ipcRenderer.send('clipboard:write-terminal', text),
   startPty: (request: StartPtyRequest) => ipcRenderer.invoke('pty:start', request),
-  writePty: (id, data) => ipcRenderer.send('pty:write', { id, data }),
-  resizePty: (id, cols, rows) => ipcRenderer.send('pty:resize', { id, cols, rows }),
-  stopPty: (id) => ipcRenderer.send('pty:stop', { id }),
+  writePty: (id, data) => postToPtyHost({ type: 'write', id, data }),
+  resizePty: (id, cols, rows) => postToPtyHost({ type: 'resize', id, cols, rows }),
+  stopPty: (id) => postToPtyHost({ type: 'stop', id }),
   onPtyData: (id, callback) => subscribe(ptyDataCallbacks, id, callback),
   onPtyExit: (id, callback) => subscribe(ptyExitCallbacks, id, callback),
   onPtyAttention: (id, callback) => subscribe(ptyAttentionCallbacks, id, callback),

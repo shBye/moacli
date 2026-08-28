@@ -1,108 +1,57 @@
-import { existsSync, mkdirSync, statSync } from 'node:fs'
-import type { WebContents } from 'electron'
 import * as pty from 'node-pty'
 import type { IPty } from 'node-pty'
-import type { StartPtyRequest } from './contracts'
-import { detectBinary, executableCommand, getProfile } from './agent-profiles'
-import { AttentionBridge } from './attention-bridge'
+import { scanOsc9 } from './osc9-scanner'
+import type { PtySpawnSpec } from './pty-host-protocol'
 
 const MAX_PTY_PROCESSES = 10
 const OUTPUT_BATCH_DELAY_MS = 8
 const MAX_OUTPUT_BATCH_LENGTH = 16 * 1024
 
-export interface PtyLifecycleExitEvent {
-  request: StartPtyRequest
-  exitCode: number
-  intentional: boolean
+export interface PtySinks {
+  data: (id: string, data: string) => void
+  exit: (id: string, exitCode: number, intentional: boolean) => void
+  attention: (id: string, reason: string) => void
 }
 
-function cleanEnvironment(extra: Record<string, string>, account?: StartPtyRequest['account']): Record<string, string> {
-  const environment: Record<string, string> = {}
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined) environment[key] = value
-  }
-  const result: Record<string, string> = { ...environment, ...extra, TERM: 'xterm-256color', CLI_AGENT_MANAGER: '1' }
-  if (account?.configDir && !account.detected) {
-    if (account.agentId === 'claude') result.CLAUDE_CONFIG_DIR = account.configDir
-    if (account.agentId === 'codex') result.CODEX_HOME = account.configDir
-  }
-  return result
-}
-
+// Runs inside the PTY host utility process: owns the node-pty processes and
+// output batching so terminal bytes never touch the Electron main process.
 export class PtyManager {
   private readonly processes = new Map<string, IPty>()
-  private readonly starting = new Set<string>()
   private readonly pendingOutput = new Map<string, string>()
   private readonly intentionalStops = new Set<string>()
+  private readonly oscCarry = new Map<string, string>()
   private outputTimer: ReturnType<typeof setTimeout> | undefined
 
-  constructor(
-    private readonly getWebContents: () => WebContents | null,
-    private readonly attentionBridge: AttentionBridge,
-    private readonly onLifecycleExit?: (event: PtyLifecycleExitEvent) => void,
-  ) {}
+  constructor(private readonly sinks: PtySinks) {}
 
-  async start(request: StartPtyRequest): Promise<void> {
-    if (this.processes.has(request.id) || this.starting.has(request.id)) throw new Error('Session is already running')
-    if (this.processes.size + this.starting.size >= MAX_PTY_PROCESSES) {
+  spawn(spec: PtySpawnSpec): void {
+    if (this.processes.has(spec.id)) throw new Error('Session is already running')
+    if (this.processes.size >= MAX_PTY_PROCESSES) {
       throw new Error(`At most ${MAX_PTY_PROCESSES} CLI sessions can run at once`)
     }
-    if (!existsSync(request.cwd) || !statSync(request.cwd).isDirectory()) {
-      throw new Error(`Working directory does not exist: ${request.cwd}`)
-    }
 
-    const profile = getProfile(request.agentId)
-    if (!profile) throw new Error(`Unknown agent profile: ${request.agentId}`)
-    const executable = detectBinary(profile.bin)
-    if (!executable) throw new Error(`${profile.label} executable was not found`)
+    const instance = pty.spawn(spec.file, spec.args, {
+      name: 'xterm-256color',
+      cols: Math.max(20, spec.cols),
+      rows: Math.max(5, spec.rows),
+      cwd: spec.cwd,
+      env: spec.env,
+      useConpty: process.platform === 'win32',
+      useConptyDll: process.platform === 'win32',
+    } as pty.IPtyForkOptions & { useConpty: boolean; useConptyDll: boolean })
 
-    this.starting.add(request.id)
-    try {
-      if (request.account?.configDir) mkdirSync(request.account.configDir, { recursive: true })
-
-      const titleArgs = request.purpose !== 'login' && !request.resumeId && request.title && profile.args_name
-        ? profile.args_name.map((argument) => argument.replaceAll('{title}', request.title!))
-        : []
-      const baseArgs = request.purpose === 'login'
-        ? profile.args_login ?? []
-        : request.resumeId
-          ? profile.args_resume.map((argument) => argument.replaceAll('{id}', request.resumeId!))
-          : profile.args_new
-      if (!baseArgs.length && (request.purpose === 'login' || request.resumeId)) {
-        const action = request.purpose === 'login' ? 'login' : request.resumeId ? 'resume' : 'start'
-        throw new Error(`${profile.label} does not expose a supported ${action} command`)
-      }
-      const attentionOptions = await this.attentionBridge.prepare(request, profile, executable)
-      const command = executableCommand(executable, [...attentionOptions.args, ...baseArgs, ...titleArgs])
-      const instance = pty.spawn(command.file, command.args, {
-        name: 'xterm-256color',
-        cols: Math.max(20, request.cols),
-        rows: Math.max(5, request.rows),
-        cwd: request.cwd,
-        env: cleanEnvironment({ ...profile.env, ...attentionOptions.env }, request.account),
-        useConpty: process.platform === 'win32',
-        useConptyDll: process.platform === 'win32',
-      } as pty.IPtyForkOptions & { useConpty: boolean; useConptyDll: boolean })
-
-      this.processes.set(request.id, instance)
-      instance.onData((data) => {
-        this.attentionBridge.observePtyOutput(request, data)
-        this.queueOutput(request.id, data)
-      })
-      instance.onExit(({ exitCode }) => {
-        this.flushOutput(request.id, true)
-        this.processes.delete(request.id)
-        this.attentionBridge.release(request.id)
-        const intentional = this.intentionalStops.delete(request.id)
-        this.getWebContents()?.send('pty:exit', { id: request.id, exitCode })
-        queueMicrotask(() => this.onLifecycleExit?.({ request, exitCode, intentional }))
-      })
-    } catch (error) {
-      this.attentionBridge.release(request.id)
-      throw error
-    } finally {
-      this.starting.delete(request.id)
-    }
+    this.processes.set(spec.id, instance)
+    instance.onData((data) => {
+      if (spec.scanOsc9) this.observeOsc9(spec.id, data)
+      this.queueOutput(spec.id, data)
+    })
+    instance.onExit(({ exitCode }) => {
+      this.flushOutput(spec.id, true)
+      this.processes.delete(spec.id)
+      this.oscCarry.delete(spec.id)
+      const intentional = this.intentionalStops.delete(spec.id)
+      this.sinks.exit(spec.id, exitCode, intentional)
+    })
   }
 
   write(id: string, data: string): void {
@@ -121,7 +70,7 @@ export class PtyManager {
     instance.kill()
     this.processes.delete(id)
     this.pendingOutput.delete(id)
-    this.attentionBridge.release(id)
+    this.oscCarry.delete(id)
   }
 
   stopAll(): void {
@@ -129,6 +78,13 @@ export class PtyManager {
     if (this.outputTimer) clearTimeout(this.outputTimer)
     this.outputTimer = undefined
     this.pendingOutput.clear()
+  }
+
+  private observeOsc9(id: string, data: string): void {
+    const result = scanOsc9(data, this.oscCarry.get(id))
+    if (result.carry) this.oscCarry.set(id, result.carry)
+    else this.oscCarry.delete(id)
+    for (const reason of result.messages) this.sinks.attention(id, reason)
   }
 
   private queueOutput(id: string, data: string): void {
@@ -153,7 +109,7 @@ export class PtyManager {
     do {
       const chunk = data.slice(0, MAX_OUTPUT_BATCH_LENGTH)
       data = data.slice(chunk.length)
-      this.getWebContents()?.send('pty:data', { id, data: chunk })
+      this.sinks.data(id, chunk)
     } while (drain && data.length > 0)
 
     if (data.length > 0) this.pendingOutput.set(id, data)

@@ -9,7 +9,7 @@ import { AttentionBridge } from './attention-bridge'
 import { DelegationServer } from './delegation-server'
 import type { AgentAccount, NotificationContext, NotificationSettings, SearchIndexState, StartPtyRequest } from './contracts'
 import { NotificationCenter } from './notification-center'
-import { PtyManager } from './pty-manager'
+import { PtyHostClient } from './pty-host-client'
 import { SessionHistoryService } from './session-history'
 
 let mainWindow: BrowserWindow | null = null
@@ -22,7 +22,8 @@ const attentionBridge = new AttentionBridge(({ request, source, reason, generati
   }
   notificationCenter?.handleNeedsAttention(request, `${source}:${reason}:${generation}`)
 })
-const ptyManager = new PtyManager(
+const ptyHost = new PtyHostClient(
+  join(__dirname, 'pty-host.js'),
   () => mainWindow?.webContents ?? null,
   attentionBridge,
   ({ request, exitCode, intentional }) => notificationCenter?.handleExit(request, exitCode, intentional),
@@ -193,17 +194,17 @@ ipcMain.handle('directory:select', async (_event, defaultPath?: string) => {
 })
 ipcMain.handle('pty:start', async (_event, request: StartPtyRequest) => {
   try {
-    await ptyManager.start(request)
+    await ptyHost.start(request)
   } catch (error) {
     notificationCenter?.handleStartFailure(request)
     throw error
   }
 })
-ipcMain.on('pty:write', (_event, { id, data }: { id: string; data: string }) => ptyManager.write(id, data))
-ipcMain.on('pty:resize', (_event, { id, cols, rows }: { id: string; cols: number; rows: number }) => {
-  ptyManager.resize(id, cols, rows)
+// Terminal write/resize/stop and output flow directly between the renderer
+// and the PTY host utility process over this MessagePort.
+ipcMain.on('pty-host:request-port', (event) => {
+  if (event.sender === mainWindow?.webContents) ptyHost.connectRenderer(event.sender)
 })
-ipcMain.on('pty:stop', (_event, { id }: { id: string }) => ptyManager.stop(id))
 ipcMain.handle('notifications:snapshot', () => notifications().snapshot())
 ipcMain.handle('notifications:update-settings', (_event, settings: Partial<NotificationSettings>) => notifications().updateSettings(settings))
 ipcMain.handle('notifications:dismiss', (_event, id: string) => notifications().dismiss(id))
@@ -268,13 +269,19 @@ app.whenReady().then(async () => {
   })
 })
 
-app.on('before-quit', () => {
+let quitting = false
+app.on('before-quit', (event) => {
+  if (quitting) return
+  quitting = true
+  // Hold the quit until the PTY host has killed its ConPTY children, so CLI
+  // agent processes do not outlive the app.
+  event.preventDefault()
   closeHistoryWatchers()
   sessionHistory.close()
   notificationCenter?.dispose()
-  ptyManager.stopAll()
   attentionBridge.dispose()
   delegationServer?.dispose()
+  void ptyHost.shutdown().finally(() => app.quit())
 })
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

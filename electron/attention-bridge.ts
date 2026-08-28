@@ -6,8 +6,6 @@ import { getVersion, isVersionAtLeast } from './agent-profiles'
 import type { AgentProfile, StartPtyRequest } from './contracts'
 
 const MAX_HOOK_BODY_BYTES = 64 * 1024
-const MAX_OSC_CARRY_LENGTH = 4 * 1024
-const OSC9_PREFIX = '\x1b]9;'
 const CLAUDE_ATTENTION_EVENTS = new Set(['PermissionRequest', 'Elicitation', 'Stop', 'StopFailure'])
 
 export interface AttentionLaunchOptions {
@@ -29,58 +27,13 @@ interface AttentionRegistration {
   settingsPath?: string
 }
 
-export interface Osc9ScanResult {
-  messages: string[]
-  carry: string
-}
-
 function emptyLaunchOptions(): AttentionLaunchOptions {
   return { args: [], env: {} }
-}
-
-function partialOscPrefix(value: string): string {
-  const maximum = Math.min(value.length, OSC9_PREFIX.length - 1)
-  for (let length = maximum; length > 0; length -= 1) {
-    const suffix = value.slice(-length)
-    if (OSC9_PREFIX.startsWith(suffix)) return suffix
-  }
-  return ''
-}
-
-export function scanOsc9(data: string, previousCarry = ''): Osc9ScanResult {
-  const combined = `${previousCarry}${data}`
-  const messages: string[] = []
-  let carry = ''
-  let cursor = 0
-
-  while (cursor < combined.length) {
-    const start = combined.indexOf(OSC9_PREFIX, cursor)
-    if (start < 0) {
-      carry = partialOscPrefix(combined.slice(cursor))
-      break
-    }
-
-    const bodyStart = start + OSC9_PREFIX.length
-    const bellEnd = combined.indexOf('\x07', bodyStart)
-    const stringEnd = combined.indexOf('\x1b\\', bodyStart)
-    const end = bellEnd < 0 ? stringEnd : stringEnd < 0 ? bellEnd : Math.min(bellEnd, stringEnd)
-    if (end < 0) {
-      const partial = combined.slice(start)
-      carry = partial.length <= MAX_OSC_CARRY_LENGTH ? partial : ''
-      break
-    }
-
-    messages.push(combined.slice(bodyStart, end).trim() || 'terminal-notification')
-    cursor = end + (end === bellEnd ? 1 : 2)
-  }
-
-  return { messages, carry }
 }
 
 export class AttentionBridge {
   private readonly token = randomUUID()
   private readonly registrations = new Map<string, AttentionRegistration>()
-  private readonly oscCarry = new Map<string, string>()
   private server: Server | undefined
   private port = 0
   private settingsDirectory = ''
@@ -162,20 +115,17 @@ export class AttentionBridge {
     return emptyLaunchOptions()
   }
 
-  observePtyOutput(request: StartPtyRequest, data: string): void {
-    const registration = this.registrations.get(request.id)
+  // OSC9 sequences are scanned in the PTY host process; it forwards each
+  // decoded notification here for registration and generation bookkeeping.
+  signalOsc9(ptyId: string, reason: string): void {
+    const registration = this.registrations.get(ptyId)
     if (registration?.profile.attention_adapter !== 'codex-osc9') return
-
-    const result = scanOsc9(data, this.oscCarry.get(request.id))
-    if (result.carry) this.oscCarry.set(request.id, result.carry)
-    else this.oscCarry.delete(request.id)
-    for (const reason of result.messages) this.emitSignal(registration, 'codex-osc9', reason)
+    this.emitSignal(registration, 'codex-osc9', reason)
   }
 
   release(ptyId: string): void {
     const registration = this.registrations.get(ptyId)
     this.registrations.delete(ptyId)
-    this.oscCarry.delete(ptyId)
     if (registration?.settingsPath) rmSync(registration.settingsPath, { force: true })
   }
 
