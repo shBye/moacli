@@ -47,6 +47,10 @@ export class PtyHostClient {
     private readonly onLifecycleExit?: (event: PtyLifecycleExitEvent) => void,
   ) {}
 
+  get liveSessionCount(): number {
+    return this.live.size + this.starting.size
+  }
+
   connectRenderer(contents: WebContents): void {
     if (this.disposed) return
     this.rendererContents = contents

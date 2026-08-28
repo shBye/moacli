@@ -32,6 +32,8 @@ const sessionHistory = new SessionHistoryService()
 let delegationServer: DelegationServer | null = null
 const historyWatchers = new Map<string, FSWatcher>()
 let historyChangeTimer: ReturnType<typeof setTimeout> | undefined
+const HISTORY_CHANGE_DEBOUNCE_MS = 700
+const HISTORY_CHANGE_BUSY_THROTTLE_MS = 5000
 const CLIPBOARD_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'])
 
 function notifications(): NotificationCenter {
@@ -81,10 +83,15 @@ function historyRoot(account: AgentAccount): string {
 }
 
 function scheduleHistoryChanged(): void {
-  clearTimeout(historyChangeTimer)
+  if (historyChangeTimer) return
+  // Live agent sessions append to their transcripts continuously; the history
+  // list does not need to track that in near real time, so throttle hard while
+  // any session runs and stay responsive when the change comes from elsewhere.
+  const delay = ptyHost.liveSessionCount > 0 ? HISTORY_CHANGE_BUSY_THROTTLE_MS : HISTORY_CHANGE_DEBOUNCE_MS
   historyChangeTimer = setTimeout(() => {
+    historyChangeTimer = undefined
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('history:changed')
-  }, 700)
+  }, delay)
 }
 
 function configureHistoryWatchers(accounts: AgentAccount[]): void {
@@ -111,6 +118,7 @@ function configureHistoryWatchers(accounts: AgentAccount[]): void {
 
 function closeHistoryWatchers(): void {
   clearTimeout(historyChangeTimer)
+  historyChangeTimer = undefined
   for (const watcher of historyWatchers.values()) watcher.close()
   historyWatchers.clear()
 }

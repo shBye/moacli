@@ -1,4 +1,4 @@
-import { mkdirSync, statSync } from 'node:fs'
+import { mkdirSync, statSync, type Stats } from 'node:fs'
 import { dirname } from 'node:path'
 import Database from 'better-sqlite3'
 import type {
@@ -9,21 +9,28 @@ import type {
   SearchIndexState,
 } from './contracts'
 
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 2
 const SEARCH_RESULT_LIMIT = 60
+const INDEX_BATCH_SIZE = 200
 const HIGHLIGHT_START = '\uE000'
 const HIGHLIGHT_END = '\uE001'
+
+export interface SourceReadProgress {
+  // Byte offset just past the last newline-terminated record consumed.
+  safeOffset: number
+}
 
 export interface SearchIndexSource {
   session: HistorySession
   path: string
-  readMessages: () => Iterable<HistoryMessage>
+  readMessages: (fromOffset: number, progress: SourceReadProgress) => Iterable<HistoryMessage>
 }
 
 interface SourceMetadataRow {
   mtime_ms: number
   size: number
   account_email: string
+  indexed_bytes: number
 }
 
 interface CountRow {
@@ -171,8 +178,9 @@ export class ConversationSearchIndex {
   private migrate(): void {
     const currentVersion = this.database.pragma('user_version', { simple: true }) as number
     if (currentVersion > SCHEMA_VERSION) throw new Error(`Search index schema ${currentVersion} is newer than supported schema ${SCHEMA_VERSION}`)
-    if (currentVersion === 0) {
-      this.database.transaction(() => {
+    if (currentVersion === SCHEMA_VERSION) return
+    this.database.transaction(() => {
+      if (currentVersion === 0) {
         this.database.exec(`
           CREATE TABLE conversation_sources (
             source_key TEXT PRIMARY KEY,
@@ -185,7 +193,8 @@ export class ConversationSearchIndex {
             title TEXT NOT NULL,
             cwd TEXT NOT NULL,
             updated_at INTEGER NOT NULL,
-            resume_id TEXT NOT NULL
+            resume_id TEXT NOT NULL,
+            indexed_bytes INTEGER NOT NULL DEFAULT 0
           );
 
           CREATE VIRTUAL TABLE conversation_messages_fts USING fts5(
@@ -202,9 +211,16 @@ export class ConversationSearchIndex {
 
           CREATE INDEX conversation_sources_path_idx ON conversation_sources(source_path);
         `)
-        this.database.pragma(`user_version = ${SCHEMA_VERSION}`)
-      })()
-    }
+      } else if (currentVersion === 1) {
+        // Version 1 rows were indexed in full, so incremental indexing can
+        // resume from the size recorded at that time.
+        this.database.exec(`
+          ALTER TABLE conversation_sources ADD COLUMN indexed_bytes INTEGER NOT NULL DEFAULT 0;
+          UPDATE conversation_sources SET indexed_bytes = size;
+        `)
+      }
+      this.database.pragma(`user_version = ${SCHEMA_VERSION}`)
+    })()
   }
 
   private async synchronizeNow(sources: SearchIndexSource[]): Promise<void> {
@@ -223,7 +239,7 @@ export class ConversationSearchIndex {
       try {
         const stats = statSync(source.path)
         const existing = this.database.prepare(`
-          SELECT mtime_ms, size, account_email
+          SELECT mtime_ms, size, account_email, indexed_bytes
           FROM conversation_sources
           WHERE source_key = ?
         `).get(source.session.key) as SourceMetadataRow | undefined
@@ -231,7 +247,16 @@ export class ConversationSearchIndex {
           && existing.mtime_ms === stats.mtimeMs
           && existing.size === stats.size
           && existing.account_email === source.session.accountEmail
-        if (!unchanged) this.replaceSource(source, stats.mtimeMs, stats.size, source.readMessages())
+        if (!unchanged) {
+          // Transcripts are append-only JSONL, so a grown file only needs the
+          // new tail indexed; anything else gets a full replacement.
+          const appendable = existing
+            && existing.indexed_bytes > 0
+            && stats.size >= existing.indexed_bytes
+            && existing.account_email === source.session.accountEmail
+          if (appendable) await this.appendSource(source, stats, existing.indexed_bytes)
+          else await this.replaceSource(source, stats)
+        }
       } catch {
         failedSources += 1
       }
@@ -265,58 +290,100 @@ export class ConversationSearchIndex {
     })
   }
 
-  private replaceSource(source: SearchIndexSource, mtimeMs: number, size: number, messages: Iterable<HistoryMessage>): void {
+  private async replaceSource(source: SearchIndexSource, stats: Stats): Promise<void> {
+    // The metadata row starts with a zero snapshot so an interrupted index is
+    // neither mistaken for up to date nor resumed incrementally.
     this.database.transaction(() => {
       this.database.prepare('DELETE FROM conversation_messages_fts WHERE source_key = ?').run(source.session.key)
       this.database.prepare(`
         INSERT INTO conversation_sources (
           source_key, agent_id, account_id, account_email, source_path,
-          mtime_ms, size, title, cwd, updated_at, resume_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          mtime_ms, size, title, cwd, updated_at, resume_id, indexed_bytes
+        ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, 0)
         ON CONFLICT(source_key) DO UPDATE SET
           agent_id = excluded.agent_id,
           account_id = excluded.account_id,
           account_email = excluded.account_email,
           source_path = excluded.source_path,
-          mtime_ms = excluded.mtime_ms,
-          size = excluded.size,
+          mtime_ms = 0,
+          size = 0,
           title = excluded.title,
           cwd = excluded.cwd,
           updated_at = excluded.updated_at,
-          resume_id = excluded.resume_id
+          resume_id = excluded.resume_id,
+          indexed_bytes = 0
       `).run(
         source.session.key,
         source.session.agentId,
         source.session.accountId,
         source.session.accountEmail,
         source.path,
-        mtimeMs,
-        size,
         source.session.title,
         source.session.cwd,
         source.session.updatedAt,
         source.session.resumeId,
       )
-      const insertMessage = this.database.prepare(`
-        INSERT INTO conversation_messages_fts (
-          source_key, message_id, ordinal, role, title, cwd, content, timestamp
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-      let ordinal = 0
-      for (const message of messages) {
-        insertMessage.run(
-          source.session.key,
-          message.id,
-          ordinal,
-          message.role,
-          source.session.title,
-          source.session.cwd,
-          message.text,
-          message.timestamp ?? null,
-        )
-        ordinal += 1
-      }
     })()
+    await this.indexMessages(source, stats, 0, 0)
+  }
+
+  private async appendSource(source: SearchIndexSource, stats: Stats, fromOffset: number): Promise<void> {
+    const indexed = this.database.prepare(`
+      SELECT count(*) AS count FROM conversation_messages_fts WHERE source_key = ?
+    `).get(source.session.key) as CountRow
+    await this.indexMessages(source, stats, fromOffset, indexed.count)
+  }
+
+  // Inserts records in small transactions and yields between them: a long
+  // transcript indexed in one synchronous pass stalls the main process for
+  // seconds, which Windows reports as the app not responding.
+  private async indexMessages(source: SearchIndexSource, stats: Stats, fromOffset: number, firstOrdinal: number): Promise<void> {
+    const progress: SourceReadProgress = { safeOffset: fromOffset }
+    const insertMessage = this.database.prepare(`
+      INSERT INTO conversation_messages_fts (
+        source_key, message_id, ordinal, role, title, cwd, content, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    const commitProgress = this.database.prepare('UPDATE conversation_sources SET indexed_bytes = ? WHERE source_key = ?')
+    const writeBatch = this.database.transaction((batch: HistoryMessage[], ordinal: number) => {
+      batch.forEach((message, index) => insertMessage.run(
+        source.session.key,
+        message.id,
+        ordinal + index,
+        message.role,
+        source.session.title,
+        source.session.cwd,
+        message.text,
+        message.timestamp ?? null,
+      ))
+      commitProgress.run(progress.safeOffset, source.session.key)
+    })
+
+    let ordinal = firstOrdinal
+    let batch: HistoryMessage[] = []
+    for (const message of source.readMessages(fromOffset, progress)) {
+      batch.push(message)
+      if (batch.length < INDEX_BATCH_SIZE) continue
+      writeBatch(batch, ordinal)
+      ordinal += batch.length
+      batch = []
+      await yieldToEventLoop()
+    }
+    writeBatch(batch, ordinal)
+    this.database.prepare(`
+      UPDATE conversation_sources SET
+        mtime_ms = ?, size = ?, account_email = ?, title = ?, cwd = ?, updated_at = ?, resume_id = ?
+      WHERE source_key = ?
+    `).run(
+      stats.mtimeMs,
+      stats.size,
+      source.session.accountEmail,
+      source.session.title,
+      source.session.cwd,
+      source.session.updatedAt,
+      source.session.resumeId,
+      source.session.key,
+    )
   }
 
   private refreshCounts(phase: SearchIndexState['phase'], update: Partial<SearchIndexState> = {}): void {

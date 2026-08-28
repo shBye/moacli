@@ -1,3 +1,4 @@
+import { constants as osConstants, setPriority } from 'node:os'
 import * as pty from 'node-pty'
 import type { IPty } from 'node-pty'
 import { scanOsc9 } from './osc9-scanner'
@@ -41,6 +42,13 @@ export class PtyManager {
     } as pty.IPtyForkOptions & { useConpty: boolean; useConptyDll: boolean })
 
     this.processes.set(spec.id, instance)
+    try {
+      // Agent processes can saturate every core while working; below-normal
+      // priority (inherited by their children) keeps the UI responsive then.
+      setPriority(instance.pid, osConstants.priority.PRIORITY_BELOW_NORMAL)
+    } catch {
+      // Best-effort: the process may have exited before the priority applied.
+    }
     instance.onData((data) => {
       if (spec.scanOsc9) this.observeOsc9(spec.id, data)
       this.queueOutput(spec.id, data)

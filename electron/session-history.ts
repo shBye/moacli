@@ -3,7 +3,6 @@ import { execFile } from 'node:child_process'
 import { existsSync, openSync, closeSync, readFileSync, readSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
-import { StringDecoder } from 'node:string_decoder'
 import { promisify } from 'node:util'
 import type {
   AgentAccount,
@@ -14,7 +13,7 @@ import type {
   SearchIndexState,
 } from './contracts'
 import { detectBinary } from './agent-profiles'
-import { ConversationSearchIndex, type SearchIndexSource } from './conversation-search'
+import { ConversationSearchIndex, type SearchIndexSource, type SourceReadProgress } from './conversation-search'
 
 const execFileAsync = promisify(execFile)
 const MAX_SESSIONS_PER_AGENT = 30
@@ -83,41 +82,53 @@ function jsonLines(text: string): Array<Record<string, unknown>> {
   return records
 }
 
-function* streamedJsonLines(path: string): Generator<Record<string, unknown>> {
+function parseJsonLine(line: Buffer): Record<string, unknown> | null {
+  const text = line.toString('utf8').trim()
+  if (!text) return null
+  try {
+    const value: unknown = JSON.parse(text)
+    return value && typeof value === 'object' ? value as Record<string, unknown> : null
+  } catch {
+    // Ignore an incomplete or malformed record without dropping the rest of the file.
+    return null
+  }
+}
+
+// When `progress` is given the read feeds the search index: only
+// newline-terminated records are returned and `progress.safeOffset` tracks the
+// byte offset just past the last one, so an incremental pass can resume there
+// without duplicating or splitting a record.
+function* streamedJsonLines(path: string, fromOffset = 0, progress?: SourceReadProgress): Generator<Record<string, unknown>> {
   const handle = openSync(path, 'r')
   const buffer = Buffer.allocUnsafe(JSONL_STREAM_BYTES)
-  const decoder = new StringDecoder('utf8')
-  let pending = ''
+  let pending: Buffer = Buffer.alloc(0)
+  let position = fromOffset
+  if (progress) progress.safeOffset = fromOffset
   try {
     let bytesRead = 0
     do {
-      bytesRead = readSync(handle, buffer, 0, buffer.length, null)
-      pending += decoder.write(buffer.subarray(0, bytesRead))
-      let newline = pending.indexOf('\n')
+      bytesRead = readSync(handle, buffer, 0, buffer.length, position)
+      position += bytesRead
+      if (bytesRead > 0) {
+        const chunk = buffer.subarray(0, bytesRead)
+        pending = pending.length ? Buffer.concat([pending, chunk]) : Buffer.from(chunk)
+      }
+      let newline = pending.indexOf(0x0a)
       while (newline >= 0) {
-        const line = pending.slice(0, newline).trim()
-        pending = pending.slice(newline + 1)
-        if (line) {
-          try {
-            const value: unknown = JSON.parse(line)
-            if (value && typeof value === 'object') yield value as Record<string, unknown>
-          } catch {
-            // Ignore an incomplete or malformed record without dropping the rest of the file.
-          }
-        }
-        newline = pending.indexOf('\n')
+        const line = pending.subarray(0, newline)
+        pending = pending.subarray(newline + 1)
+        if (progress) progress.safeOffset = position - pending.length
+        const record = parseJsonLine(line)
+        if (record) yield record
+        newline = pending.indexOf(0x0a)
       }
     } while (bytesRead > 0)
 
-    pending += decoder.end()
-    const line = pending.trim()
-    if (line) {
-      try {
-        const value: unknown = JSON.parse(line)
-        if (value && typeof value === 'object') yield value as Record<string, unknown>
-      } catch {
-        // An actively written JSONL file may end with a partial record.
-      }
+    if (!progress && pending.length) {
+      // An actively written JSONL file may end with a partial record; show it
+      // in the conversation view but never index it.
+      const record = parseJsonLine(pending)
+      if (record) yield record
     }
   } finally {
     closeSync(handle)
@@ -162,8 +173,15 @@ function codexFiles(configDir: string): string[] {
   const root = join(configDir, 'sessions')
   if (!existsSync(root)) return []
   const files: string[] = []
+  const candidateLimit = MAX_SESSIONS_PER_AGENT * 2
+  // Rollouts accumulate forever under year/month/day directories with
+  // timestamped names. Visiting newest names first and stopping once enough
+  // candidates are collected avoids re-walking the whole tree on every refresh.
   const visit = (directory: string): void => {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const entries = readdirSync(directory, { withFileTypes: true })
+      .sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }))
+    for (const entry of entries) {
+      if (files.length >= candidateLimit) return
       const path = join(directory, entry.name)
       if (entry.isDirectory()) visit(path)
       else if (entry.isFile() && entry.name.endsWith('.jsonl')) files.push(path)
@@ -334,9 +352,16 @@ function parseGeminiSummary(path: string, projects: Map<string, string>, account
   }
 }
 
-function* iterateClaudeConversation(path: string): Generator<HistoryMessage> {
+// Records without a native id fall back to their position in the file; an
+// incremental read cannot know that position, so it prefixes the offset
+// instead of risking a collision with an earlier message.
+function fallbackMessageId(fromOffset: number, recordIndex: number): string {
+  return fromOffset ? `${fromOffset}+${recordIndex}` : `${recordIndex}`
+}
+
+function* iterateClaudeConversation(path: string, fromOffset = 0, progress?: SourceReadProgress): Generator<HistoryMessage> {
   let index = 0
-  for (const record of streamedJsonLines(path)) {
+  for (const record of streamedJsonLines(path, fromOffset, progress)) {
     const recordIndex = index
     index += 1
     if (record.type !== 'user' && record.type !== 'assistant') continue
@@ -344,7 +369,7 @@ function* iterateClaudeConversation(path: string): Generator<HistoryMessage> {
     const text = contentText(message?.content)
     if (!text) continue
     yield {
-      id: typeof record.uuid === 'string' ? record.uuid : `${recordIndex}`,
+      id: typeof record.uuid === 'string' ? record.uuid : fallbackMessageId(fromOffset, recordIndex),
       role: record.type as 'user' | 'assistant',
       text,
       timestamp: epoch(record.timestamp, 0) || undefined,
@@ -356,9 +381,9 @@ function parseClaudeConversation(path: string): HistoryMessage[] {
   return [...iterateClaudeConversation(path)]
 }
 
-function* iterateCodexConversation(path: string): Generator<HistoryMessage> {
+function* iterateCodexConversation(path: string, fromOffset = 0, progress?: SourceReadProgress): Generator<HistoryMessage> {
   let index = 0
-  for (const record of streamedJsonLines(path)) {
+  for (const record of streamedJsonLines(path, fromOffset, progress)) {
     const recordIndex = index
     index += 1
     if (record.type !== 'response_item') continue
@@ -367,7 +392,7 @@ function* iterateCodexConversation(path: string): Generator<HistoryMessage> {
     const text = contentText(payload.content)
     if (!text) continue
     yield {
-      id: typeof payload.id === 'string' ? payload.id : `${recordIndex}`,
+      id: typeof payload.id === 'string' ? payload.id : fallbackMessageId(fromOffset, recordIndex),
       role: payload.role,
       text,
       timestamp: epoch(record.timestamp, 0) || undefined,
@@ -601,8 +626,8 @@ export class SessionHistoryService {
         session: summary,
         path: source.path,
         readMessages: source.agentId === 'claude'
-          ? () => iterateClaudeConversation(source.path!)
-          : () => iterateCodexConversation(source.path!),
+          ? (fromOffset, progress) => iterateClaudeConversation(source.path!, fromOffset, progress)
+          : (fromOffset, progress) => iterateCodexConversation(source.path!, fromOffset, progress),
       }]
     })
     if (this.searchIndex) this.scheduleSearchSync(this.searchSources)
