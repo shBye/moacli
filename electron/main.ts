@@ -312,7 +312,10 @@ app.whenReady().then(async () => {
       join(app.getPath('userData'), 'delegation.sqlite'),
       emitDelegationChanged,
       (task, event) => notificationCenter?.handleDelegation(task, event),
+      () => scheduleHistoryChanged(),
     )
+    // Worker transcripts belong to delegated tasks, not to the Recent list.
+    sessionHistory.setSessionFilter((session) => !delegationRegistry?.isWorkerSession(session.resumeId))
     delegationServer = new DelegationServer({
       userDataDirectory: app.getPath('userData'),
       appVersion: app.getVersion(),

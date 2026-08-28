@@ -18,6 +18,8 @@ export interface WorkerStart {
   account?: AgentAccount
   // Receives a human-readable progress line as the worker reports activity.
   onProgress: (line: string) => void
+  // Receives the session/thread id the worker CLI writes its transcript under.
+  onSessionId?: (sessionId: string) => void
 }
 
 export interface WorkerResult {
@@ -202,6 +204,9 @@ function startClaudeWorker(start: WorkerStart): WorkerHandle {
   const { outcome, cancel } = runWorkerProcess(binary, args, start, (line) => {
     const event = parseJsonLine(line)
     if (!event) return
+    if (typeof event.session_id === 'string' && event.session_id && (event.type === 'system' || event.type === 'result')) {
+      start.onSessionId?.(event.session_id)
+    }
     if (event.type === 'result') {
       finalEvent = event
       return
@@ -240,6 +245,7 @@ function startCodexWorker(start: WorkerStart): WorkerHandle {
   const { outcome, cancel } = runWorkerProcess(binary, args, start, (line) => {
     const event = parseJsonLine(line)
     if (!event) return
+    if (event.type === 'thread.started' && typeof event.thread_id === 'string' && event.thread_id) start.onSessionId?.(event.thread_id)
     const progress = codexProgress(event)
     if (progress) start.onProgress(progress)
   })

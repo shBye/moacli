@@ -111,7 +111,8 @@
     - `electron/delegation-server.ts` — 툴 6종: `list_agents`, `delegate_task`(동기, 승인 대기 포함), `start_task`, `check_task`(상태+진행 로그 tail), `get_task_result`, `cancel_task`. caller 라벨은 HTTP `user-agent`. 설정 파일에 `enabled` 추가(on/off 토글), 토큰 재발급.
     - 알림: `NotificationCenter.handleDelegation()` — 승인 대기(needs_attention)/완료/실패, 데스크톱 알림 클릭 시 `{kind:'delegation', taskId}` 활성화.
     - UI: 설정 → **Delegation** 섹션(`src/features/delegation/DelegationSettingsSection.tsx`: 상태/엔드포인트/토큰, Claude 등록 커맨드·Codex config.toml 스니펫 복사, `--approve-for-me`/`tool_timeout_sec` 안내, 토큰 재발급 2단계 확인, 최근 작업 목록+Review/Cancel), 전역 승인 모달(`DelegationApprovalModal.tsx`: caller/worker/프롬프트/cwd/제한시간/권한 정책/계정 SelectBox, Allow·Decline, Esc=나중에).
-  - 검증(하네스, 실제 worker): 401 차단 ✓, tools/list 6종 ✓, start_task→거절 흐름 ✓, start_task→승인→Codex 완료(12s, `--json` 진행 로그 수신) ✓, delegate_task 동기→Claude 완료(4s) ✓, 실행 중 cancel_task ✓, sqlite 재로드 ✓. **UI(모달/설정 섹션)는 실기 확인 필요.**
+    - **worker 트랜스크립트는 Recent에서 숨김**: worker가 알려주는 세션 ID(Claude stream-json `system/init`·`result`의 `session_id`, Codex `thread.started`의 `thread_id`)를 `delegation_tasks.worker_session_id`에 저장하고, `SessionHistoryService.setSessionFilter()`로 해당 `resumeId`를 목록·검색 인덱스에서 제외. 이 변경 전에 돌린 worker 세션은 ID가 없어 소급 적용 안 됨(Claude 건만 `detail`에서 백필). Phase 2에서 작업 행에 "트랜스크립트 보기/이어가기" 진입점 예정.
+  - 검증(하네스, 실제 worker): 401 차단 ✓, tools/list 6종 ✓, start_task→거절 흐름 ✓, start_task→승인→Codex 완료(12s, `--json` 진행 로그 수신) ✓, delegate_task 동기→Claude 완료(4s) ✓, 실행 중 cancel_task ✓(프로세스 트리 실제 종료 확인 3→0), sqlite 재로드 ✓, Claude/Codex 세션 ID 캡처 ✓, 필터로 Codex worker 트랜스크립트 Recent 제외 ✓. **UI(모달/설정 섹션)는 실기 확인 필요.**
 - **Phase 2 — 가시성**: 위임 패널(stream-json 렌더), 실행 중 권한 모달(`--permission-prompt-tool`), 위임 히스토리. → UI 배치는 §6 참고.
 - **Phase 3 — 고급 (선택)**: `codex mcp-server` 경유 Codex 승인 라우팅(experimental 안정화 후), MCP Tasks 확장 채택, `--input-format stream-json` 멀티턴 위임.
 

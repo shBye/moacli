@@ -496,6 +496,7 @@ function openCodeMessages(data: unknown): HistoryMessage[] {
 }
 
 export class SessionHistoryService {
+  private sessionFilter: (session: HistorySession) => boolean = () => true
   private sources = new Map<string, HistorySource>()
   private sessions = new Map<string, HistorySession>()
   private readonly summaryCache = new Map<string, SummaryCacheEntry>()
@@ -533,6 +534,12 @@ export class SessionHistoryService {
       }
       onStateChanged(this.searchState)
     }
+  }
+
+  // Sessions rejected by the filter disappear from the list and the search
+  // index, e.g. transcripts written by delegated worker runs.
+  setSessionFilter(filter: (session: HistorySession) => boolean): void {
+    this.sessionFilter = filter
   }
 
   searchConversations(query: string): ConversationSearchResponse {
@@ -667,6 +674,9 @@ export class SessionHistoryService {
     }
     for (const key of this.summaryCache.keys()) {
       if (!seenCacheKeys.has(key)) this.summaryCache.delete(key)
+    }
+    for (const item of local) {
+      if (item.summary && !this.sessionFilter(item.summary)) item.summary = null
     }
     const nextSessions = new Map<string, HistorySession>()
     const nextSources = new Map<string, HistorySource>()

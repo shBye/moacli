@@ -118,6 +118,8 @@ export interface DelegationTask {
   finishedAt?: number
   accountId?: string
   accountEmail?: string
+  // Session/thread id the worker CLI recorded its transcript under.
+  workerSessionId?: string
   resultPreview?: string
   error?: string
   detail?: string

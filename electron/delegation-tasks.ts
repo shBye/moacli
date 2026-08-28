@@ -36,6 +36,7 @@ interface TaskRecord {
   startedAt?: number
   finishedAt?: number
   account?: AgentAccount
+  workerSessionId?: string
   result?: string
   error?: string
   detail?: string
@@ -58,6 +59,7 @@ interface TaskRow {
   finished_at: number | null
   account_id: string | null
   account_email: string | null
+  worker_session_id: string | null
   result: string | null
   error: string | null
   detail: string | null
@@ -78,12 +80,15 @@ export function isFinishedStatus(status: DelegationTaskStatus): boolean {
 export class DelegationTaskRegistry {
   private readonly database: Database.Database
   private readonly tasks = new Map<string, TaskRecord>()
+  // Transcript ids written by workers, kept so the history list can hide them.
+  private readonly workerSessionIds = new Set<string>()
   private closed = false
 
   constructor(
     private readonly databasePath: string,
     private readonly onChanged: () => void,
     private readonly onEvent: (task: DelegationTask, event: DelegationTaskEvent) => void,
+    private readonly onWorkerSession?: (sessionId: string) => void,
   ) {
     mkdirSync(dirname(databasePath), { recursive: true })
     this.database = new Database(databasePath)
@@ -108,6 +113,22 @@ export class DelegationTaskRegistry {
       );
       CREATE INDEX IF NOT EXISTS delegation_tasks_created_idx ON delegation_tasks(created_at DESC);
     `)
+    const columns = (this.database.pragma('table_info(delegation_tasks)') as Array<{ name: string }>).map((column) => column.name)
+    if (!columns.includes('worker_session_id')) {
+      this.database.exec('ALTER TABLE delegation_tasks ADD COLUMN worker_session_id TEXT')
+      // Earlier Claude workers only recorded their session id inside `detail`.
+      const legacy = this.database.prepare(`
+        SELECT id, detail FROM delegation_tasks WHERE agent = 'claude' AND detail LIKE 'session %'
+      `).all() as Array<{ id: string; detail: string }>
+      const backfill = this.database.prepare('UPDATE delegation_tasks SET worker_session_id = ? WHERE id = ?')
+      for (const row of legacy) {
+        const match = /^session (\S+),/.exec(row.detail)
+        if (match && match[1] !== 'unknown') backfill.run(match[1], row.id)
+      }
+    }
+    for (const row of this.database.prepare('SELECT worker_session_id FROM delegation_tasks WHERE worker_session_id IS NOT NULL').all() as Array<{ worker_session_id: string }>) {
+      this.workerSessionIds.add(row.worker_session_id)
+    }
     // Nothing can still be running from a previous process.
     this.database.prepare(`
       UPDATE delegation_tasks SET status = 'failed', finished_at = ?, error = ?
@@ -127,8 +148,12 @@ export class DelegationTaskRegistry {
   }
 
   get(taskId: string): DelegationTask | undefined {
-    const record = this.tasks.get(taskId)
+    const record = this.tasks.get(taskId) ?? this.loadRecord(taskId)
     return record ? this.publicTask(record) : undefined
+  }
+
+  isWorkerSession(sessionId: string): boolean {
+    return this.workerSessionIds.has(sessionId)
   }
 
   create(request: DelegationTaskRequest): DelegationTask {
@@ -182,6 +207,7 @@ export class DelegationTaskRegistry {
         timeoutMs: record.timeoutMs,
         ...(record.account ? { account: record.account } : {}),
         onProgress: (line) => this.appendLog(record, line),
+        onSessionId: (sessionId) => this.recordWorkerSession(record, sessionId),
       })
     } catch (error) {
       this.finish(record, 'failed', { error: error instanceof Error ? error.message : String(error) })
@@ -207,8 +233,9 @@ export class DelegationTaskRegistry {
     if (record.status === 'awaiting_approval') {
       this.finish(record, 'cancelled', { error: 'The task was cancelled before it started' })
     } else if (record.status === 'running') {
+      const handle = record.handle
       this.finish(record, 'cancelled', { error: 'The task was cancelled while running' })
-      record.handle?.cancel()
+      handle?.cancel()
     }
   }
 
@@ -257,9 +284,24 @@ export class DelegationTaskRegistry {
   }
 
   private requireTask(taskId: string): TaskRecord {
-    const record = this.tasks.get(taskId)
+    const record = this.tasks.get(taskId) ?? this.loadRecord(taskId)
     if (!record) throw new Error(`Unknown task: ${taskId}`)
     return record
+  }
+
+  // Finished tasks older than the in-memory window still answer status queries.
+  private loadRecord(taskId: string): TaskRecord | undefined {
+    if (this.closed) return undefined
+    const row = this.database.prepare('SELECT * FROM delegation_tasks WHERE id = ?').get(taskId) as TaskRow | undefined
+    return row ? this.recordFromRow(row) : undefined
+  }
+
+  private recordWorkerSession(record: TaskRecord, sessionId: string): void {
+    if (record.workerSessionId === sessionId || this.closed) return
+    record.workerSessionId = sessionId
+    this.workerSessionIds.add(sessionId)
+    this.database.prepare('UPDATE delegation_tasks SET worker_session_id = ? WHERE id = ?').run(sessionId, record.id)
+    this.onWorkerSession?.(sessionId)
   }
 
   private appendLog(record: TaskRecord, line: string): void {
@@ -310,6 +352,7 @@ export class DelegationTaskRegistry {
       ...(row.started_at ? { startedAt: row.started_at } : {}),
       ...(row.finished_at ? { finishedAt: row.finished_at } : {}),
       ...(row.account_id ? { account: { id: row.account_id, agentId: row.agent, email: row.account_email ?? '', configDir: '' } } : {}),
+      ...(row.worker_session_id ? { workerSessionId: row.worker_session_id } : {}),
       ...(row.result ? { result: row.result } : {}),
       ...(row.error ? { error: row.error } : {}),
       ...(row.detail ? { detail: row.detail } : {}),
@@ -332,6 +375,7 @@ export class DelegationTaskRegistry {
       ...(record.startedAt ? { startedAt: record.startedAt } : {}),
       ...(record.finishedAt ? { finishedAt: record.finishedAt } : {}),
       ...(record.account ? { accountId: record.account.id, accountEmail: record.account.email } : {}),
+      ...(record.workerSessionId ? { workerSessionId: record.workerSessionId } : {}),
       ...(record.result ? { resultPreview: preview(record.result, RESULT_PREVIEW_CHARS) } : {}),
       ...(record.error ? { error: record.error } : {}),
       ...(record.detail ? { detail: record.detail } : {}),
