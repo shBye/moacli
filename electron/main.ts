@@ -167,7 +167,7 @@ ipcMain.handle('history:list', (_event, accounts: AgentAccount[]) => {
   configureHistoryWatchers(accounts)
   return sessionHistory.list(accounts)
 })
-ipcMain.handle('history:get', (_event, key: string) => sessionHistory.get(key))
+ipcMain.handle('history:get', (_event, key: string, before?: number) => sessionHistory.get(key, before))
 ipcMain.handle('search:query', (_event, query: string) => sessionHistory.searchConversations(query))
 ipcMain.handle('search:state', () => sessionHistory.getSearchIndexState())
 ipcMain.handle('search:rebuild', (_event, accounts: AgentAccount[]) => sessionHistory.rebuildSearchIndex(accounts))

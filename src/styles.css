@@ -413,7 +413,10 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .terminal-container .xterm .composition-view { z-index: 20; border-bottom: 1px solid var(--acc); color: #fff; background: rgba(43,51,55,.94); }
 
 .conversation-view { width: 100%; height: 100%; overflow: hidden; background: var(--terminal-bg, #090a0c); }
-.message-list { height: 100%; min-height: 0; overflow-y: auto; }
+.message-list { height: 100%; min-height: 0; overflow-y: auto; overflow-anchor: none; }
+.message-list-older { display: grid; min-height: 46px; place-items: center; padding: 10px 24px; border-bottom: 1px solid rgba(255,255,255,.06); }
+.message-list-older button { padding: 6px 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; background: rgba(255,255,255,.04); color: rgba(255,255,255,.62); font: 500 11px/1 'JetBrains Mono', monospace; cursor: pointer; }
+.message-list-older button:hover { background: rgba(255,255,255,.08); color: rgba(255,255,255,.85); }
 .message-row { display: grid; grid-template-columns: 142px minmax(0, 780px); gap: 20px; padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,.06); }
 .message-row.user { background: rgba(255,255,255,.025); }
 .message-row.search-match { background: color-mix(in oklch, var(--acc) 10%, rgba(255,255,255,.02)); box-shadow: inset 3px 0 0 color-mix(in oklch, var(--acc) 78%, transparent); }

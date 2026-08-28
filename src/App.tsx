@@ -630,6 +630,7 @@ export function App() {
   const updateSession = (id: string, update: Partial<RuntimeSession>): void => {
     setSessions((current) => current.map((session) => session.id === id ? { ...session, ...update } : session))
   }
+  const olderMessagesInFlight = useRef(new Set<string>())
 
   const recordSessionActivity = (id: string): void => {
     sessionActivityTimesRef.current.set(id, Date.now())
@@ -762,6 +763,7 @@ export function App() {
       historyKeysAtStart: history.map((item) => item.key),
       conversation: null,
       conversationLoading: false,
+      conversationLoadingOlder: false,
       conversationError: '',
       terminalEnabled: true,
       terminalRevision: 0,
@@ -1232,6 +1234,7 @@ export function App() {
       historyKeysAtStart: [],
       conversation: null,
       conversationLoading: false,
+      conversationLoadingOlder: false,
       conversationError: '',
       terminalEnabled: true,
       terminalRevision: 0,
@@ -1243,9 +1246,31 @@ export function App() {
     })
   }
 
+  const mergeOlderMessages = (
+    current: NonNullable<RuntimeSession['conversation']>,
+    older: NonNullable<RuntimeSession['conversation']>,
+  ): NonNullable<RuntimeSession['conversation']> => ({
+    session: current.session,
+    messages: [...older.messages, ...current.messages],
+    ...(older.olderCursor === undefined ? {} : { olderCursor: older.olderCursor }),
+  })
+
   const loadConversation = (id: string, historyKey: string, highlightMessageId = ''): void => {
-    updateSession(id, { conversationLoading: true, conversationError: '', highlightMessageId })
-    void window.cliAgent.getConversation(historyKey).then((conversation) => {
+    updateSession(id, { conversationLoading: true, conversationLoadingOlder: false, conversationError: '', highlightMessageId })
+    // A search hit can sit far above the most recent page, so keep paging
+    // back until it is loaded and the highlight has something to scroll to.
+    const loadUntilHighlighted = async (): Promise<NonNullable<RuntimeSession['conversation']>> => {
+      let conversation = await window.cliAgent.getConversation(historyKey)
+      while (
+        highlightMessageId
+        && conversation.olderCursor !== undefined
+        && !conversation.messages.some((message) => message.id === highlightMessageId)
+      ) {
+        conversation = mergeOlderMessages(conversation, await window.cliAgent.getConversation(historyKey, conversation.olderCursor))
+      }
+      return conversation
+    }
+    void loadUntilHighlighted().then((conversation) => {
       updateSession(id, { conversation, conversationLoading: false, highlightMessageId })
     }).catch((error: unknown) => {
       updateSession(id, {
@@ -1255,11 +1280,35 @@ export function App() {
     })
   }
 
+  const loadOlderMessages = (id: string, before: number): void => {
+    const session = sessions.find((item) => item.id === id)
+    if (!session?.historyKey || olderMessagesInFlight.current.has(id)) return
+    olderMessagesInFlight.current.add(id)
+    updateSession(id, { conversationLoadingOlder: true })
+    void window.cliAgent.getConversation(session.historyKey, before).then((older) => {
+      setSessions((current) => current.map((item) => (
+        item.id === id && item.conversation
+          ? { ...item, conversation: mergeOlderMessages(item.conversation, older), conversationLoadingOlder: false }
+          : item
+      )))
+    }).catch(() => {
+      updateSession(id, { conversationLoadingOlder: false })
+    }).finally(() => {
+      olderMessagesInFlight.current.delete(id)
+    })
+  }
+
   const showConversation = (id: string, highlightMessageId = ''): void => {
     const session = sessions.find((item) => item.id === id)
     if (!session?.historyKey) return
     updateSession(id, { view: 'conversation', highlightMessageId })
-    if (session.conversation || session.conversationLoading) return
+    if (session.conversationLoading) return
+    const loaded = session.conversation
+    // Reload only when a search hit points below the pages already loaded.
+    const highlightLoaded = !highlightMessageId
+      || loaded?.messages.some((message) => message.id === highlightMessageId)
+      || loaded?.olderCursor === undefined
+    if (loaded && highlightLoaded) return
     loadConversation(id, session.historyKey, highlightMessageId)
   }
 
@@ -1290,6 +1339,7 @@ export function App() {
       historyKeysAtStart: [],
       conversation: null,
       conversationLoading: true,
+      conversationLoadingOlder: false,
       conversationError: '',
       terminalEnabled: false,
       terminalRevision: 0,
@@ -1368,6 +1418,7 @@ export function App() {
       historyKeysAtStart: [],
       conversation: null,
       conversationLoading: false,
+      conversationLoadingOlder: false,
       conversationError: '',
       terminalEnabled: true,
       terminalRevision: 0,
@@ -1578,6 +1629,7 @@ export function App() {
               cursorColor={accentOption.color}
               statusAwareAgents={statusAwareAgents}
               onOpenExternal={window.cliAgent.openExternal}
+              onLoadOlderMessages={loadOlderMessages}
               onActivity={recordSessionActivity}
               onStateChange={(sessionId, state, detail) => updateSession(sessionId, { state, statusDetail: detail ?? '' })}
             />

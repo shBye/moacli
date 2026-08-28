@@ -16,6 +16,7 @@ export interface RuntimeSession {
   historyKeysAtStart: string[]
   conversation: ConversationHistory | null
   conversationLoading: boolean
+  conversationLoadingOlder: boolean
   conversationError: string
   terminalEnabled: boolean
   terminalRevision: number

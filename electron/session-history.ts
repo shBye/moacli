@@ -19,6 +19,7 @@ const execFileAsync = promisify(execFile)
 const MAX_SESSIONS_PER_AGENT = 30
 const SAMPLE_BYTES = 384 * 1024
 const JSONL_STREAM_BYTES = 256 * 1024
+const CONVERSATION_PAGE_MESSAGES = 60
 const SEARCH_SYNC_DELAY_MS = 4000
 
 interface HistorySource {
@@ -94,15 +95,23 @@ function parseJsonLine(line: Buffer): Record<string, unknown> | null {
   }
 }
 
+interface OffsetRecord {
+  record: Record<string, unknown>
+  // Byte offset where the record's line starts; stable across forward,
+  // backward, and incremental reads, so it doubles as a fallback message id.
+  offset: number
+}
+
 // When `progress` is given the read feeds the search index: only
 // newline-terminated records are returned and `progress.safeOffset` tracks the
 // byte offset just past the last one, so an incremental pass can resume there
 // without duplicating or splitting a record.
-function* streamedJsonLines(path: string, fromOffset = 0, progress?: SourceReadProgress): Generator<Record<string, unknown>> {
+function* streamedJsonLines(path: string, fromOffset = 0, progress?: SourceReadProgress): Generator<OffsetRecord> {
   const handle = openSync(path, 'r')
   const buffer = Buffer.allocUnsafe(JSONL_STREAM_BYTES)
   let pending: Buffer = Buffer.alloc(0)
   let position = fromOffset
+  let lineStart = fromOffset
   if (progress) progress.safeOffset = fromOffset
   try {
     let bytesRead = 0
@@ -117,9 +126,11 @@ function* streamedJsonLines(path: string, fromOffset = 0, progress?: SourceReadP
       while (newline >= 0) {
         const line = pending.subarray(0, newline)
         pending = pending.subarray(newline + 1)
-        if (progress) progress.safeOffset = position - pending.length
+        const offset = lineStart
+        lineStart = position - pending.length
+        if (progress) progress.safeOffset = lineStart
         const record = parseJsonLine(line)
-        if (record) yield record
+        if (record) yield { record, offset }
         newline = pending.indexOf(0x0a)
       }
     } while (bytesRead > 0)
@@ -128,7 +139,39 @@ function* streamedJsonLines(path: string, fromOffset = 0, progress?: SourceReadP
       // An actively written JSONL file may end with a partial record; show it
       // in the conversation view but never index it.
       const record = parseJsonLine(pending)
-      if (record) yield record
+      if (record) yield { record, offset: lineStart }
+    }
+  } finally {
+    closeSync(handle)
+  }
+}
+
+// Reads records newest-first from the bytes before `endOffset`, so a page of
+// recent messages only touches the tail of a large transcript.
+function* reverseJsonLines(path: string, endOffset: number): Generator<OffsetRecord> {
+  const handle = openSync(path, 'r')
+  try {
+    let position = endOffset
+    let pending: Buffer = Buffer.alloc(0)
+    while (position > 0) {
+      const length = Math.min(JSONL_STREAM_BYTES, position)
+      position -= length
+      const chunk = Buffer.allocUnsafe(length)
+      readSync(handle, chunk, 0, length, position)
+      pending = pending.length ? Buffer.concat([chunk, pending]) : chunk
+      let end = pending.length
+      let newline = pending.lastIndexOf(0x0a, end - 1)
+      while (newline >= 0) {
+        const record = parseJsonLine(pending.subarray(newline + 1, end))
+        if (record) yield { record, offset: position + newline + 1 }
+        end = newline
+        newline = end > 0 ? pending.lastIndexOf(0x0a, end - 1) : -1
+      }
+      pending = pending.subarray(0, end)
+    }
+    if (pending.length) {
+      const record = parseJsonLine(pending)
+      if (record) yield { record, offset: 0 }
     }
   } finally {
     closeSync(handle)
@@ -352,56 +395,70 @@ function parseGeminiSummary(path: string, projects: Map<string, string>, account
   }
 }
 
-// Records without a native id fall back to their position in the file; an
-// incremental read cannot know that position, so it prefixes the offset
-// instead of risking a collision with an earlier message.
-function fallbackMessageId(fromOffset: number, recordIndex: number): string {
-  return fromOffset ? `${fromOffset}+${recordIndex}` : `${recordIndex}`
-}
-
-function* iterateClaudeConversation(path: string, fromOffset = 0, progress?: SourceReadProgress): Generator<HistoryMessage> {
-  let index = 0
-  for (const record of streamedJsonLines(path, fromOffset, progress)) {
-    const recordIndex = index
-    index += 1
-    if (record.type !== 'user' && record.type !== 'assistant') continue
-    const message = record.message as Record<string, unknown> | undefined
-    const text = contentText(message?.content)
-    if (!text) continue
-    yield {
-      id: typeof record.uuid === 'string' ? record.uuid : fallbackMessageId(fromOffset, recordIndex),
-      role: record.type as 'user' | 'assistant',
-      text,
-      timestamp: epoch(record.timestamp, 0) || undefined,
-    }
+function claudeMessage({ record, offset }: OffsetRecord): HistoryMessage | null {
+  if (record.type !== 'user' && record.type !== 'assistant') return null
+  const message = record.message as Record<string, unknown> | undefined
+  const text = contentText(message?.content)
+  if (!text) return null
+  return {
+    id: typeof record.uuid === 'string' ? record.uuid : `@${offset}`,
+    role: record.type as 'user' | 'assistant',
+    text,
+    timestamp: epoch(record.timestamp, 0) || undefined,
   }
 }
 
-function parseClaudeConversation(path: string): HistoryMessage[] {
-  return [...iterateClaudeConversation(path)]
-}
-
-function* iterateCodexConversation(path: string, fromOffset = 0, progress?: SourceReadProgress): Generator<HistoryMessage> {
-  let index = 0
-  for (const record of streamedJsonLines(path, fromOffset, progress)) {
-    const recordIndex = index
-    index += 1
-    if (record.type !== 'response_item') continue
-    const payload = record.payload as Record<string, unknown> | undefined
-    if (payload?.type !== 'message' || (payload.role !== 'user' && payload.role !== 'assistant')) continue
-    const text = contentText(payload.content)
-    if (!text) continue
-    yield {
-      id: typeof payload.id === 'string' ? payload.id : fallbackMessageId(fromOffset, recordIndex),
-      role: payload.role,
-      text,
-      timestamp: epoch(record.timestamp, 0) || undefined,
-    }
+function codexMessage({ record, offset }: OffsetRecord): HistoryMessage | null {
+  if (record.type !== 'response_item') return null
+  const payload = record.payload as Record<string, unknown> | undefined
+  if (payload?.type !== 'message' || (payload.role !== 'user' && payload.role !== 'assistant')) return null
+  const text = contentText(payload.content)
+  if (!text) return null
+  return {
+    id: typeof payload.id === 'string' ? payload.id : `@${offset}`,
+    role: payload.role,
+    text,
+    timestamp: epoch(record.timestamp, 0) || undefined,
   }
 }
 
-function parseCodexConversation(path: string): HistoryMessage[] {
-  return [...iterateCodexConversation(path)]
+type MessageMapper = (entry: OffsetRecord) => HistoryMessage | null
+
+function* iterateMessages(mapper: MessageMapper, entries: Iterable<OffsetRecord>): Generator<HistoryMessage> {
+  for (const entry of entries) {
+    const message = mapper(entry)
+    if (message) yield message
+  }
+}
+
+function iterateClaudeConversation(path: string, fromOffset = 0, progress?: SourceReadProgress): Generator<HistoryMessage> {
+  return iterateMessages(claudeMessage, streamedJsonLines(path, fromOffset, progress))
+}
+
+function iterateCodexConversation(path: string, fromOffset = 0, progress?: SourceReadProgress): Generator<HistoryMessage> {
+  return iterateMessages(codexMessage, streamedJsonLines(path, fromOffset, progress))
+}
+
+// Newest messages come from the tail of the file; `before` (a byte offset from
+// a previous page's `olderCursor`) continues backwards from there.
+function conversationPage(path: string, mapper: MessageMapper, before?: number): Pick<ConversationHistory, 'messages' | 'olderCursor'> {
+  const size = statSync(path).size
+  const end = typeof before === 'number' && Number.isFinite(before) ? Math.max(0, Math.min(Math.floor(before), size)) : size
+  const messages: HistoryMessage[] = []
+  let oldestOffset = end
+  let olderCursor: number | undefined
+  for (const entry of reverseJsonLines(path, end)) {
+    const message = mapper(entry)
+    if (!message) continue
+    if (messages.length >= CONVERSATION_PAGE_MESSAGES) {
+      olderCursor = oldestOffset
+      break
+    }
+    messages.push(message)
+    oldestOffset = entry.offset
+  }
+  messages.reverse()
+  return olderCursor === undefined ? { messages } : { messages, olderCursor }
 }
 
 function parseGeminiConversation(path: string): HistoryMessage[] {
@@ -634,14 +691,15 @@ export class SessionHistoryService {
     return [...this.sessions.values()].sort((a, b) => b.updatedAt - a.updatedAt)
   }
 
-  async get(key: string): Promise<ConversationHistory> {
+  async get(key: string, before?: number): Promise<ConversationHistory> {
     const source = this.sources.get(key)
     const session = this.sessions.get(key)
     if (!source || !session) throw new Error('Session is no longer available. Refresh the history list.')
+    if (source.agentId === 'claude' && source.path) return { session, ...conversationPage(source.path, claudeMessage, before) }
+    if (source.agentId === 'codex' && source.path) return { session, ...conversationPage(source.path, codexMessage, before) }
+    // Single-document sources cannot be paged; they are small enough to load whole.
     let messages: HistoryMessage[]
-    if (source.agentId === 'claude' && source.path) messages = parseClaudeConversation(source.path)
-    else if (source.agentId === 'codex' && source.path) messages = parseCodexConversation(source.path)
-    else if (source.agentId === 'gemini' && source.path) messages = parseGeminiConversation(source.path)
+    if (source.agentId === 'gemini' && source.path) messages = parseGeminiConversation(source.path)
     else if (source.agentId === 'opencode' && source.externalId) messages = await this.getOpenCode(source.externalId)
     else messages = []
     return { session: { ...session, messageCount: messages.length }, messages }

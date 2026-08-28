@@ -15,6 +15,7 @@ interface SessionRuntimeStageProps {
   cursorColor: string
   statusAwareAgents: ReadonlySet<string>
   onOpenExternal: (url: string) => void
+  onLoadOlderMessages: (sessionId: string, before: number) => void
   onActivity: (sessionId: string) => void
   onStateChange: (sessionId: string, state: SessionState, detail?: string) => void
 }
@@ -30,6 +31,7 @@ export function SessionRuntimeStage({
   cursorColor,
   statusAwareAgents,
   onOpenExternal,
+  onLoadOlderMessages,
   onActivity,
   onStateChange,
 }: SessionRuntimeStageProps) {
@@ -76,9 +78,11 @@ export function SessionRuntimeStage({
                 <LazyConversationView
                   conversation={session.conversation}
                   loading={session.conversationLoading}
+                  loadingOlder={session.conversationLoadingOlder}
                   error={session.conversationError}
                   highlightMessageId={session.highlightMessageId}
                   onOpenExternal={onOpenExternal}
+                  onLoadOlder={(before) => onLoadOlderMessages(session.id, before)}
                 />
               </Suspense>
             )}

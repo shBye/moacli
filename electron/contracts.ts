@@ -123,6 +123,9 @@ export interface HistoryMessage {
 export interface ConversationHistory {
   session: HistorySession
   messages: HistoryMessage[]
+  // Byte offset to continue loading older messages from; absent once the
+  // beginning of the conversation is loaded.
+  olderCursor?: number
 }
 
 export type SearchIndexPhase = 'idle' | 'indexing' | 'ready' | 'error'
@@ -176,7 +179,7 @@ export interface CliAgentApi {
   inspectAccount: (account: AgentAccount) => Promise<AgentAccount | null>
   selectDirectory: (defaultPath?: string) => Promise<string | null>
   listHistory: (accounts: AgentAccount[]) => Promise<HistorySession[]>
-  getConversation: (key: string) => Promise<ConversationHistory>
+  getConversation: (key: string, before?: number) => Promise<ConversationHistory>
   searchConversations: (query: string) => Promise<ConversationSearchResponse>
   getSearchIndexState: () => Promise<SearchIndexState>
   rebuildSearchIndex: (accounts: AgentAccount[]) => Promise<SearchIndexState>
