@@ -5,15 +5,18 @@ import { BrowserWindow, Notification } from 'electron'
 import type {
   AppNotification,
   AppNotificationType,
+  DelegationTask,
   NotificationActivation,
   NotificationContext,
   NotificationSettings,
   NotificationSnapshot,
   StartPtyRequest,
 } from './contracts'
+import type { DelegationTaskEvent } from './delegation-tasks'
 
 const DESKTOP_BURST_WINDOW_MS = 600
 const MAX_ACTIVE_NOTIFICATIONS = 10
+const DELEGATION_TITLE_CHARS = 80
 
 const DEFAULT_SETTINGS: NotificationSettings = {
   enabled: false,
@@ -32,13 +35,27 @@ const PRIORITY: Record<AppNotificationType, number> = {
 }
 
 interface CreateNotificationInput {
-  request: StartPtyRequest
+  sessionId: string
+  agentId: string
+  accountId: string
+  accountLabel: string
+  title: string
   type: AppNotificationType
   dedupeKey: string
+  body: string
+  activation: NotificationActivation
+  // Skip when the user is already looking at the session's terminal.
+  skipWhenViewingCli: boolean
 }
 
 interface ActiveNotification extends AppNotification {
   dedupeKey: string
+  body: string
+  activation: NotificationActivation
+}
+
+export function delegationNotificationKey(taskId: string): string {
+  return `delegation:${taskId}`
 }
 
 function parseSettings(value: unknown): NotificationSettings {
@@ -60,12 +77,18 @@ function notificationTypeEnabled(settings: NotificationSettings, type: AppNotifi
   return true
 }
 
-function notificationMessage(type: AppNotificationType): string {
+function sessionMessage(type: AppNotificationType): string {
   if (type === 'failed') return 'Session failed'
   if (type === 'completed') return 'Session completed'
   if (type === 'needs_attention') return 'Session needs attention'
   if (type === 'account_changed') return 'Account changed'
   return 'Session activity'
+}
+
+function delegationTitle(task: DelegationTask): string {
+  const compact = task.promptPreview.replace(/\s+/g, ' ').trim()
+  const preview = compact.length <= DELEGATION_TITLE_CHARS ? compact : `${compact.slice(0, DELEGATION_TITLE_CHARS)}…`
+  return `Delegation: ${preview || task.agent}`
 }
 
 export class NotificationCenter {
@@ -90,7 +113,7 @@ export class NotificationCenter {
       version: this.version,
       notifications: [...this.active.values()]
         .sort((left, right) => PRIORITY[right.type] - PRIORITY[left.type] || right.createdAt - left.createdAt)
-        .map(({ dedupeKey: _dedupeKey, ...notification }) => notification),
+        .map(({ dedupeKey: _dedupeKey, body: _body, activation: _activation, ...notification }) => notification),
       settings: { ...this.settings },
       mutedSessionIds: [...this.mutedSessionIds],
     }
@@ -113,17 +136,38 @@ export class NotificationCenter {
   }
 
   handleStartFailure(request: StartPtyRequest): void {
-    this.create({ request, type: 'failed', dedupeKey: `start:${request.id}` })
+    this.createForSession(request, 'failed', `start:${request.id}`)
   }
 
   handleNeedsAttention(request: StartPtyRequest, signalKey: string): void {
-    this.create({ request, type: 'needs_attention', dedupeKey: `attention:${request.id}:${signalKey}` })
+    this.createForSession(request, 'needs_attention', `attention:${request.id}:${signalKey}`)
   }
 
   handleExit(request: StartPtyRequest, exitCode: number, intentional: boolean): void {
     if (intentional) return
     const type: AppNotificationType = exitCode === 0 ? 'completed' : 'failed'
-    this.create({ request, type, dedupeKey: `exit:${request.id}:${exitCode}` })
+    this.createForSession(request, type, `exit:${request.id}:${exitCode}`)
+  }
+
+  // Delegated tasks surface like sessions: approval requests need attention,
+  // and the outcome lands as completed/failed.
+  handleDelegation(task: DelegationTask, event: DelegationTaskEvent): void {
+    const type: AppNotificationType = event === 'awaiting_approval' ? 'needs_attention' : event
+    const body = event === 'awaiting_approval'
+      ? 'Delegation awaiting your approval'
+      : event === 'completed' ? 'Delegated task completed' : 'Delegated task failed'
+    this.create({
+      sessionId: delegationNotificationKey(task.id),
+      agentId: task.agent,
+      accountId: task.accountId ?? '',
+      accountLabel: task.accountEmail ?? task.caller,
+      title: delegationTitle(task),
+      type,
+      dedupeKey: `delegation:${task.id}:${event}`,
+      body,
+      activation: { kind: 'delegation', taskId: task.id },
+      skipWhenViewingCli: false,
+    })
   }
 
   dismiss(id: string): NotificationSnapshot {
@@ -176,25 +220,42 @@ export class NotificationCenter {
     this.closeAllNativeNotifications()
   }
 
-  private create({ request, type, dedupeKey }: CreateNotificationInput): void {
-    if (!this.settings.enabled || !notificationTypeEnabled(this.settings, type)) return
-    if (request.purpose === 'login' || this.mutedSessionIds.has(request.sessionId)) return
+  private createForSession(request: StartPtyRequest, type: AppNotificationType, dedupeKey: string): void {
+    if (request.purpose === 'login') return
+    this.create({
+      sessionId: request.sessionId,
+      agentId: request.agentId,
+      accountId: request.account?.id ?? '',
+      accountLabel: request.account?.email ?? '',
+      title: request.title?.trim() || request.agentId,
+      type,
+      dedupeKey,
+      body: sessionMessage(type),
+      activation: { kind: 'session', sessionId: request.sessionId },
+      skipWhenViewingCli: true,
+    })
+  }
+
+  private create(input: CreateNotificationInput): void {
+    if (!this.settings.enabled || !notificationTypeEnabled(this.settings, input.type)) return
+    if (this.mutedSessionIds.has(input.sessionId)) return
 
     const window = this.getWindow()
-    const viewingSameSession = window?.isFocused()
-      && this.context.activeSessionId === request.sessionId
+    const viewingSameSession = input.skipWhenViewingCli
+      && window?.isFocused()
+      && this.context.activeSessionId === input.sessionId
       && this.context.activeView === 'cli'
     if (viewingSameSession) return
 
-    const existing = this.active.get(request.sessionId)
-    if (existing?.dedupeKey === dedupeKey) return
-    if (existing && PRIORITY[existing.type] > PRIORITY[type]) return
+    const existing = this.active.get(input.sessionId)
+    if (existing?.dedupeKey === input.dedupeKey) return
+    if (existing && PRIORITY[existing.type] > PRIORITY[input.type]) return
 
     if (!existing && this.active.size >= MAX_ACTIVE_NOTIFICATIONS) {
       const replacement = [...this.active.values()].sort((left, right) => (
         PRIORITY[left.type] - PRIORITY[right.type] || left.createdAt - right.createdAt
       ))[0]
-      if (replacement && PRIORITY[replacement.type] > PRIORITY[type]) return
+      if (replacement && PRIORITY[replacement.type] > PRIORITY[input.type]) return
       if (replacement) {
         this.active.delete(replacement.sessionId)
         this.pendingDesktopSessionIds.delete(replacement.sessionId)
@@ -203,20 +264,22 @@ export class NotificationCenter {
 
     const notification: ActiveNotification = {
       id: randomUUID(),
-      sessionId: request.sessionId,
-      agentId: request.agentId,
-      accountId: request.account?.id ?? '',
-      accountLabel: request.account?.email ?? '',
-      type,
-      title: request.title?.trim() || request.agentId,
+      sessionId: input.sessionId,
+      agentId: input.agentId,
+      accountId: input.accountId,
+      accountLabel: input.accountLabel,
+      type: input.type,
+      title: input.title,
       createdAt: Date.now(),
-      dedupeKey,
+      dedupeKey: input.dedupeKey,
+      body: input.body,
+      activation: input.activation,
     }
-    this.active.set(request.sessionId, notification)
+    this.active.set(input.sessionId, notification)
     this.emit()
 
     if (this.settings.desktopEnabled && !window?.isFocused() && Notification.isSupported()) {
-      this.pendingDesktopSessionIds.add(request.sessionId)
+      this.pendingDesktopSessionIds.add(input.sessionId)
       this.scheduleDesktopDelivery()
     }
   }
@@ -244,11 +307,9 @@ export class NotificationCenter {
     for (const item of items) item.desktopDeliveredAt = deliveredAt
     this.emit()
 
-    const activation: NotificationActivation = items.length === 1
-      ? { kind: 'session', sessionId: items[0].sessionId }
-      : { kind: 'panel' }
+    const activation: NotificationActivation = items.length === 1 ? items[0].activation : { kind: 'panel' }
     const nativeNotification = new Notification(items.length === 1
-      ? { title: items[0].title, body: notificationMessage(items[0].type), silent: true }
+      ? { title: items[0].title, body: items[0].body, silent: true }
       : { title: 'MoaCLI', body: `${items.length} sessions have new activity`, silent: true })
     this.nativeNotifications.set(nativeNotification, new Set(items.map((item) => item.sessionId)))
     nativeNotification.once('click', () => this.activate(activation))

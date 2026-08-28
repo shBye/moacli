@@ -99,7 +99,49 @@ export interface NotificationContext {
 
 export type NotificationActivation =
   | { kind: 'session'; sessionId: string }
+  | { kind: 'delegation'; taskId: string }
   | { kind: 'panel' }
+
+export type DelegationTaskStatus = 'awaiting_approval' | 'running' | 'completed' | 'failed' | 'rejected' | 'cancelled'
+
+export interface DelegationTask {
+  id: string
+  agent: string
+  caller: string
+  promptPreview: string
+  promptLength: number
+  cwd: string
+  timeoutMs: number
+  status: DelegationTaskStatus
+  createdAt: number
+  startedAt?: number
+  finishedAt?: number
+  accountId?: string
+  accountEmail?: string
+  resultPreview?: string
+  error?: string
+  detail?: string
+}
+
+export interface DelegationServerStatus {
+  enabled: boolean
+  running: boolean
+  port: number
+  url: string
+  token: string
+  claudeRegisterCommand: string
+  codexConfigSnippet: string
+}
+
+export interface DelegationSnapshot {
+  server: DelegationServerStatus
+  tasks: DelegationTask[]
+}
+
+export interface DelegationApproval {
+  taskId: string
+  account?: AgentAccount
+}
 
 export interface HistorySession {
   key: string
@@ -203,6 +245,13 @@ export interface CliAgentApi {
   updateNotificationContext: (context: NotificationContext) => void
   onNotificationsChanged: (callback: (snapshot: NotificationSnapshot) => void) => () => void
   onNotificationActivated: (callback: (activation: NotificationActivation) => void) => () => void
+  getDelegationSnapshot: () => Promise<DelegationSnapshot>
+  approveDelegation: (approval: DelegationApproval) => Promise<DelegationSnapshot>
+  rejectDelegation: (taskId: string) => Promise<DelegationSnapshot>
+  cancelDelegation: (taskId: string) => Promise<DelegationSnapshot>
+  setDelegationEnabled: (enabled: boolean) => Promise<DelegationSnapshot>
+  regenerateDelegationToken: () => Promise<DelegationSnapshot>
+  onDelegationChanged: (callback: (snapshot: DelegationSnapshot) => void) => () => void
   getAppVersion: () => Promise<string>
   checkForAppUpdate: (force?: boolean) => Promise<AppUpdateInfo>
   downloadAppUpdate: () => Promise<boolean>

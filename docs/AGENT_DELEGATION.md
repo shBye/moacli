@@ -105,6 +105,13 @@
   - **역방향 체인도 검증 ✓**: Codex caller(`codex exec --approve-for-me`, config.toml에 moacli 등록) → MoaCLI MCP → Claude worker (질문 13*29 → "CLAUDE SAID: 377"). `--approve-for-me` 없이는 codex exec의 MCP 승인 게이트에 걸림(위 2.2 실측 참고).
   - 등록 커맨드는 앱 시작 시 콘솔에 출력됨 (`[delegation]` 프리픽스).
 - **Phase 1 — MVP**: start/poll 툴 셋 + 태스크 레지스트리(기존 better-sqlite3에 저장) + 승인·계정선택 모달 + 알림 연동. Codex `tool_timeout_sec` 안내 문구 포함한 설정 가이드(등록 커맨드 자동 생성/복사 UI). → UI 배치는 §6 참고.
+  - ✅ **완료 (2026-08-28)**. 구현:
+    - `electron/delegation-tasks.ts`(신규) — 태스크 레지스트리. 상태 `awaiting_approval → running → completed | failed | rejected | cancelled`, userData의 `delegation.sqlite`에 영속(재시작 시 미완료 건은 failed 처리, 최근 50건 로드), 승인 대기 15분 타임아웃, 동시 실행 3개/열린 작업 10개 상한, 진행 로그(64KB 링), 큰 결과는 `delegation-results/<id>.txt`로.
+    - `electron/delegation-workers.ts`(재작성) — `startWorker()`가 `{done, cancel}` 핸들 반환. Claude: `-p --output-format stream-json --verbose --strict-mcp-config --mcp-config {"mcpServers":{}}`(worker 내 MCP 비활성 → 재귀 위임 차단), Codex: `exec --json --output-last-message`. stream-json/JSONL 이벤트를 사람이 읽을 진행 로그로 변환. 계정 선택 시 `CLAUDE_CONFIG_DIR`/`CODEX_HOME` 주입.
+    - `electron/delegation-server.ts` — 툴 6종: `list_agents`, `delegate_task`(동기, 승인 대기 포함), `start_task`, `check_task`(상태+진행 로그 tail), `get_task_result`, `cancel_task`. caller 라벨은 HTTP `user-agent`. 설정 파일에 `enabled` 추가(on/off 토글), 토큰 재발급.
+    - 알림: `NotificationCenter.handleDelegation()` — 승인 대기(needs_attention)/완료/실패, 데스크톱 알림 클릭 시 `{kind:'delegation', taskId}` 활성화.
+    - UI: 설정 → **Delegation** 섹션(`src/features/delegation/DelegationSettingsSection.tsx`: 상태/엔드포인트/토큰, Claude 등록 커맨드·Codex config.toml 스니펫 복사, `--approve-for-me`/`tool_timeout_sec` 안내, 토큰 재발급 2단계 확인, 최근 작업 목록+Review/Cancel), 전역 승인 모달(`DelegationApprovalModal.tsx`: caller/worker/프롬프트/cwd/제한시간/권한 정책/계정 SelectBox, Allow·Decline, Esc=나중에).
+  - 검증(하네스, 실제 worker): 401 차단 ✓, tools/list 6종 ✓, start_task→거절 흐름 ✓, start_task→승인→Codex 완료(12s, `--json` 진행 로그 수신) ✓, delegate_task 동기→Claude 완료(4s) ✓, 실행 중 cancel_task ✓, sqlite 재로드 ✓. **UI(모달/설정 섹션)는 실기 확인 필요.**
 - **Phase 2 — 가시성**: 위임 패널(stream-json 렌더), 실행 중 권한 모달(`--permission-prompt-tool`), 위임 히스토리. → UI 배치는 §6 참고.
 - **Phase 3 — 고급 (선택)**: `codex mcp-server` 경유 Codex 승인 라우팅(experimental 안정화 후), MCP Tasks 확장 채택, `--input-format stream-json` 멀티턴 위임.
 
@@ -143,13 +150,15 @@
    - 내용: "〈caller〉가 〈worker〉에 작업을 위임하려 합니다" + 프롬프트 미리보기 + 계정 선택(SelectBox) + cwd/sandbox 정책 표시 + 허용·거부 버튼.
    - 알림 센터에 "승인 대기" 항목 연동(다른 탭/최소화 상태에서 놓치지 않도록). Claude worker 실행 중 권한 요청(`--permission-prompt-tool` → `moacli_permission` 툴)도 같은 모달 패턴 재사용.
 
-## 7. 현재 상태 / 재개 시 체크리스트 (2026-08-26 기준)
+## 7. 현재 상태 / 재개 시 체크리스트 (2026-08-28 기준)
 
 - 브랜치 `feature/agent-delegation-poc`에 Phase 0 구현 완료, **커밋 전** 상태. 변경: `electron/delegation-server.ts`(신규), `electron/delegation-workers.ts`(신규), `electron/main.ts`(기동/해제 연결), `package.json`/`package-lock.json`(`@modelcontextprotocol/sdk` 1.30.0, `zod` 4.4.3 추가), 본 문서.
 - 양방향 실검증 완료: Claude→Codex ✓, Codex(`--approve-for-me`)→Claude ✓. 무토큰 401 차단 ✓.
 - 테스트 과정에서 사용자 `~/.codex/config.toml`에 `[mcp_servers.moacli]` 블록을 추가함(원본 백업: `config.toml.moacli-backup`). 이는 최종 사용 형태와 동일하므로 유지 중 — 제거하려면 해당 블록 삭제.
 - 서버 접속 정보는 `%APPDATA%\cli-agent-manager\delegation-server.json`(port 38017 + bearer token)에 영속, 앱 재시작에도 등록 유지됨.
-- 재개 순서: ① 위 변경 커밋 → ② Phase 1(§4·§6: start/poll 툴 + 태스크 레지스트리 + 설정 Delegation 섹션 + 승인 모달 + 알림 연동).
+- Phase 0은 v0.1.17에, Phase 1은 그 다음 커밋(2026-08-28)에 포함. Phase 1 구현 내역·검증은 §4 참고.
+- 재개 순서: ① Phase 1 UI 실기 확인(승인 모달 표시/Esc/계정 선택, 설정 Delegation 섹션 복사 버튼, 알림 클릭 → 모달) → ② Phase 2(§4·§6: 위임 작업을 특수 세션 탭으로 가시화 + stream-json 렌더, `moacli_permission` 실행 중 권한 모달, 위임 히스토리).
+- Phase 1에서 의도적으로 뺀 것: 자동 승인 옵션(항상 물어봄), Codex worker의 MCP 비활성(`codex exec`는 `--approve-for-me` 없이는 MCP 툴을 못 부르므로 재귀 위험 낮음), 위임 깊이 추적(worker env `MOACLI_DELEGATION_DEPTH=1`만 심어둠).
 
 ## 8. 비스코프 / 향후 확장
 

@@ -1,14 +1,16 @@
 import type { MouseEvent as ReactMouseEvent } from 'react'
-import { Bell, Download, LogIn, Palette, Shapes, X } from 'lucide-react'
+import { Bell, Download, LogIn, Palette, Shapes, Workflow, X } from 'lucide-react'
 import type {
   AgentAccount,
   AgentHealth,
   AppUpdateInfo,
+  DelegationSnapshot,
   NotificationSettings,
 } from '../../../electron/contracts'
 import type { AccentTheme, AppearancePreferences } from '../../appearance'
 import type { AgentIconPreference } from '../agent-icons/types'
 import { AccountsSettingsSection } from './AccountsSettingsSection'
+import { DelegationSettingsSection } from '../delegation/DelegationSettingsSection'
 import { AgentIconSettingsSection } from './AgentIconSettingsSection'
 import { AppearanceSettingsSection } from './AppearanceSettingsSection'
 import { NotificationSettingsSection } from './NotificationSettingsSection'
@@ -30,6 +32,7 @@ interface SettingsModalProps {
   updateOpening: boolean
   updateError: string
   notificationSettings: NotificationSettings
+  delegation: DelegationSnapshot | null
   profiles: readonly AgentHealth[]
   profilesById: ReadonlyMap<string, AgentHealth>
   agentIcons: Readonly<Record<string, AgentIconPreference>>
@@ -46,6 +49,10 @@ interface SettingsModalProps {
   onCheckUpdate: () => void
   onOpenUpdateDownload: () => void
   onNotificationSettingsChange: (update: Partial<NotificationSettings>) => void
+  onDelegationEnabledChange: (enabled: boolean) => void
+  onRegenerateDelegationToken: () => void
+  onReviewDelegation: (taskId: string) => void
+  onCancelDelegation: (taskId: string) => void
   onAgentIconChange: (agentId: string, preference: AgentIconPreference) => void
   onOpenIconPicker: (agentId: string) => void
   onImportAgentIcon: (agentId: string, file?: File) => void
@@ -72,6 +79,7 @@ export function SettingsModal({
   updateOpening,
   updateError,
   notificationSettings,
+  delegation,
   profiles,
   profilesById,
   agentIcons,
@@ -88,6 +96,10 @@ export function SettingsModal({
   onCheckUpdate,
   onOpenUpdateDownload,
   onNotificationSettingsChange,
+  onDelegationEnabledChange,
+  onRegenerateDelegationToken,
+  onReviewDelegation,
+  onCancelDelegation,
   onAgentIconChange,
   onOpenIconPicker,
   onImportAgentIcon,
@@ -104,7 +116,7 @@ export function SettingsModal({
     }}>
       <section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="account-settings-title">
         <header>
-          <div><h2 id="account-settings-title">Settings</h2><p>Manage the interface, updates, notifications, and agent accounts.</p></div>
+          <div><h2 id="account-settings-title">Settings</h2><p>Manage the interface, updates, notifications, delegation, and agent accounts.</p></div>
           <button className="icon-button" title="Close" onClick={onClose}><X size={16} /></button>
         </header>
         <div className="settings-layout">
@@ -112,6 +124,7 @@ export function SettingsModal({
             <button className={section === 'appearance' ? 'active' : ''} onClick={() => onSectionChange('appearance')}><Palette size={15} />Appearance</button>
             <button className={section === 'updates' ? 'active' : ''} onClick={() => onSectionChange('updates')}><Download size={15} />Updates</button>
             <button className={section === 'notifications' ? 'active' : ''} onClick={() => onSectionChange('notifications')}><Bell size={15} />Notifications</button>
+            <button className={section === 'delegation' ? 'active' : ''} onClick={() => onSectionChange('delegation')}><Workflow size={15} />Delegation</button>
             <button className={section === 'icons' ? 'active' : ''} onClick={() => onSectionChange('icons')}><Shapes size={15} />Agent icons</button>
             <button className={section === 'accounts' ? 'active' : ''} onClick={() => onSectionChange('accounts')}><LogIn size={15} />Accounts</button>
             <div className="settings-app-version" aria-label={`MoaCLI version ${appVersion || 'loading'}`}>
@@ -150,6 +163,15 @@ export function SettingsModal({
               settings={notificationSettings}
               profiles={profiles}
               onChange={onNotificationSettingsChange}
+            />
+            <DelegationSettingsSection
+              visible={section === 'delegation'}
+              snapshot={delegation}
+              profilesById={profilesById}
+              onToggleEnabled={onDelegationEnabledChange}
+              onRegenerateToken={onRegenerateDelegationToken}
+              onReviewTask={onReviewDelegation}
+              onCancelTask={onCancelDelegation}
             />
             <AgentIconSettingsSection
               visible={section === 'icons'}

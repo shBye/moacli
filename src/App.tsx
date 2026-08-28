@@ -16,6 +16,7 @@ import type {
   AppNotification,
   ConversationHistory,
   ConversationSearchResult,
+  DelegationSnapshot,
   HistorySession,
   NotificationSettings,
   NotificationSnapshot,
@@ -43,6 +44,7 @@ import { buildFolderViews } from './features/folders/folder-view'
 import type { LogicalFolder } from './features/folders/types'
 import { useLocalFonts } from './features/fonts/useLocalFonts'
 import { SessionLauncher } from './features/launcher/SessionLauncher'
+import { DelegationApprovalModal } from './features/delegation/DelegationApprovalModal'
 import { NotificationCenter } from './features/notifications/NotificationCenter'
 import { ConversationSearchModal } from './features/search/ConversationSearchModal'
 import { AppSidebar } from './features/sidebar/AppSidebar'
@@ -230,6 +232,12 @@ export function App() {
   const [accountId, setAccountId] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('appearance')
+  const [delegationSnapshot, setDelegationSnapshot] = useState<DelegationSnapshot | null>(null)
+  const [dismissedApprovalIds, setDismissedApprovalIds] = useState<ReadonlySet<string>>(() => new Set())
+  const [focusedApprovalId, setFocusedApprovalId] = useState('')
+  const [approvalBusy, setApprovalBusy] = useState(false)
+  const [approvalError, setApprovalError] = useState('')
+  const openDelegationTaskRef = useRef<(taskId: string) => void>(() => undefined)
   const {
     appVersion,
     update: appUpdate,
@@ -383,6 +391,11 @@ export function App() {
     const offActivated = window.cliAgent.onNotificationActivated((activation) => {
       if (activation.kind === 'panel') {
         setNotificationPanelOpen(true)
+        return
+      }
+      if (activation.kind === 'delegation') {
+        openDelegationTaskRef.current(activation.taskId)
+        void window.cliAgent.acknowledgeSessionNotification(`delegation:${activation.taskId}`).then(acceptNotificationSnapshot)
         return
       }
       if (!sessionsRef.current.some((session) => session.id === activation.sessionId)) {
@@ -937,7 +950,88 @@ export function App() {
     })
   }
 
+  useEffect(() => {
+    let mounted = true
+    void window.cliAgent.getDelegationSnapshot().then((snapshot) => {
+      if (mounted) setDelegationSnapshot(snapshot)
+    }).catch(() => undefined)
+    const offChanged = window.cliAgent.onDelegationChanged(setDelegationSnapshot)
+    return () => {
+      mounted = false
+      offChanged()
+    }
+  }, [])
+
+  const awaitingDelegations = delegationSnapshot?.tasks.filter((task) => task.status === 'awaiting_approval') ?? []
+  const pendingApproval = awaitingDelegations.find((task) => task.id === focusedApprovalId)
+    ?? awaitingDelegations.find((task) => !dismissedApprovalIds.has(task.id))
+
+  const openDelegationTask = (taskId: string): void => {
+    const task = delegationSnapshot?.tasks.find((item) => item.id === taskId)
+    if (task?.status === 'awaiting_approval') {
+      setDismissedApprovalIds((current) => {
+        if (!current.has(taskId)) return current
+        const next = new Set(current)
+        next.delete(taskId)
+        return next
+      })
+      setFocusedApprovalId(taskId)
+      setApprovalError('')
+      return
+    }
+    setSettingsSection('delegation')
+    setSettingsOpen(true)
+  }
+  openDelegationTaskRef.current = openDelegationTask
+
+  const dismissApproval = (): void => {
+    if (!pendingApproval) return
+    const taskId = pendingApproval.id
+    setDismissedApprovalIds((current) => new Set(current).add(taskId))
+    setFocusedApprovalId('')
+    setApprovalError('')
+  }
+
+  const runDelegationAction = (action: () => Promise<DelegationSnapshot>): void => {
+    setApprovalBusy(true)
+    setApprovalError('')
+    void action().then((snapshot) => {
+      setDelegationSnapshot(snapshot)
+      setFocusedApprovalId('')
+    }).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error)
+      setApprovalError(message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, ''))
+    }).finally(() => setApprovalBusy(false))
+  }
+  const acknowledgeDelegationNotification = (taskId: string): void => {
+    void window.cliAgent.acknowledgeSessionNotification(`delegation:${taskId}`).then(acceptNotificationSnapshot)
+  }
+  const approveDelegation = (taskId: string, account?: AgentAccount): void => {
+    runDelegationAction(() => window.cliAgent.approveDelegation(account ? { taskId, account } : { taskId }))
+    acknowledgeDelegationNotification(taskId)
+  }
+  const rejectDelegation = (taskId: string): void => {
+    runDelegationAction(() => window.cliAgent.rejectDelegation(taskId))
+    acknowledgeDelegationNotification(taskId)
+  }
+  const cancelDelegation = (taskId: string): void => {
+    runDelegationAction(() => window.cliAgent.cancelDelegation(taskId))
+    acknowledgeDelegationNotification(taskId)
+  }
+  const setDelegationEnabled = (enabled: boolean): void => {
+    runDelegationAction(() => window.cliAgent.setDelegationEnabled(enabled))
+  }
+  const regenerateDelegationToken = (): void => {
+    runDelegationAction(() => window.cliAgent.regenerateDelegationToken())
+  }
+
   const openNotification = (notification: AppNotification): void => {
+    if (notification.sessionId.startsWith('delegation:')) {
+      openDelegationTask(notification.sessionId.slice('delegation:'.length))
+      setNotificationPanelOpen(false)
+      void window.cliAgent.acknowledgeSessionNotification(notification.sessionId).then(acceptNotificationSnapshot)
+      return
+    }
     if (!sessionsRef.current.some((session) => session.id === notification.sessionId)) {
       void window.cliAgent.dismissNotification(notification.id).then(acceptNotificationSnapshot)
       return
@@ -1719,6 +1813,7 @@ export function App() {
           updateOpening={updateOpening}
           updateError={updateError}
           notificationSettings={notificationSnapshot.settings}
+          delegation={delegationSnapshot}
           profiles={profiles}
           profilesById={profilesById}
           agentIcons={agentIcons}
@@ -1741,6 +1836,10 @@ export function App() {
           onCheckUpdate={() => void checkAppUpdate(true)}
           onOpenUpdateDownload={() => void openAppUpdateDownload()}
           onNotificationSettingsChange={changeNotificationSettings}
+          onDelegationEnabledChange={setDelegationEnabled}
+          onRegenerateDelegationToken={regenerateDelegationToken}
+          onReviewDelegation={openDelegationTask}
+          onCancelDelegation={cancelDelegation}
           onAgentIconChange={changeAgentIcon}
           onOpenIconPicker={setIconPickerAgentId}
           onImportAgentIcon={importAgentIcon}
@@ -1760,6 +1859,20 @@ export function App() {
       )}
 
 
+
+      {pendingApproval && (
+        <DelegationApprovalModal
+          task={pendingApproval}
+          accounts={accounts.filter((account) => account.agentId === pendingApproval.agent)}
+          profilesById={profilesById}
+          resolvedAgentIcon={resolvedAgentIcon}
+          busy={approvalBusy}
+          error={approvalError}
+          onApprove={approveDelegation}
+          onReject={rejectDelegation}
+          onDismiss={dismissApproval}
+        />
+      )}
 
       {iconPickerAgentId && (
         <Suspense fallback={null}>

@@ -7,7 +7,8 @@ import { getAgentHealth } from './agent-profiles'
 import { checkForAppUpdate, downloadAppUpdate } from './app-updates'
 import { AttentionBridge } from './attention-bridge'
 import { DelegationServer } from './delegation-server'
-import type { AgentAccount, NotificationContext, NotificationSettings, SearchIndexState, StartPtyRequest } from './contracts'
+import { DelegationTaskRegistry } from './delegation-tasks'
+import type { AgentAccount, DelegationApproval, DelegationSnapshot, NotificationContext, NotificationSettings, SearchIndexState, StartPtyRequest } from './contracts'
 import { NotificationCenter } from './notification-center'
 import { PtyHostClient } from './pty-host-client'
 import { SessionHistoryService } from './session-history'
@@ -30,11 +31,30 @@ const ptyHost = new PtyHostClient(
 )
 const sessionHistory = new SessionHistoryService()
 let delegationServer: DelegationServer | null = null
+let delegationRegistry: DelegationTaskRegistry | null = null
 const historyWatchers = new Map<string, FSWatcher>()
 let historyChangeTimer: ReturnType<typeof setTimeout> | undefined
 const HISTORY_CHANGE_DEBOUNCE_MS = 700
 const HISTORY_CHANGE_BUSY_THROTTLE_MS = 5000
 const CLIPBOARD_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'])
+
+function delegationSnapshot(): DelegationSnapshot {
+  return {
+    server: delegationServer?.status() ?? {
+      enabled: false, running: false, port: 0, url: '', token: '', claudeRegisterCommand: '', codexConfigSnippet: '',
+    },
+    tasks: delegationRegistry?.snapshot() ?? [],
+  }
+}
+
+function emitDelegationChanged(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('delegation:changed', delegationSnapshot())
+}
+
+function delegationRegistryOrThrow(): DelegationTaskRegistry {
+  if (!delegationRegistry) throw new Error('Delegation is not available')
+  return delegationRegistry
+}
 
 function notifications(): NotificationCenter {
   if (!notificationCenter) throw new Error('Notification center is not ready')
@@ -222,6 +242,29 @@ ipcMain.handle('notifications:mute-session', (_event, payload: { sessionId: stri
   notifications().setSessionMuted(payload.sessionId, payload.muted)
 ))
 ipcMain.on('notifications:context', (_event, context: NotificationContext) => notifications().updateContext(context))
+ipcMain.handle('delegation:snapshot', () => delegationSnapshot())
+ipcMain.handle('delegation:approve', (_event, approval: DelegationApproval) => {
+  delegationRegistryOrThrow().approve(approval.taskId, approval.account)
+  return delegationSnapshot()
+})
+ipcMain.handle('delegation:reject', (_event, taskId: string) => {
+  delegationRegistryOrThrow().reject(taskId)
+  return delegationSnapshot()
+})
+ipcMain.handle('delegation:cancel', (_event, taskId: string) => {
+  delegationRegistryOrThrow().cancel(taskId)
+  return delegationSnapshot()
+})
+ipcMain.handle('delegation:set-enabled', async (_event, enabled: boolean) => {
+  if (!delegationServer) throw new Error('Delegation server is not available')
+  await delegationServer.setEnabled(enabled === true)
+  return delegationSnapshot()
+})
+ipcMain.handle('delegation:regenerate-token', () => {
+  if (!delegationServer) throw new Error('Delegation server is not available')
+  delegationServer.regenerateToken()
+  return delegationSnapshot()
+})
 ipcMain.handle('updates:version', () => app.getVersion())
 ipcMain.handle('updates:check', (_event, force = false) => checkForAppUpdate(force === true))
 ipcMain.handle('updates:download', () => downloadAppUpdate())
@@ -265,7 +308,17 @@ app.whenReady().then(async () => {
     console.warn('Needs-attention hook server could not start', error)
   }
   try {
-    delegationServer = new DelegationServer(app.getPath('userData'), app.getVersion())
+    delegationRegistry = new DelegationTaskRegistry(
+      join(app.getPath('userData'), 'delegation.sqlite'),
+      emitDelegationChanged,
+      (task, event) => notificationCenter?.handleDelegation(task, event),
+    )
+    delegationServer = new DelegationServer({
+      userDataDirectory: app.getPath('userData'),
+      appVersion: app.getVersion(),
+      registry: delegationRegistry,
+      onChanged: emitDelegationChanged,
+    })
     await delegationServer.start()
   } catch (error) {
     delegationServer = null
@@ -289,6 +342,7 @@ app.on('before-quit', (event) => {
   notificationCenter?.dispose()
   attentionBridge.dispose()
   delegationServer?.dispose()
+  delegationRegistry?.close()
   void ptyHost.shutdown().finally(() => app.quit())
 })
 app.on('window-all-closed', () => {

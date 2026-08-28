@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { CliAgentApi, NotificationActivation, NotificationSnapshot, PtyAttentionEvent, PtyExitEvent, SearchIndexState, StartPtyRequest } from './contracts'
+import type { CliAgentApi, DelegationSnapshot, NotificationActivation, NotificationSnapshot, PtyAttentionEvent, PtyExitEvent, SearchIndexState, StartPtyRequest } from './contracts'
 import type { HostToRendererMessage, RendererToHostMessage } from './pty-host-protocol'
 
 type PtyDataCallback = (data: string) => void
@@ -100,6 +100,17 @@ const api: CliAgentApi = {
     const listener = (_event: Electron.IpcRendererEvent, activation: NotificationActivation): void => callback(activation)
     ipcRenderer.on('notifications:activate', listener)
     return () => ipcRenderer.removeListener('notifications:activate', listener)
+  },
+  getDelegationSnapshot: () => ipcRenderer.invoke('delegation:snapshot'),
+  approveDelegation: (approval) => ipcRenderer.invoke('delegation:approve', approval),
+  rejectDelegation: (taskId) => ipcRenderer.invoke('delegation:reject', taskId),
+  cancelDelegation: (taskId) => ipcRenderer.invoke('delegation:cancel', taskId),
+  setDelegationEnabled: (enabled) => ipcRenderer.invoke('delegation:set-enabled', enabled),
+  regenerateDelegationToken: () => ipcRenderer.invoke('delegation:regenerate-token'),
+  onDelegationChanged: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, snapshot: DelegationSnapshot): void => callback(snapshot)
+    ipcRenderer.on('delegation:changed', listener)
+    return () => ipcRenderer.removeListener('delegation:changed', listener)
   },
   getAppVersion: () => ipcRenderer.invoke('updates:version'),
   checkForAppUpdate: (force?: boolean) => ipcRenderer.invoke('updates:check', force),

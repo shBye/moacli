@@ -682,3 +682,41 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
   .launcher-inner { width: min(500px, calc(100% - 40px)); }
   .account-field small { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+
+.delegation-modal-backdrop { z-index: 110; }
+.delegation-modal { display: grid; width: min(620px, 100%); gap: 14px; padding: 24px 26px 20px; }
+.delegation-modal-heading { display: flex; align-items: flex-start; gap: 12px; padding-right: 28px; }
+.delegation-modal-heading h2 { margin: 0; color: #f2f4f5; font-size: 15px; }
+.delegation-modal-heading p { margin: 5px 0 0; color: rgba(255,255,255,.58); font-size: 11px; line-height: 1.5; }
+.delegation-modal-heading strong { color: rgba(255,255,255,.85); font-weight: 600; }
+.delegation-prompt { max-height: 220px; margin: 0; padding: 12px 14px; overflow: auto; border: 1px solid rgba(255,255,255,.08); border-radius: 9px; background: rgba(0,0,0,.24); color: rgba(255,255,255,.8); font: 400 11px/1.55 'JetBrains Mono', monospace; white-space: pre-wrap; word-break: break-word; }
+.delegation-meta { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: 8px 14px; margin: 0; font-size: 11px; }
+.delegation-meta dt { color: rgba(255,255,255,.48); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.delegation-meta dd { display: flex; min-width: 0; align-items: center; gap: 6px; margin: 0; overflow: hidden; color: rgba(255,255,255,.78); text-overflow: ellipsis; white-space: nowrap; }
+.delegation-meta dd svg { flex: none; color: var(--state-running); }
+.delegation-modal-error { margin: 0; color: var(--state-error); font-size: 11px; }
+.delegation-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.delegation-settings { padding: 16px 18px 20px; }
+.delegation-settings-heading { display: flex; min-height: 48px; align-items: flex-start; justify-content: space-between; gap: 18px; border-bottom: 1px solid rgba(255,255,255,.06); }
+.delegation-settings-heading h3 { margin: 0; color: rgba(255,255,255,.52); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.delegation-settings-heading p { max-width: 460px; margin: 6px 0 12px; color: rgba(255,255,255,.5); font-size: 10px; line-height: 1.5; }
+.delegation-running { color: var(--state-running) !important; }
+.delegation-token { display: flex; align-items: center; gap: 6px; }
+.delegation-register { display: grid; gap: 12px; margin-top: 14px; }
+.delegation-register-block { display: grid; gap: 8px; padding: 12px 13px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; background: rgba(0,0,0,.13); }
+.delegation-register-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: rgba(255,255,255,.75); font-size: 11px; }
+.delegation-register-block code { display: block; padding: 9px 11px; overflow-x: auto; border-radius: 6px; background: rgba(0,0,0,.28); color: rgba(255,255,255,.72); font: 400 10px/1.5 'JetBrains Mono', monospace; white-space: pre; }
+.delegation-register-block p { margin: 0; color: rgba(255,255,255,.48); font-size: 10px; line-height: 1.55; }
+.delegation-register-block em { color: rgba(255,255,255,.7); font-style: normal; }
+.delegation-token-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; color: rgba(255,255,255,.55); font-size: 10px; }
+.delegation-tasks { margin-top: 18px; }
+.delegation-tasks h4 { margin: 0 0 8px; color: rgba(255,255,255,.52); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.delegation-tasks-empty { margin: 0; color: rgba(255,255,255,.45); font-size: 10px; }
+.delegation-task-row { display: grid; min-height: 46px; grid-template-columns: 104px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,.05); }
+.delegation-task-status { color: rgba(255,255,255,.55); font: 600 10px/1 'JetBrains Mono', monospace; }
+.delegation-task-row.running .delegation-task-status, .delegation-task-row.completed .delegation-task-status { color: var(--state-running); }
+.delegation-task-row.awaiting_approval .delegation-task-status { color: var(--acc); }
+.delegation-task-row.failed .delegation-task-status { color: var(--state-error); }
+.delegation-task-copy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.delegation-task-copy strong { overflow: hidden; color: rgba(255,255,255,.78); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.delegation-task-copy small { overflow: hidden; color: rgba(255,255,255,.45); font: 400 10px/1.35 'JetBrains Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
