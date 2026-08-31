@@ -41,7 +41,7 @@ const CLIPBOARD_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.
 function delegationSnapshot(): DelegationSnapshot {
   return {
     server: delegationServer?.status() ?? {
-      enabled: false, running: false, autoApprove: false, port: 0, url: '', token: '', claudeRegisterCommand: '', codexConfigSnippet: '',
+      enabled: false, running: false, autoApprove: false, port: 0, url: '', token: '', claudeRegisterCommand: '', codexConfigSnippet: '', codexConfigPath: '',
     },
     tasks: delegationRegistry?.snapshot() ?? [],
   }

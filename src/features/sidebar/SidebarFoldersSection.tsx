@@ -188,7 +188,7 @@ export function SidebarFoldersSection({
         )}
       />
       {open && (
-        <nav className="folder-tree" ref={folderTreeRef} aria-label="Folders" style={{ height: `${folderPaneHeight}px` }}>
+        <nav className={recentOpen ? 'folder-tree' : 'folder-tree fill'} ref={folderTreeRef} aria-label="Folders" style={recentOpen ? { height: folderPaneHeight + 'px' } : undefined}>
           {folders.map((folder) => {
             const folderView = folderViews.get(folder.id) ?? EMPTY_FOLDER_VIEW
             const folderEntryCount = folderView.sessionCount + folderView.historyCount

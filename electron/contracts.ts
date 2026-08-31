@@ -135,6 +135,8 @@ export interface DelegationServerStatus {
   token: string
   claudeRegisterCommand: string
   codexConfigSnippet: string
+  // Absolute path of the Codex config file the snippet belongs in.
+  codexConfigPath: string
 }
 
 export interface DelegationSnapshot {

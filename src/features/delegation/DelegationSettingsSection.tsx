@@ -118,7 +118,7 @@ export function DelegationSettingsSection({
           </div>
           <code>{server?.codexConfigSnippet || 'Start the server to get the config snippet.'}</code>
           <p>
-            Append to <em>~/.codex/config.toml</em>. <em>tool_timeout_sec</em> is raised because Codex cuts tool calls off after 60 s by default.
+            Append to <em>{server?.codexConfigPath || '~/.codex/config.toml'}</em>. <em>tool_timeout_sec</em> is raised because Codex cuts tool calls off after 60 s by default.
             Non-interactive <em>codex exec</em> callers must pass <em>--approve-for-me</em> to be allowed to call MCP tools.
           </p>
         </div>

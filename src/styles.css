@@ -52,13 +52,13 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 :where(.mini-icon-button, .icon-button, .titlebar-action, .session-tab-action, .session-close, .notification-dismiss, .search-clear):active { transform: scale(.92); }
 .start-button:active:not(:disabled), .modal-save:active, .update-download:active:not(:disabled) { transform: translateY(1px); filter: brightness(.97); }
 
-:where(.scroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results) { overscroll-behavior: contain; }
-:where(.scroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results)::-webkit-scrollbar { width: 10px; height: 10px; }
-:where(.scroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results)::-webkit-scrollbar-track { margin-block: 4px; background: transparent; }
-:where(.scroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results)::-webkit-scrollbar-thumb { min-height: 42px; border: 3px solid transparent; border-radius: 999px; background: rgba(151,160,174,.5); background-clip: padding-box; }
-:where(.scroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results)::-webkit-scrollbar-thumb:hover { border-width: 2px; background: color-mix(in oklch, var(--acc) 34%, rgb(151,160,174)); background-clip: padding-box; }
-:where(.scroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results)::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-:where(.scroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results)::-webkit-scrollbar-corner { background: transparent; }
+:where(.scroll, .hscroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results, .markdown-table-scroll, .message-markdown pre, .delegation-register-block code, .delegation-prompt) { overscroll-behavior: contain; }
+:where(.scroll, .hscroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results, .markdown-table-scroll, .message-markdown pre, .delegation-register-block code, .delegation-prompt)::-webkit-scrollbar { width: 10px; height: 10px; }
+:where(.scroll, .hscroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results, .markdown-table-scroll, .message-markdown pre, .delegation-register-block code, .delegation-prompt)::-webkit-scrollbar-track { margin-block: 4px; background: transparent; }
+:where(.scroll, .hscroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results, .markdown-table-scroll, .message-markdown pre, .delegation-register-block code, .delegation-prompt)::-webkit-scrollbar-thumb { min-height: 42px; border: 3px solid transparent; border-radius: 999px; background: rgba(151,160,174,.5); background-clip: padding-box; }
+:where(.scroll, .hscroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results, .markdown-table-scroll, .message-markdown pre, .delegation-register-block code, .delegation-prompt)::-webkit-scrollbar-thumb:hover { border-width: 2px; background: color-mix(in oklch, var(--acc) 34%, rgb(151,160,174)); background-clip: padding-box; }
+:where(.scroll, .hscroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results, .markdown-table-scroll, .message-markdown pre, .delegation-register-block code, .delegation-prompt)::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+:where(.scroll, .hscroll, .folder-tree, .history-list, .launcher, .message-list, .conversation-search-results, .markdown-table-scroll, .message-markdown pre, .delegation-register-block code, .delegation-prompt)::-webkit-scrollbar-corner { background: transparent; }
 
 .app-shell {
   --acc: #e9b45c;
@@ -168,6 +168,8 @@ body.sidebar-resizing, body.sidebar-resizing * { cursor: col-resize !important; 
 .mini-icon-button:disabled { opacity: .3; cursor: default; }
 
 .folder-tree { flex: none; padding: 0 0 8px 7px; overflow-y: auto; transition: height 160ms ease; }
+/* With Recent collapsed the folder pane takes the freed space instead of clipping. */
+.folder-tree.fill { flex: 1; height: auto; min-height: 0; transition: none; }
 body.folder-pane-resizing .folder-tree { transition: none; }
 .folder-tree > div { padding-right: 7px; }
 .folder-node { border-radius: 7px; }
