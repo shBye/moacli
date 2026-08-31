@@ -720,3 +720,6 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .delegation-task-copy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
 .delegation-task-copy strong { overflow: hidden; color: rgba(255,255,255,.78); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .delegation-task-copy small { overflow: hidden; color: rgba(255,255,255,.45); font: 400 10px/1.35 'JetBrains Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
+
+.delegation-auto-approve { margin-top: 10px; padding: 4px 13px 10px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; background: rgba(0,0,0,.13); }
+.delegation-auto-approve p { margin: 2px 0 0; color: rgba(255,255,255,.48); font-size: 10px; line-height: 1.5; }

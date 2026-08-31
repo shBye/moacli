@@ -151,6 +151,15 @@
    - 내용: "〈caller〉가 〈worker〉에 작업을 위임하려 합니다" + 프롬프트 미리보기 + 계정 선택(SelectBox) + cwd/sandbox 정책 표시 + 허용·거부 버튼.
    - 알림 센터에 "승인 대기" 항목 연동(다른 탭/최소화 상태에서 놓치지 않도록). Claude worker 실행 중 권한 요청(`--permission-prompt-tool` → `moacli_permission` 툴)도 같은 모달 패턴 재사용.
 
+## 6.9 사용 가이드 요약 (2026-08-31)
+
+- **등록은 세션이 아니라 설정 단위.** 한 번 등록하면 그 스코프의 모든 대화에서 툴이 보인다.
+  - Claude Code: 설정 → Delegation의 커맨드(`claude mcp add --scope user --transport http moacli <url> --header ...`). `--scope user`라 모든 프로젝트 전역. 기본(스코프 생략)은 실행한 폴더 한정이니 주의.
+  - Codex: `~/.codex/config.toml`의 `[mcp_servers.moacli]` 블록(전역). **추가 명령어 불필요.**
+- **Codex를 caller로 쓸 때**: 대화형 `codex`는 MCP 툴 호출 시 TUI가 인라인으로 승인을 물음 — 플래그 불필요. headless `codex exec`만 매 호출 `--approve-for-me` 필요. Codex는 툴 타임아웃 60초 기본이라 긴 작업은 `start_task`→`check_task` 폴링 필수(`tool_timeout_sec = 630`으로 상향해 둠).
+- **worker 계정 변경**: 승인 모달의 Account SelectBox에서 작업별 선택(설정 → Accounts에 등록된 계정, 비감지 계정은 `CLAUDE_CONFIG_DIR`/`CODEX_HOME` 주입). 계정 만료/한도 시 worker가 실패로 남고, 재위임 때 다른 계정을 고르면 됨. 기본 CLI 계정 전환 자체는 `claude login`/`codex login` 영역.
+- **자동 승인 모드**: 설정 → Delegation의 "Auto-approve requests" 토글(기본 off, `delegation-server.json`의 `autoApprove`로 영속). 켜면 요청이 모달 없이 기본 계정으로 즉시 실행되고, 동시 실행 상한에 걸리면 승인 모달로 폴백. 완료/실패 알림은 그대로 옴.
+
 ## 7. 현재 상태 / 재개 시 체크리스트 (2026-08-28 기준)
 
 - 브랜치 `feature/agent-delegation-poc`에 Phase 0 구현 완료, **커밋 전** 상태. 변경: `electron/delegation-server.ts`(신규), `electron/delegation-workers.ts`(신규), `electron/main.ts`(기동/해제 연결), `package.json`/`package-lock.json`(`@modelcontextprotocol/sdk` 1.30.0, `zod` 4.4.3 추가), 본 문서.
@@ -160,7 +169,9 @@
 - Phase 0은 v0.1.17에, Phase 1은 그 다음 커밋(2026-08-28)에 포함. Phase 1 구현 내역·검증은 §4 참고.
 - **다음 작업 (예약, 2026-08-31 사용자 지시)**:
   1. **승인 모달에 계정별 인증 상태 뱃지** — 계정 SelectBox 옆에 로그인됨/만료 표시. `session-history.ts`의 `claudeEmail()`/`codexEmail()` 검사 로직 재사용(만료·로그아웃이면 이메일 조회 실패). 모달 열릴 때 비동기 검사, 만료 계정은 라벨에 경고.
+  2-0. (완료 2026-08-31) 자동 승인 토글 — §6.9 참고.
   2. **실패/취소 작업 "다른 계정으로 재시도"** — 설정 Delegation의 Recent tasks 행에 재시도 버튼: 동일 prompt/cwd/timeout으로 새 태스크 생성 → 승인 모달(계정 선택 포함) 재진입. 레지스트리에 원본 task id 참조 저장.
+  3. **(검토) caller 채팅과의 연계 표시** — MoaCLI 안 터미널 세션이 moacli MCP를 호출했을 때 그 세션 탭에 위임 뱃지/진행 표시. 단 HTTP 요청만으로는 어느 세션이 호출했는지 특정 불가(user-agent는 CLI 종류만 구분) → 정확 매칭은 별도 식별 수단 필요. Phase 2의 "위임 작업 = 특수 세션 탭" 가시화와 통합해서 검토.
 - 등록 커맨드는 `--scope user` 기본 포함(2026-08-31): moacli는 머신 단위 기능이라 프로젝트 로컬 스코프로 둘 이유가 없음.
 - 재개 순서: ① Phase 1 UI 실기 확인(승인 모달 표시/Esc/계정 선택, 설정 Delegation 섹션 복사 버튼, 알림 클릭 → 모달) → ② 위 예약 작업 1·2 → ③ Phase 2(§4·§6: 위임 작업을 특수 세션 탭으로 가시화 + stream-json 렌더, `moacli_permission` 실행 중 권한 모달, 위임 히스토리).
 - Phase 1에서 의도적으로 뺀 것: 자동 승인 옵션(항상 물어봄), Codex worker의 MCP 비활성(`codex exec`는 `--approve-for-me` 없이는 MCP 툴을 못 부르므로 재귀 위험 낮음), 위임 깊이 추적(worker env `MOACLI_DELEGATION_DEPTH=1`만 심어둠).

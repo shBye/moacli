@@ -9,6 +9,7 @@ interface DelegationSettingsSectionProps {
   snapshot: DelegationSnapshot | null
   profilesById: ReadonlyMap<string, AgentHealth>
   onToggleEnabled: (enabled: boolean) => void
+  onToggleAutoApprove: (enabled: boolean) => void
   onRegenerateToken: () => void
   onReviewTask: (taskId: string) => void
   onCancelTask: (taskId: string) => void
@@ -33,6 +34,7 @@ export function DelegationSettingsSection({
   snapshot,
   profilesById,
   onToggleEnabled,
+  onToggleAutoApprove,
   onRegenerateToken,
   onReviewTask,
   onCancelTask,
@@ -88,6 +90,16 @@ export function DelegationSettingsSection({
             {copyButton('token', server?.token ?? '')}
           </span>
         </div>
+      </div>
+
+      <div className="delegation-auto-approve">
+        <SettingsToggle
+          label="Auto-approve requests"
+          checked={Boolean(server?.autoApprove)}
+          disabled={!available || !server?.enabled}
+          onChange={onToggleAutoApprove}
+        />
+        <p>Delegations start immediately with the default account — no approval dialog. Leave this off unless you trust every registered caller.</p>
       </div>
 
       <div className="delegation-register">

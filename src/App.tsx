@@ -1021,6 +1021,9 @@ export function App() {
   const setDelegationEnabled = (enabled: boolean): void => {
     runDelegationAction(() => window.cliAgent.setDelegationEnabled(enabled))
   }
+  const setDelegationAutoApprove = (enabled: boolean): void => {
+    runDelegationAction(() => window.cliAgent.setDelegationAutoApprove(enabled))
+  }
   const regenerateDelegationToken = (): void => {
     runDelegationAction(() => window.cliAgent.regenerateDelegationToken())
   }
@@ -1837,6 +1840,7 @@ export function App() {
           onOpenUpdateDownload={() => void openAppUpdateDownload()}
           onNotificationSettingsChange={changeNotificationSettings}
           onDelegationEnabledChange={setDelegationEnabled}
+          onDelegationAutoApproveChange={setDelegationAutoApprove}
           onRegenerateDelegationToken={regenerateDelegationToken}
           onReviewDelegation={openDelegationTask}
           onCancelDelegation={cancelDelegation}

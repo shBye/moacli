@@ -23,6 +23,7 @@ interface StoredServerConfig {
   port: number
   token: string
   enabled: boolean
+  autoApprove: boolean
 }
 
 interface CallerInfo {
@@ -67,6 +68,7 @@ export class DelegationServer {
   private token = ''
   private port = 0
   private enabled = true
+  private autoApproveEnabled = false
   private readonly configPath: string
   private readonly resultsDirectory: string
   private readonly registry: DelegationTaskRegistry
@@ -90,6 +92,7 @@ export class DelegationServer {
     return {
       enabled: this.enabled,
       running,
+      autoApprove: this.autoApproveEnabled,
       port: this.port,
       url: running ? this.url : '',
       token: this.token,
@@ -111,6 +114,7 @@ export class DelegationServer {
     const stored = this.readStoredConfig()
     this.token = stored?.token ?? randomBytes(24).toString('hex')
     this.enabled = stored?.enabled ?? true
+    this.autoApproveEnabled = stored?.autoApprove ?? false
     this.port = stored?.port ?? PREFERRED_PORT
     if (!this.enabled) {
       this.persistConfig()
@@ -130,6 +134,17 @@ export class DelegationServer {
     } else if (!this.httpServer) {
       await this.listen(this.port)
     }
+    this.onChanged()
+  }
+
+  get autoApprove(): boolean {
+    return this.autoApproveEnabled
+  }
+
+  setAutoApprove(enabled: boolean): void {
+    this.autoApproveEnabled = enabled
+    this.persistConfig()
+    log(enabled ? 'Auto-approve enabled: requests start without the approval dialog' : 'Auto-approve disabled')
     this.onChanged()
   }
 
@@ -167,7 +182,7 @@ export class DelegationServer {
         && (parsed as StoredServerConfig).token.length >= 16
       ) {
         const config = parsed as Partial<StoredServerConfig>
-        return { port: config.port!, token: config.token!, enabled: config.enabled !== false }
+        return { port: config.port!, token: config.token!, enabled: config.enabled !== false, autoApprove: config.autoApprove === true }
       }
     } catch {
       // Missing or corrupt config falls through to a fresh token/port.
@@ -177,7 +192,7 @@ export class DelegationServer {
 
   private persistConfig(): void {
     mkdirSync(this.options.userDataDirectory, { recursive: true })
-    writeFileSync(this.configPath, JSON.stringify({ port: this.port, token: this.token, url: this.url, enabled: this.enabled }, null, 2))
+    writeFileSync(this.configPath, JSON.stringify({ port: this.port, token: this.token, url: this.url, enabled: this.enabled, autoApprove: this.autoApproveEnabled }, null, 2))
   }
 
   private tryListen(port: number): Promise<boolean> {

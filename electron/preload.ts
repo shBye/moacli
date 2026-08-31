@@ -106,6 +106,7 @@ const api: CliAgentApi = {
   rejectDelegation: (taskId) => ipcRenderer.invoke('delegation:reject', taskId),
   cancelDelegation: (taskId) => ipcRenderer.invoke('delegation:cancel', taskId),
   setDelegationEnabled: (enabled) => ipcRenderer.invoke('delegation:set-enabled', enabled),
+  setDelegationAutoApprove: (enabled) => ipcRenderer.invoke('delegation:set-auto-approve', enabled),
   regenerateDelegationToken: () => ipcRenderer.invoke('delegation:regenerate-token'),
   onDelegationChanged: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, snapshot: DelegationSnapshot): void => callback(snapshot)

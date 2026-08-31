@@ -128,6 +128,8 @@ export interface DelegationTask {
 export interface DelegationServerStatus {
   enabled: boolean
   running: boolean
+  // When on, requests start immediately with the default account.
+  autoApprove: boolean
   port: number
   url: string
   token: string
@@ -252,6 +254,7 @@ export interface CliAgentApi {
   rejectDelegation: (taskId: string) => Promise<DelegationSnapshot>
   cancelDelegation: (taskId: string) => Promise<DelegationSnapshot>
   setDelegationEnabled: (enabled: boolean) => Promise<DelegationSnapshot>
+  setDelegationAutoApprove: (enabled: boolean) => Promise<DelegationSnapshot>
   regenerateDelegationToken: () => Promise<DelegationSnapshot>
   onDelegationChanged: (callback: (snapshot: DelegationSnapshot) => void) => () => void
   getAppVersion: () => Promise<string>

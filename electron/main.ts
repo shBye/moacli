@@ -41,7 +41,7 @@ const CLIPBOARD_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.
 function delegationSnapshot(): DelegationSnapshot {
   return {
     server: delegationServer?.status() ?? {
-      enabled: false, running: false, port: 0, url: '', token: '', claudeRegisterCommand: '', codexConfigSnippet: '',
+      enabled: false, running: false, autoApprove: false, port: 0, url: '', token: '', claudeRegisterCommand: '', codexConfigSnippet: '',
     },
     tasks: delegationRegistry?.snapshot() ?? [],
   }
@@ -260,6 +260,11 @@ ipcMain.handle('delegation:set-enabled', async (_event, enabled: boolean) => {
   await delegationServer.setEnabled(enabled === true)
   return delegationSnapshot()
 })
+ipcMain.handle('delegation:set-auto-approve', (_event, enabled: boolean) => {
+  if (!delegationServer) throw new Error('Delegation server is not available')
+  delegationServer.setAutoApprove(enabled === true)
+  return delegationSnapshot()
+})
 ipcMain.handle('delegation:regenerate-token', () => {
   if (!delegationServer) throw new Error('Delegation server is not available')
   delegationServer.regenerateToken()
@@ -311,7 +316,21 @@ app.whenReady().then(async () => {
     delegationRegistry = new DelegationTaskRegistry(
       join(app.getPath('userData'), 'delegation.sqlite'),
       emitDelegationChanged,
-      (task, event) => notificationCenter?.handleDelegation(task, event),
+      (task, event) => {
+        // Auto-approve starts the worker with the default account right away;
+        // if that fails (e.g. concurrency cap), fall back to asking the user.
+        if (event === 'awaiting_approval' && delegationServer?.autoApprove) {
+          queueMicrotask(() => {
+            try {
+              delegationRegistry?.approve(task.id)
+            } catch {
+              notificationCenter?.handleDelegation(task, event)
+            }
+          })
+          return
+        }
+        notificationCenter?.handleDelegation(task, event)
+      },
       () => scheduleHistoryChanged(),
     )
     // Worker transcripts belong to delegated tasks, not to the Recent list.
