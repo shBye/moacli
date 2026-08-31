@@ -171,6 +171,11 @@
   1. **승인 모달에 계정별 인증 상태 뱃지** — 계정 SelectBox 옆에 로그인됨/만료 표시. `session-history.ts`의 `claudeEmail()`/`codexEmail()` 검사 로직 재사용(만료·로그아웃이면 이메일 조회 실패). 모달 열릴 때 비동기 검사, 만료 계정은 라벨에 경고.
   2-0. (완료 2026-08-31) 자동 승인 토글 — §6.9 참고.
   2. **실패/취소 작업 "다른 계정으로 재시도"** — 설정 Delegation의 Recent tasks 행에 재시도 버튼: 동일 prompt/cwd/timeout으로 새 태스크 생성 → 승인 모달(계정 선택 포함) 재진입. 레지스트리에 원본 task id 참조 저장.
+  2-1. **(설계 메모, 2026-08-31) 세션 이어가기 + 계정 교체** — 토큰 소진/계정 이슈로 막힌 대화를 같은 대화 상태로 다른 계정에서 이어가기. 이론상 완전히 가능함을 조사로 확인: 두 CLI 모두 대화를 로컬 JSONL로 저장하고 resume는 그 파일을 읽어 복원할 뿐, 파일이 계정에 묶여 있지 않다(커뮤니티 도구 claude-swap/codex-auth 등이 auth만 교체하는 방식으로 실증).
+     - 저장 위치: Claude `{CLAUDE_CONFIG_DIR}/projects/<경로 인코딩>/<session-id>.jsonl`, Codex `{CODEX_HOME}/sessions/YYYY/MM/DD/rollout-*.jsonl`. Codex는 재로그인해도 세션 보존.
+     - **MoaCLI 함정**: 우리는 계정을 디렉터리 전체(`CLAUDE_CONFIG_DIR`/`CODEX_HOME`)로 분리하므로 계정 B 디렉터리에는 계정 A의 세션 파일이 없다. env만 바꿔 `--resume`하면 "세션 없음".
+     - 구현안: (a) 세션 JSONL을 대상 계정 디렉터리로 복사(디렉터리 구조 유지) 후 resume — 간단하고 원본 보존. (b) auth 파일만 교체(Codex `auth.json`, Claude `.credentials.json`) — CLI 재시작+resume 필요.
+     - 흐름(인터랙티브 탭): CLI 종료 → 세션 파일 복사 → 새 계정 env로 `claude --resume <id>` / `codex resume <id>` 재기동. 세션 ID는 이미 추적 중(Recent의 resumeId, delegation의 worker_session_id). 위임 작업은 재시도 항목 2와 통합 — Claude는 `-p --resume <id>` headless 동작 확인됨, Codex `exec` resume 지원 여부는 구현 시 확인.
   3. **(검토) caller 채팅과의 연계 표시** — MoaCLI 안 터미널 세션이 moacli MCP를 호출했을 때 그 세션 탭에 위임 뱃지/진행 표시. 단 HTTP 요청만으로는 어느 세션이 호출했는지 특정 불가(user-agent는 CLI 종류만 구분) → 정확 매칭은 별도 식별 수단 필요. Phase 2의 "위임 작업 = 특수 세션 탭" 가시화와 통합해서 검토.
 - 등록 커맨드는 `--scope user` 기본 포함(2026-08-31): moacli는 머신 단위 기능이라 프로젝트 로컬 스코프로 둘 이유가 없음.
 - 재개 순서: ① Phase 1 UI 실기 확인(승인 모달 표시/Esc/계정 선택, 설정 Delegation 섹션 복사 버튼, 알림 클릭 → 모달) → ② 위 예약 작업 1·2 → ③ Phase 2(§4·§6: 위임 작업을 특수 세션 탭으로 가시화 + stream-json 렌더, `moacli_permission` 실행 중 권한 모달, 위임 히스토리).
