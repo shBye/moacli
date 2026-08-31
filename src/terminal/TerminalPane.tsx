@@ -46,6 +46,7 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
   const searchAddonRef = useRef<SearchAddon | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const flushInactiveOutputRef = useRef<() => void>(() => undefined)
+  const clearAttentionRef = useRef<() => void>(() => undefined)
   const openSearchRef = useRef<() => void>(() => undefined)
   const ptyIdRef = useRef('')
   const ptyReadyRef = useRef(false)
@@ -178,6 +179,9 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       interactionState = state
       stateChangeRef.current(state, detail)
     }
+    clearAttentionRef.current = () => {
+      if (interactionState === 'needs_attention') reportInteractionState('running')
+    }
     let pendingInactiveOutput = ''
     let pendingInactiveFlushTimer: ReturnType<typeof setTimeout> | undefined
     const flushInactiveOutput = (): void => {
@@ -220,6 +224,9 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       stateChangeRef.current('stopped', `exit ${exitCode}`)
     })
     const offAttention = window.cliAgent.onPtyAttention(id, (reason) => {
+      // The user is already looking at an active pane, so amber attention
+      // styling there is noise (Codex signals after every turn).
+      if (activeRef.current) return
       reportInteractionState('needs_attention', reason)
     })
     const cancelBottomLock = (): void => {
@@ -366,6 +373,7 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       clearTimeout(minimumIndicatorTimer)
       clearTimeout(pendingInactiveFlushTimer)
       flushInactiveOutputRef.current = () => undefined
+      clearAttentionRef.current = () => undefined
       resizeObserver.disconnect()
       cursorStyleDisposable?.dispose()
       codexPrivateModeOnDisposable?.dispose()
@@ -432,6 +440,8 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
     terminal.options.cursorBlink = active
     if (!active) return
     flushInactiveOutputRef.current()
+    // Opening the session answers its pending attention signal.
+    clearAttentionRef.current()
 
     let cancelFocus = (): void => undefined
     const frame = requestAnimationFrame(() => {
