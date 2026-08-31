@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
 interface SectionHeadingProps {
+  className?: string
   label: string
   count: string | number
   open: boolean
@@ -9,9 +10,9 @@ interface SectionHeadingProps {
   actions?: ReactNode
 }
 
-export function SectionHeading({ label, count, open, onToggle, actions }: SectionHeadingProps) {
+export function SectionHeading({ className = '', label, count, open, onToggle, actions }: SectionHeadingProps) {
   return (
-    <div className="sidebar-heading">
+    <div className={'sidebar-heading ' + className}>
       <button className="section-toggle" onClick={onToggle} aria-expanded={open}>
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <span>{label}</span>

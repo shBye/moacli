@@ -41,6 +41,7 @@ export function SidebarRecentSection({
   return (
     <>
       <SectionHeading
+        className={open ? '' : 'docked'}
         label="Recent"
         count={history.length}
         open={open}
