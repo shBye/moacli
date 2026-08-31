@@ -157,7 +157,9 @@ body.sidebar-resizing, body.sidebar-resizing * { cursor: col-resize !important; 
 
 .sidebar-heading { display: flex; height: 32px; flex: none; align-items: center; gap: 5px; padding: 0 8px; color: rgba(255,255,255,.55); font-size: 10px; font-weight: 700; text-transform: uppercase; }
 /* A collapsed Recent section docks to the bottom, right above Agents. */
-.sidebar-heading.docked { margin-top: auto; }
+.sidebar-heading.docked { margin-top: auto; border-top: 1px solid rgba(255,255,255,.07); }
+/* Both auto margins would split the free space and strand Recent mid-air. */
+.sidebar-heading.docked ~ .agent-section { margin-top: 0; }
 .section-toggle { display: flex; min-width: 0; flex: 1; align-items: center; gap: 4px; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; text-transform: uppercase; cursor: pointer; }
 .section-count { color: rgba(255,255,255,.45); font: 400 10px/1 'JetBrains Mono', monospace; }
 .heading-actions { display: flex; align-items: center; gap: 0; margin-left: 1px; }
