@@ -176,6 +176,12 @@
      - **MoaCLI 함정**: 우리는 계정을 디렉터리 전체(`CLAUDE_CONFIG_DIR`/`CODEX_HOME`)로 분리하므로 계정 B 디렉터리에는 계정 A의 세션 파일이 없다. env만 바꿔 `--resume`하면 "세션 없음".
      - 구현안: (a) 세션 JSONL을 대상 계정 디렉터리로 복사(디렉터리 구조 유지) 후 resume — 간단하고 원본 보존. (b) auth 파일만 교체(Codex `auth.json`, Claude `.credentials.json`) — CLI 재시작+resume 필요.
      - 흐름(인터랙티브 탭): CLI 종료 → 세션 파일 복사 → 새 계정 env로 `claude --resume <id>` / `codex resume <id>` 재기동. 세션 ID는 이미 추적 중(Recent의 resumeId, delegation의 worker_session_id). 위임 작업은 재시도 항목 2와 통합 — Claude는 `-p --resume <id>` headless 동작 확인됨, Codex `exec` resume 지원 여부는 구현 시 확인.
+     - **실패 원인 감지 (2026-08-31 조사)**: 전용 "토큰 만료 이벤트"는 없지만 headless는 실패가 구조화되어 도착 → 분류 가능.
+       - Claude stream-json: 최종 `result` 이벤트의 `is_error: true` + `subtype` + 에러 텍스트. 한도 도달 시 `"Claude AI usage limit reached|<리셋 epoch>"` 형태로 알려져 있어 리셋 시각까지 파싱 가능. 공식 입장은 exit code 값 대신 stream-json 파싱.
+       - Codex exec --json: 401은 리프레시 실패 사유별 메시지 5종(만료/이미 사용/폐기/불명/계정 불일치), 한도 도달도 에러 이벤트 텍스트 — 메시지 본문으로 구분.
+       - **우리 파서가 이미 재료 보유**: `delegation-workers.ts` claude 쪽은 `is_error`면 subtype+result를, codex 쪽은 stderr/stdout을 에러 detail로 던져 레지스트리 failed detail에 남음 → detail 문자열에 정규식 분류기만 얹으면 `failed_limit`/`failed_auth`/`failed_other` 구분 가능. 분류 결과로 항목 2(다른 계정 재시도)를 자동 트리거하거나 알림에 재시도 버튼.
+       - TUI 탭은 구조화 이벤트 없음 → PTY 출력 패턴 스니핑("usage limit reached", "401 Unauthorized" 등)으로 감지 → 자동 전환 대신 "다른 계정으로 이어가기" 배너 → 위 핸드오프 흐름.
+       - 주의: 한도 메시지 포맷은 비공식(버전에 따라 변동 가능, 관대한 매칭 필요). 완전 자동 전환은 다른 계정 쿼터를 조용히 소모하므로 기본은 확인 후 전환, 자동은 auto-approve처럼 옵트인 토글.
   3. **(검토) caller 채팅과의 연계 표시** — MoaCLI 안 터미널 세션이 moacli MCP를 호출했을 때 그 세션 탭에 위임 뱃지/진행 표시. 단 HTTP 요청만으로는 어느 세션이 호출했는지 특정 불가(user-agent는 CLI 종류만 구분) → 정확 매칭은 별도 식별 수단 필요. Phase 2의 "위임 작업 = 특수 세션 탭" 가시화와 통합해서 검토.
 - 등록 커맨드는 `--scope user` 기본 포함(2026-08-31): moacli는 머신 단위 기능이라 프로젝트 로컬 스코프로 둘 이유가 없음.
 - 재개 순서: ① Phase 1 UI 실기 확인(승인 모달 표시/Esc/계정 선택, 설정 Delegation 섹션 복사 버튼, 알림 클릭 → 모달) → ② 위 예약 작업 1·2 → ③ Phase 2(§4·§6: 위임 작업을 특수 세션 탭으로 가시화 + stream-json 렌더, `moacli_permission` 실행 중 권한 모달, 위임 히스토리).
