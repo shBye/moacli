@@ -158,7 +158,11 @@
 - 테스트 과정에서 사용자 `~/.codex/config.toml`에 `[mcp_servers.moacli]` 블록을 추가함(원본 백업: `config.toml.moacli-backup`). 이는 최종 사용 형태와 동일하므로 유지 중 — 제거하려면 해당 블록 삭제.
 - 서버 접속 정보는 `%APPDATA%\cli-agent-manager\delegation-server.json`(port 38017 + bearer token)에 영속, 앱 재시작에도 등록 유지됨.
 - Phase 0은 v0.1.17에, Phase 1은 그 다음 커밋(2026-08-28)에 포함. Phase 1 구현 내역·검증은 §4 참고.
-- 재개 순서: ① Phase 1 UI 실기 확인(승인 모달 표시/Esc/계정 선택, 설정 Delegation 섹션 복사 버튼, 알림 클릭 → 모달) → ② Phase 2(§4·§6: 위임 작업을 특수 세션 탭으로 가시화 + stream-json 렌더, `moacli_permission` 실행 중 권한 모달, 위임 히스토리).
+- **다음 작업 (예약, 2026-08-31 사용자 지시)**:
+  1. **승인 모달에 계정별 인증 상태 뱃지** — 계정 SelectBox 옆에 로그인됨/만료 표시. `session-history.ts`의 `claudeEmail()`/`codexEmail()` 검사 로직 재사용(만료·로그아웃이면 이메일 조회 실패). 모달 열릴 때 비동기 검사, 만료 계정은 라벨에 경고.
+  2. **실패/취소 작업 "다른 계정으로 재시도"** — 설정 Delegation의 Recent tasks 행에 재시도 버튼: 동일 prompt/cwd/timeout으로 새 태스크 생성 → 승인 모달(계정 선택 포함) 재진입. 레지스트리에 원본 task id 참조 저장.
+- 등록 커맨드는 `--scope user` 기본 포함(2026-08-31): moacli는 머신 단위 기능이라 프로젝트 로컬 스코프로 둘 이유가 없음.
+- 재개 순서: ① Phase 1 UI 실기 확인(승인 모달 표시/Esc/계정 선택, 설정 Delegation 섹션 복사 버튼, 알림 클릭 → 모달) → ② 위 예약 작업 1·2 → ③ Phase 2(§4·§6: 위임 작업을 특수 세션 탭으로 가시화 + stream-json 렌더, `moacli_permission` 실행 중 권한 모달, 위임 히스토리).
 - Phase 1에서 의도적으로 뺀 것: 자동 승인 옵션(항상 물어봄), Codex worker의 MCP 비활성(`codex exec`는 `--approve-for-me` 없이는 MCP 툴을 못 부르므로 재귀 위험 낮음), 위임 깊이 추적(worker env `MOACLI_DELEGATION_DEPTH=1`만 심어둠).
 
 ## 8. 비스코프 / 향후 확장

@@ -94,7 +94,7 @@ export class DelegationServer {
       url: running ? this.url : '',
       token: this.token,
       claudeRegisterCommand: running
-        ? `claude mcp add --transport http moacli ${this.url} --header "Authorization: Bearer ${this.token}"`
+        ? `claude mcp add --scope user --transport http moacli ${this.url} --header "Authorization: Bearer ${this.token}"`
         : '',
       codexConfigSnippet: running
         ? [

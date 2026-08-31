@@ -97,7 +97,7 @@ export function DelegationSettingsSection({
             {copyButton('claude', server?.claudeRegisterCommand ?? '', 'Copy command')}
           </div>
           <code>{server?.claudeRegisterCommand || 'Start the server to get the registration command.'}</code>
-          <p>Run once in a terminal. Claude Code then sees the <em>moacli</em> tools: <em>delegate_task</em>, <em>start_task</em>, <em>check_task</em>, <em>get_task_result</em>, <em>cancel_task</em>.</p>
+          <p>Run once in a terminal; <em>--scope user</em> registers it for every project. Claude Code then sees the <em>moacli</em> tools: <em>delegate_task</em>, <em>start_task</em>, <em>check_task</em>, <em>get_task_result</em>, <em>cancel_task</em>.</p>
         </div>
         <div className="delegation-register-block">
           <div className="delegation-register-title">
