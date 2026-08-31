@@ -304,10 +304,12 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
         && !event.metaKey
         && !event.isComposing
       ) {
-        // xterm.js 5.5 collapses Shift+Enter to CR. Codex treats LF (Ctrl+J) as
-        // an inserted newline, so preserve the expected multiline shortcut.
+        // xterm.js 5.5 collapses Shift+Enter to CR, and writing LF instead
+        // reaches the CLI as Ctrl+Enter after ConPTY's translation. Sending a
+        // win32-input-mode key event (VK_RETURN with SHIFT down, then up)
+        // delivers a real Shift+Enter, which Codex maps to a newline.
         reportActivity()
-        window.cliAgent.writePty(id, '\n')
+        window.cliAgent.writePty(id, '\x1b[13;28;13;1;16;1_\x1b[13;28;13;0;16;1_')
         return false
       }
       if (
