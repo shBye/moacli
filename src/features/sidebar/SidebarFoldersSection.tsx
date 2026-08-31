@@ -9,7 +9,7 @@ import {
   type Ref,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronsDownUp, EllipsisVertical, Folder, FolderOpen, FolderPlus, Lock, LockOpen, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ChevronsDownUp, ChevronsUpDown, EllipsisVertical, Folder, FolderLock, FolderOpen, FolderPlus, Lock, LockOpen, Pencil, Plus, Trash2, X } from 'lucide-react'
 import type { AgentHealth, AppNotification, HistorySession } from '../../../electron/contracts'
 import { AgentAvatar } from '../../components/AgentAvatar'
 import { SectionHeading } from '../../components/SectionHeading'
@@ -179,7 +179,9 @@ export function SidebarFoldersSection({
         onToggle={onToggle}
         actions={(
           <span className="heading-actions">
-            <button className="mini-icon-button" title="Collapse open folder" disabled={!selectedFolderId} onClick={onCollapseAll}><ChevronsDownUp size={13} /></button>
+            <button className="mini-icon-button" title={selectedFolderId ? 'Collapse open folder' : 'Reopen last folder'} onClick={onCollapseAll}>
+              {selectedFolderId ? <ChevronsDownUp size={13} /> : <ChevronsUpDown size={13} />}
+            </button>
             <button className="mini-icon-button" title="New folder" onClick={onNewFolder}><FolderPlus size={13} /></button>
             <button className="mini-icon-button" title="New session" onClick={onNewSession}><Plus size={15} strokeWidth={2.4} /></button>
           </span>
@@ -227,9 +229,8 @@ export function SidebarFoldersSection({
                       onClick={() => onToggleFolder(folder.id)}
                       onDoubleClick={() => beginRename(folder)}
                     >
-                      {selectedFolderId === folder.id ? <FolderOpen size={15} /> : <Folder size={15} />}
+                      {selectedFolderId === folder.id ? <FolderOpen size={15} /> : folder.locked ? <FolderLock size={15} /> : <Folder size={15} />}
                       <span>{folder.name}</span>
-                      {folder.locked && <Lock size={11} className="folder-lock-indicator" aria-label="Locked" />}
                       {folderEntryCount > 0 && <small className="folder-count">{folderEntryCount}</small>}
                     </button>
                     <span className="tree-row-actions">

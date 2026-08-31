@@ -649,6 +649,7 @@ export function App() {
     sessionActivityTimesRef.current.set(id, Date.now())
   }
 
+  const lastOpenFolderRef = useRef('')
   const toggleFolderLock = (folderId: string): void => {
     const locking = folders.find((folder) => folder.id === folderId)?.locked !== true
     setFolders((items) => items.map((folder) => folder.id === folderId ? { ...folder, locked: !folder.locked } : folder))
@@ -1660,7 +1661,18 @@ export function App() {
             })
           }}
           onToggleFolderLock={toggleFolderLock}
-          onCollapseAllFolders={() => setSelectedFolderId('')}
+          onCollapseAllFolders={() => {
+            // The button toggles: collapse the open folder, or reopen the one
+            // that was open before (falling back to the first unlocked folder).
+            if (selectedFolderId) {
+              lastOpenFolderRef.current = selectedFolderId
+              setSelectedFolderId('')
+              return
+            }
+            const restore = folders.find((folder) => folder.id === lastOpenFolderRef.current && !folder.locked)
+              ?? folders.find((folder) => !folder.locked)
+            if (restore) setSelectedFolderId(restore.id)
+          }}
           onFolderDragEnter={setDragOverFolderId}
           onFolderDragLeave={() => {
             setDragOverFolderId('')
