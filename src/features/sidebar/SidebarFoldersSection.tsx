@@ -4,10 +4,12 @@ import {
   useState,
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type Ref,
 } from 'react'
-import { Folder, FolderOpen, FolderPlus, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { ChevronsDownUp, EllipsisVertical, Folder, FolderOpen, FolderPlus, Lock, LockOpen, Pencil, Plus, Trash2, X } from 'lucide-react'
 import type { AgentHealth, AppNotification, HistorySession } from '../../../electron/contracts'
 import { AgentAvatar } from '../../components/AgentAvatar'
 import { SectionHeading } from '../../components/SectionHeading'
@@ -41,6 +43,8 @@ interface SidebarFoldersSectionProps {
   onNewFolder: () => void
   onNewSession: () => void
   onToggleFolder: (folderId: string) => void
+  onToggleFolderLock: (folderId: string) => void
+  onCollapseAll: () => void
   onFolderDragEnter: (folderId: string) => void
   onFolderDragLeave: () => void
   onFolderDragOver: (event: ReactDragEvent<HTMLElement>, folderId: string) => void
@@ -88,6 +92,8 @@ export function SidebarFoldersSection({
   onNewFolder,
   onNewSession,
   onToggleFolder,
+  onToggleFolderLock,
+  onCollapseAll,
   onFolderDragEnter,
   onFolderDragLeave,
   onFolderDragOver,
@@ -113,8 +119,25 @@ export function SidebarFoldersSection({
   const [renameDraft, setRenameDraft] = useState('')
   const [confirmingFolderId, setConfirmingFolderId] = useState('')
   const [confirmingCloseId, setConfirmingCloseId] = useState('')
+  const [folderMenu, setFolderMenu] = useState<{ folderId: string; left: number; top: number } | null>(null)
   const confirmTimer = useRef<number>()
   useEffect(() => () => window.clearTimeout(confirmTimer.current), [])
+  useEffect(() => {
+    if (!folderMenu) return undefined
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setFolderMenu(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [folderMenu])
+
+  const FOLDER_MENU_WIDTH = 186
+  const openFolderMenu = (event: ReactMouseEvent<HTMLButtonElement>, folderId: string): void => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const left = Math.max(8, Math.min(window.innerWidth - FOLDER_MENU_WIDTH - 8, rect.right - FOLDER_MENU_WIDTH))
+    const top = Math.min(window.innerHeight - 128, rect.bottom + 4)
+    setFolderMenu((current) => current?.folderId === folderId ? null : { folderId, left, top })
+  }
 
   const beginRename = (folder: LogicalFolder): void => {
     setRenamingFolderId(folder.id)
@@ -156,8 +179,9 @@ export function SidebarFoldersSection({
         onToggle={onToggle}
         actions={(
           <span className="heading-actions">
+            <button className="mini-icon-button" title="Collapse open folder" disabled={!selectedFolderId} onClick={onCollapseAll}><ChevronsDownUp size={13} /></button>
             <button className="mini-icon-button" title="New folder" onClick={onNewFolder}><FolderPlus size={13} /></button>
-            <button className="mini-icon-button" title="New session" onClick={onNewSession}><Plus size={14} /></button>
+            <button className="mini-icon-button" title="New session" onClick={onNewSession}><Plus size={15} strokeWidth={2.4} /></button>
           </span>
         )}
       />
@@ -205,23 +229,19 @@ export function SidebarFoldersSection({
                     >
                       {selectedFolderId === folder.id ? <FolderOpen size={15} /> : <Folder size={15} />}
                       <span>{folder.name}</span>
+                      {folder.locked && <Lock size={11} className="folder-lock-indicator" aria-label="Locked" />}
                       {folderEntryCount > 0 && <small className="folder-count">{folderEntryCount}</small>}
                     </button>
                     <span className="tree-row-actions">
-                      <button className="mini-icon-button" title="Rename folder" onClick={() => beginRename(folder)}>
-                        <Pencil size={11} />
+                      <button
+                        className="mini-icon-button"
+                        title="Folder menu"
+                        aria-haspopup="menu"
+                        aria-expanded={folderMenu?.folderId === folder.id}
+                        onClick={(event) => openFolderMenu(event, folder.id)}
+                      >
+                        <EllipsisVertical size={13} />
                       </button>
-                      {folder.id !== 'unsorted' && (
-                        <button
-                          className={`mini-icon-button folder-remove ${confirmingFolderId === folder.id ? 'confirming' : ''}`}
-                          title={confirmingFolderId === folder.id
-                            ? 'Contents move to Unsorted — click again to delete'
-                            : 'Delete folder'}
-                          onClick={() => requestRemoveFolder(folder.id, folderEntryCount)}
-                        >
-                          <Trash2 size={11} />
-                        </button>
-                      )}
                     </span>
                   </div>
                 )}
@@ -323,6 +343,55 @@ export function SidebarFoldersSection({
           )}
         </nav>
       )}
+      {folderMenu && (() => {
+        const menuFolder = folders.find((folder) => folder.id === folderMenu.folderId)
+        if (!menuFolder) return null
+        const menuView = folderViews.get(menuFolder.id) ?? EMPTY_FOLDER_VIEW
+        const menuEntryCount = menuView.sessionCount + menuView.historyCount
+        return createPortal(
+          <>
+            <button className="folder-menu-backdrop" aria-label="Close folder menu" onClick={() => setFolderMenu(null)} />
+            <div className="folder-menu" role="menu" style={{ left: folderMenu.left, top: folderMenu.top }}>
+              <button
+                className="folder-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  onToggleFolderLock(menuFolder.id)
+                  setFolderMenu(null)
+                }}
+              >
+                {menuFolder.locked ? <LockOpen size={12} /> : <Lock size={12} />}
+                {menuFolder.locked ? 'Unlock' : 'Lock (keep collapsed)'}
+              </button>
+              <button
+                className="folder-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  beginRename(menuFolder)
+                  setFolderMenu(null)
+                }}
+              >
+                <Pencil size={12} />Rename
+              </button>
+              {menuFolder.id !== 'unsorted' && (
+                <button
+                  className={`folder-menu-item danger ${confirmingFolderId === menuFolder.id ? 'confirming' : ''}`}
+                  role="menuitem"
+                  onClick={() => {
+                    const armed = confirmingFolderId === menuFolder.id
+                    requestRemoveFolder(menuFolder.id, menuEntryCount)
+                    if (armed || menuEntryCount === 0) setFolderMenu(null)
+                  }}
+                >
+                  <Trash2 size={12} />
+                  {confirmingFolderId === menuFolder.id ? 'Click again to delete' : 'Delete folder'}
+                </button>
+              )}
+            </div>
+          </>,
+          document.body,
+        )
+      })()}
       {open && recentOpen && (
         <div
           className="folder-pane-resizer"

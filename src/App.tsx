@@ -649,6 +649,13 @@ export function App() {
     sessionActivityTimesRef.current.set(id, Date.now())
   }
 
+  const toggleFolderLock = (folderId: string): void => {
+    const locking = folders.find((folder) => folder.id === folderId)?.locked !== true
+    setFolders((items) => items.map((folder) => folder.id === folderId ? { ...folder, locked: !folder.locked } : folder))
+    // Locking the folder that is currently expanded collapses it right away.
+    if (locking) setSelectedFolderId((current) => current === folderId ? '' : current)
+  }
+
   const revealSessionFolder = (session: RuntimeSession): void => {
     const folderId = folders.some((folder) => folder.id === session.folderId) ? session.folderId : 'unsorted'
     setSectionOpen((current) => {
@@ -657,7 +664,8 @@ export function App() {
       localStorage.setItem(SECTION_STORAGE_KEY, JSON.stringify(next))
       return next
     })
-    setSelectedFolderId(folderId)
+    // A locked folder stays collapsed even when one of its sessions activates.
+    if (folders.find((folder) => folder.id === folderId)?.locked !== true) setSelectedFolderId(folderId)
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         folderSessionRefs.current.get(session.id)?.scrollIntoView({ block: 'nearest' })
@@ -1644,7 +1652,15 @@ export function App() {
           onRenameFolder={renameFolder}
           onRemoveFolder={removeFolder}
           onOpenAccountSettings={openAccountSettings}
-          onToggleFolder={(folderId) => setSelectedFolderId((current) => current === folderId ? '' : folderId)}
+          onToggleFolder={(folderId) => {
+            const locked = folders.find((folder) => folder.id === folderId)?.locked === true
+            setSelectedFolderId((current) => {
+              if (current === folderId) return ''
+              return locked ? current : folderId
+            })
+          }}
+          onToggleFolderLock={toggleFolderLock}
+          onCollapseAllFolders={() => setSelectedFolderId('')}
           onFolderDragEnter={setDragOverFolderId}
           onFolderDragLeave={() => {
             setDragOverFolderId('')

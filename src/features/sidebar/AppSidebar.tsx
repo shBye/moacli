@@ -50,6 +50,8 @@ interface AppSidebarProps {
   onNewFolder: () => void
   onNewSession: () => void
   onToggleFolder: (folderId: string) => void
+  onToggleFolderLock: (folderId: string) => void
+  onCollapseAllFolders: () => void
   onFolderDragEnter: (folderId: string) => void
   onFolderDragLeave: () => void
   onFolderDragOver: (event: ReactDragEvent<HTMLElement>, folderId: string) => void
@@ -109,6 +111,8 @@ export function AppSidebar({
   onNewFolder,
   onNewSession,
   onToggleFolder,
+  onToggleFolderLock,
+  onCollapseAllFolders,
   onFolderDragEnter,
   onFolderDragLeave,
   onFolderDragOver,
@@ -167,6 +171,8 @@ export function AppSidebar({
         onNewFolder={onNewFolder}
         onNewSession={onNewSession}
         onToggleFolder={onToggleFolder}
+        onToggleFolderLock={onToggleFolderLock}
+        onCollapseAll={onCollapseAllFolders}
         onFolderDragEnter={onFolderDragEnter}
         onFolderDragLeave={onFolderDragLeave}
         onFolderDragOver={onFolderDragOver}
