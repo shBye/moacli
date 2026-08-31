@@ -6,29 +6,29 @@ export interface TerminalPastePort {
   readClipboard: () => Promise<TerminalClipboardContent>
 }
 
+export interface TerminalPasteControls {
+  dispose: () => void
+  pasteFromClipboard: () => void
+}
+
+// The Ctrl+V shortcut itself is intercepted in the terminal's custom key
+// handler (which runs before xterm's), so the raw 0x16 byte never reaches the
+// CLI — Codex treats it as its own image-paste shortcut. This attachment only
+// covers non-keyboard paste routes such as the context menu.
 export function attachTerminalPaste(
   textarea: HTMLTextAreaElement | undefined,
   port: TerminalPastePort,
-): () => void {
-  if (!textarea) return () => undefined
-
+): TerminalPasteControls {
   let disposed = false
-  const pasteClipboard = (): void => {
+  const pasteFromClipboard = (): void => {
     void port.readClipboard().then((content) => {
       if (disposed) return
       const text = toTerminalPasteText(content)
       if (text !== null) port.paste(text)
     })
   }
-  const onPasteShortcut = (event: KeyboardEvent): void => {
-    if (!isTerminalPasteShortcut(event)) return
+  if (!textarea) return { dispose: () => undefined, pasteFromClipboard }
 
-    // Codex uses the raw Ctrl+V byte as its image-paste shortcut. Consume the
-    // browser shortcut before xterm can forward it to the CLI.
-    event.preventDefault()
-    event.stopImmediatePropagation()
-    pasteClipboard()
-  }
   const onPaste = (event: ClipboardEvent): void => {
     event.preventDefault()
     event.stopImmediatePropagation()
@@ -37,15 +37,16 @@ export function attachTerminalPaste(
       port.paste(text)
       return
     }
-    pasteClipboard()
+    pasteFromClipboard()
   }
 
-  textarea.addEventListener('keydown', onPasteShortcut, true)
   textarea.addEventListener('paste', onPaste, true)
 
-  return () => {
-    disposed = true
-    textarea.removeEventListener('keydown', onPasteShortcut, true)
-    textarea.removeEventListener('paste', onPaste, true)
+  return {
+    dispose: () => {
+      disposed = true
+      textarea.removeEventListener('paste', onPaste, true)
+    },
+    pasteFromClipboard,
   }
 }

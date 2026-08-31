@@ -7,6 +7,7 @@ import { Terminal } from '@xterm/xterm'
 import { ChevronDown, ChevronUp, X } from 'lucide-react'
 import { attachImeLifecycle } from './ime-lifecycle'
 import { beginTerminalComposition, cancelTerminalFocus, endTerminalComposition, requestTerminalFocus } from './ime-focus'
+import { isTerminalPasteShortcut } from './terminal-clipboard'
 import { createTerminalOptions } from './terminal-options'
 import { attachTerminalPaste } from './terminal-paste'
 import type { AgentAccount } from '../../electron/contracts'
@@ -240,7 +241,7 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
     container.addEventListener('wheel', onUserWheel, { passive: true })
 
     const textarea = terminal.textarea
-    const disposePaste = attachTerminalPaste(textarea, {
+    const pasteControls = attachTerminalPaste(textarea, {
       paste: (text) => terminal.paste(text),
       readClipboard: () => window.cliAgent.readTerminalClipboard(),
     })
@@ -255,6 +256,29 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true
       if (event.key === 'PageUp' || event.key === 'Home') cancelBottomLock()
+      if (isTerminalPasteShortcut(event)) {
+        // Handle the paste ourselves; the raw Ctrl+V byte must never reach
+        // the CLI (Codex binds it to image paste and reads the clipboard again).
+        event.preventDefault()
+        reportActivity()
+        pasteControls.pasteFromClipboard()
+        return false
+      }
+      if (
+        event.key === 'Tab'
+        && event.shiftKey
+        && !event.ctrlKey
+        && !event.altKey
+        && !event.metaKey
+        && !event.isComposing
+      ) {
+        // Send CSI Z directly: ConPTY translates it into a proper Shift+Tab
+        // for the CLI, and nothing between the browser and xterm can drop it.
+        event.preventDefault()
+        reportActivity()
+        window.cliAgent.writePty(id, '\x1b[Z')
+        return false
+      }
       if (event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey && event.code === 'KeyF') {
         event.preventDefault()
         openSearchRef.current()
@@ -386,7 +410,7 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       offAttention()
       writeParsedDisposable.dispose()
       container.removeEventListener('wheel', onUserWheel)
-      disposePaste()
+      pasteControls.dispose()
       window.cliAgent.stopPty(id)
       terminal.dispose()
       delete container.dataset.renderer
