@@ -56,6 +56,7 @@ import type {
   SidebarSectionState,
 } from './features/sidebar/types'
 import { useSidebarLayout } from './features/sidebar/useSidebarLayout'
+import { CloseSessionConfirmModal } from './features/sessions/CloseSessionConfirmModal'
 import { SessionHeader } from './features/sessions/SessionHeader'
 import { SessionRuntimeStage } from './features/sessions/SessionRuntimeStage'
 import { StatusBar } from './features/sessions/StatusBar'
@@ -744,6 +745,9 @@ export function App() {
     setSessions(next)
   }
 
+  // Closing kills the CLI process, so a session that is mid-task asks first.
+  const [pendingClose, setPendingClose] = useState<{ sessionId: string; origin: 'tab' | 'folder' } | null>(null)
+
   const closeSession = (id: string): void => {
     const currentSessions = sessionsRef.current
     const closedIndex = currentSessions.findIndex((session) => session.id === id)
@@ -756,6 +760,30 @@ export function App() {
     void window.cliAgent.acknowledgeSessionNotification(id).then(acceptNotificationSnapshot)
     void window.cliAgent.setSessionNotificationMuted(id, false).then(acceptNotificationSnapshot)
   }
+
+  const requestCloseSession = (id: string, origin: 'tab' | 'folder' = 'tab'): void => {
+    const session = sessionsRef.current.find((item) => item.id === id)
+    if (!session) return
+    if (session.state === 'processing') {
+      setPendingClose({ sessionId: id, origin })
+      return
+    }
+    if (origin === 'folder') closeFolderSession(session)
+    else closeSession(id)
+  }
+
+  const confirmPendingClose = (): void => {
+    const pending = pendingClose
+    setPendingClose(null)
+    if (!pending) return
+    const session = sessionsRef.current.find((item) => item.id === pending.sessionId)
+    if (!session) return
+    if (pending.origin === 'folder') closeFolderSession(session)
+    else closeSession(session.id)
+  }
+  const pendingCloseSession = pendingClose
+    ? sessions.find((session) => session.id === pendingClose.sessionId)
+    : undefined
 
   const restartSession = (id: string): void => {
     const session = sessionsRef.current.find((item) => item.id === id)
@@ -1761,7 +1789,7 @@ export function App() {
           onDragOverEntry={dragOverFolderEntry}
           onDropByEntry={dropByFolderEntry}
           onActivateSession={activateSession}
-          onCloseSession={closeFolderSession}
+          onCloseSession={(session) => requestCloseSession(session.id, 'folder')}
           onResumeConversation={resumeConversation}
           onRemoveHistory={removeHistoryFromFolder}
           onNewFolderNameChange={setNewFolderName}
@@ -1791,7 +1819,7 @@ export function App() {
                     agentIcons={agentIcons}
                     onActivate={(sessionId) => activateSession(sessionId, true)}
                     onRestart={restartSession}
-                    onClose={closeSession}
+                    onClose={requestCloseSession}
                     onReorder={reorderSessionTabs}
                     onNewSession={openSessionLauncher}
                   />
@@ -1965,6 +1993,16 @@ export function App() {
       )}
 
 
+
+      {pendingCloseSession && (
+        <CloseSessionConfirmModal
+          session={pendingCloseSession}
+          profile={profilesById.get(pendingCloseSession.agentId)}
+          iconPreference={resolvedAgentIcon(pendingCloseSession.agentId)}
+          onConfirm={confirmPendingClose}
+          onCancel={() => setPendingClose(null)}
+        />
+      )}
 
       {pendingApproval && (
         <DelegationApprovalModal

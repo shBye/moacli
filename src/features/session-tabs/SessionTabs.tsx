@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { useRef, useState, type DragEvent } from 'react'
 import { AnimatePresence } from 'motion/react'
 import * as m from 'motion/react-m'
 import { Plus, RefreshCw, X } from 'lucide-react'
@@ -47,22 +47,6 @@ export function SessionTabs({
   const draggedIdRef = useRef('')
   const [draggedId, setDraggedId] = useState('')
   const [dropHint, setDropHint] = useState<DropHint | null>(null)
-  const [confirmingCloseId, setConfirmingCloseId] = useState('')
-  const confirmCloseTimer = useRef<number>()
-  useEffect(() => () => window.clearTimeout(confirmCloseTimer.current), [])
-
-  const requestClose = (session: RuntimeSession): void => {
-    window.clearTimeout(confirmCloseTimer.current)
-    // Closing kills the CLI process: a session that is mid-task asks for a
-    // second click before it goes away.
-    if (session.state === 'processing' && confirmingCloseId !== session.id) {
-      setConfirmingCloseId(session.id)
-      confirmCloseTimer.current = window.setTimeout(() => setConfirmingCloseId(''), 2600)
-      return
-    }
-    setConfirmingCloseId('')
-    onClose(session.id)
-  }
 
   const finishDrag = (): void => {
     draggedIdRef.current = ''
@@ -163,11 +147,9 @@ export function SessionTabs({
                   <button className="session-tab-action" title={restartTitle} disabled={!canRestart} onClick={() => onRestart(session.id)}>
                     <RefreshCw className={session.state === 'starting' ? 'spinning' : ''} size={12} />
                   </button>
-                  <button
-                    className={`session-tab-action close ${confirmingCloseId === session.id ? 'confirming' : ''}`}
-                    title={confirmingCloseId === session.id ? 'Session is still working — click again to close' : 'Close session'}
-                    onClick={() => requestClose(session)}
-                  ><X size={13} /></button>
+                  <button className="session-tab-action close" title="Close session" onClick={() => onClose(session.id)}>
+                    <X size={13} />
+                  </button>
                 </div>
               </div>
             </m.div>

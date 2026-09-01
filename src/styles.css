@@ -314,8 +314,15 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .session-tab-action { display: grid; width: 19px; height: 23px; padding: 0; place-items: center; border: 0; border-radius: 5px; color: rgba(255,255,255,.5); background: transparent; cursor: pointer; }
 .session-tab-action:hover:not(:disabled) { color: #fff; background: rgba(255,255,255,.07); box-shadow: none; }
 .session-tab-action.close:hover { color: var(--state-error); background: rgba(255,100,110,.11); }
-.session-tab-action.close.confirming, .session-close.confirming { color: #fff !important; background: color-mix(in oklch, var(--state-error) 36%, transparent); }
 .session-tab-action:disabled { opacity: .25; cursor: default; }
+.close-session-modal { display: grid; width: min(420px, 100%); gap: 16px; padding: 24px 26px 20px; }
+.close-session-heading { display: flex; align-items: flex-start; gap: 12px; padding-right: 28px; }
+.close-session-heading h2 { margin: 0; color: #f2f4f5; font-size: 15px; }
+.close-session-heading p { margin: 5px 0 0; color: rgba(255,255,255,.58); font-size: 11px; line-height: 1.5; }
+.close-session-heading strong { color: rgba(255,255,255,.85); font-weight: 600; }
+.close-session-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.modal-danger { height: 30px; padding: 0 14px; border: 0; border-radius: 8px; color: #1c0e10; background: var(--state-error); font-size: 11px; font-weight: 700; cursor: pointer; }
+.modal-danger:active { transform: translateY(1px); filter: brightness(.97); }
 .launcher { position: absolute; z-index: 2; inset: 0; min-width: 0; min-height: 0; overflow: auto; }
 .launcher-modal-backdrop { position: fixed; z-index: 90; inset: 40px 0 0; display: grid; place-items: center; padding: 24px; background: rgba(5,7,8,.62); backdrop-filter: blur(16px); }
 .launcher-modal { position: relative; width: min(560px, 100%); max-height: calc(100% - 16px); overflow-y: auto; border: 1px solid rgba(255,255,255,.12); border-radius: 13px; background: rgba(23,26,30,.97); box-shadow: 0 24px 80px rgba(0,0,0,.5); animation: search-modal-in 140ms ease-out; }

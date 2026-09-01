@@ -118,7 +118,6 @@ export function SidebarFoldersSection({
   const [renamingFolderId, setRenamingFolderId] = useState('')
   const [renameDraft, setRenameDraft] = useState('')
   const [confirmingFolderId, setConfirmingFolderId] = useState('')
-  const [confirmingCloseId, setConfirmingCloseId] = useState('')
   const [folderMenu, setFolderMenu] = useState<{ folderId: string; left: number; top: number } | null>(null)
   const confirmTimer = useRef<number>()
   useEffect(() => () => window.clearTimeout(confirmTimer.current), [])
@@ -159,17 +158,6 @@ export function SidebarFoldersSection({
     setConfirmingFolderId('')
     onRemoveFolder(folderId)
   }
-  const requestCloseSession = (session: RuntimeSession): void => {
-    window.clearTimeout(confirmTimer.current)
-    if (session.state === 'processing' && confirmingCloseId !== session.id) {
-      setConfirmingCloseId(session.id)
-      confirmTimer.current = window.setTimeout(() => setConfirmingCloseId(''), 2600)
-      return
-    }
-    setConfirmingCloseId('')
-    onCloseSession(session)
-  }
-
   return (
     <>
       <SectionHeading
@@ -286,12 +274,10 @@ export function SidebarFoldersSection({
                               </span>
                             </button>
                             <button
-                              className={`session-close ${confirmingCloseId === session.id ? 'confirming' : ''}`}
-                              title={confirmingCloseId === session.id
-                                ? 'Session is still working — click again to close'
-                                : 'Remove from folder and close session'}
+                              className="session-close"
+                              title="Remove from folder and close session"
                               draggable={false}
-                              onClick={() => requestCloseSession(session)}
+                              onClick={() => onCloseSession(session)}
                             ><X size={13} /></button>
                           </div>
                         )
