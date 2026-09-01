@@ -166,6 +166,7 @@ electron/
   conversation-search.ts  Incremental local SQLite FTS5 message index
   pty-manager.ts      PTY lifecycle, isolated environments, output batching
   session-history.ts  Account inspection and agent-specific history adapters
+  history-host.ts     Utility process running history/search off the main thread
   agent-profiles.ts   CLI discovery, version checks, and Windows launch wrappers
 
 profiles/

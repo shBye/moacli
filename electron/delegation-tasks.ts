@@ -162,6 +162,10 @@ export class DelegationTaskRegistry {
     return this.workerSessionIds.has(sessionId)
   }
 
+  workerSessions(): string[] {
+    return [...this.workerSessionIds]
+  }
+
   create(request: DelegationTaskRequest): DelegationTask {
     if (this.closed) throw new Error('MoaCLI is shutting down')
     const open = [...this.tasks.values()].filter((record) => !isFinishedStatus(record.status))

@@ -9,9 +9,9 @@ import { AttentionBridge } from './attention-bridge'
 import { DelegationServer } from './delegation-server'
 import { DelegationTaskRegistry } from './delegation-tasks'
 import type { AgentAccount, DelegationApproval, DelegationSnapshot, NotificationContext, NotificationSettings, SearchIndexState, StartPtyRequest } from './contracts'
+import { HistoryHostClient } from './history-host-client'
 import { NotificationCenter } from './notification-center'
 import { PtyHostClient } from './pty-host-client'
-import { SessionHistoryService } from './session-history'
 
 let mainWindow: BrowserWindow | null = null
 app.setPath('userData', join(app.getPath('appData'), 'cli-agent-manager'))
@@ -29,7 +29,12 @@ const ptyHost = new PtyHostClient(
   attentionBridge,
   ({ request, exitCode, intentional }) => notificationCenter?.handleExit(request, exitCode, intentional),
 )
-const sessionHistory = new SessionHistoryService()
+const sessionHistory = new HistoryHostClient(
+  join(__dirname, 'history-host.js'),
+  (state: SearchIndexState) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('search:index-changed', state)
+  },
+)
 let delegationServer: DelegationServer | null = null
 let delegationRegistry: DelegationTaskRegistry | null = null
 const historyWatchers = new Map<string, FSWatcher>()
@@ -304,12 +309,7 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     callback(String(permission) === 'local-fonts' && webContents === mainWindow?.webContents)
   })
-  sessionHistory.initializeSearch(
-    join(app.getPath('userData'), 'conversation-search.sqlite'),
-    (state: SearchIndexState) => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('search:index-changed', state)
-    },
-  )
+  sessionHistory.configureSearch(join(app.getPath('userData'), 'conversation-search.sqlite'))
   notificationCenter = new NotificationCenter(join(app.getPath('userData'), 'notification-settings.json'), () => mainWindow)
   try {
     await attentionBridge.start(join(app.getPath('temp'), 'moacli', 'attention-hooks'))
@@ -337,10 +337,13 @@ app.whenReady().then(async () => {
         }
         notificationCenter?.handleDelegation(task, event)
       },
-      () => scheduleHistoryChanged(),
+      () => {
+        if (delegationRegistry) sessionHistory.setWorkerSessions(delegationRegistry.workerSessions())
+        scheduleHistoryChanged()
+      },
     )
     // Worker transcripts belong to delegated tasks, not to the Recent list.
-    sessionHistory.setSessionFilter((session) => !delegationRegistry?.isWorkerSession(session.resumeId))
+    sessionHistory.setWorkerSessions(delegationRegistry.workerSessions())
     delegationServer = new DelegationServer({
       userDataDirectory: app.getPath('userData'),
       appVersion: app.getVersion(),
@@ -366,12 +369,11 @@ app.on('before-quit', (event) => {
   // agent processes do not outlive the app.
   event.preventDefault()
   closeHistoryWatchers()
-  sessionHistory.close()
   notificationCenter?.dispose()
   attentionBridge.dispose()
   delegationServer?.dispose()
   delegationRegistry?.close()
-  void ptyHost.shutdown().finally(() => app.quit())
+  void Promise.allSettled([ptyHost.shutdown(), sessionHistory.shutdown()]).then(() => app.quit())
 })
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

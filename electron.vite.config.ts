@@ -10,8 +10,9 @@ export default defineConfig({
       rollupOptions: {
         input: {
           main: resolve(__dirname, 'electron/main.ts'),
-          // Entry for the PTY host utility process (utilityProcess.fork).
+          // Entries for the utility processes (utilityProcess.fork).
           'pty-host': resolve(__dirname, 'electron/pty-host.ts'),
+          'history-host': resolve(__dirname, 'electron/history-host.ts'),
         },
         external: ['node-pty'],
       },
