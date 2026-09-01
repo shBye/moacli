@@ -162,8 +162,11 @@ export class DelegationServer {
   }
 
   private async listen(preferredPort?: number): Promise<void> {
-    const candidates = preferredPort
-      ? [preferredPort, ...portCandidates(PREFERRED_PORT).filter((port) => port !== preferredPort)]
+    // Registered clients embed the URL, so the preferred port always comes
+    // first: a stored fallback port (e.g. persisted while a second app
+    // instance briefly held the preferred one) heals back on restart.
+    const candidates = preferredPort && preferredPort !== PREFERRED_PORT
+      ? [PREFERRED_PORT, preferredPort, ...portCandidates(PREFERRED_PORT).filter((port) => port !== preferredPort && port !== PREFERRED_PORT)]
       : portCandidates(PREFERRED_PORT)
     for (const candidate of candidates) {
       if (await this.tryListen(candidate)) break
