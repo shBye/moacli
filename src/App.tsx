@@ -45,6 +45,7 @@ import type { LogicalFolder } from './features/folders/types'
 import { useLocalFonts } from './features/fonts/useLocalFonts'
 import { SessionLauncher } from './features/launcher/SessionLauncher'
 import { DelegationApprovalModal } from './features/delegation/DelegationApprovalModal'
+import { delegationFailureKind } from './features/delegation/delegation-display'
 import { NotificationCenter } from './features/notifications/NotificationCenter'
 import { ConversationSearchModal } from './features/search/ConversationSearchModal'
 import { AppSidebar } from './features/sidebar/AppSidebar'
@@ -71,6 +72,7 @@ const FOLDER_ASSIGNMENTS_STORAGE_KEY = 'cli-agent-manager.folder-assignments'
 const FOLDER_ORDERS_STORAGE_KEY = 'cli-agent-manager.folder-orders'
 const MAX_RUNTIME_SESSIONS_STORAGE_KEY = 'cli-agent-manager.max-runtime-sessions'
 const AGENT_ICONS_STORAGE_KEY = 'cli-agent-manager.agent-icons'
+const DELEGATION_FALLBACK_STORAGE_KEY = 'cli-agent-manager.delegation-fallback-accounts'
 const DEFAULT_MAX_RUNTIME_SESSIONS = 10
 const MIN_RUNTIME_SESSIONS = 1
 const MAX_RUNTIME_SESSIONS_LIMIT = 30
@@ -117,6 +119,14 @@ function loadJson<T>(key: string, fallback: T): T {
 function savedAccounts(): AgentAccount[] {
   const accounts = loadJson<unknown>(ACCOUNT_STORAGE_KEY, [])
   return Array.isArray(accounts) ? accounts as AgentAccount[] : []
+}
+
+// Per-agent account id delegation retries fall back to after a usage-limit or
+// sign-in failure; empty/missing means "ask the user".
+function savedDelegationFallback(): Record<string, string> {
+  const value = loadJson<unknown>(DELEGATION_FALLBACK_STORAGE_KEY, {})
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value).filter(([, accountId]) => typeof accountId === 'string' && accountId))
 }
 
 function accountIdentity(account: Pick<AgentAccount, 'agentId' | 'configDir'>): string {
@@ -233,6 +243,7 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('appearance')
   const [delegationSnapshot, setDelegationSnapshot] = useState<DelegationSnapshot | null>(null)
+  const [delegationFallback, setDelegationFallback] = useState<Record<string, string>>(savedDelegationFallback)
   const [dismissedApprovalIds, setDismissedApprovalIds] = useState<ReadonlySet<string>>(() => new Set())
   const [focusedApprovalId, setFocusedApprovalId] = useState('')
   const [approvalBusy, setApprovalBusy] = useState(false)
@@ -1027,6 +1038,65 @@ export function App() {
     runDelegationAction(() => window.cliAgent.cancelDelegation(taskId))
     acknowledgeDelegationNotification(taskId)
   }
+  // The retried task arrives as a fresh awaiting_approval entry, so the
+  // approval modal (with its account picker) surfaces on its own.
+  const retryDelegation = (taskId: string): void => {
+    runDelegationAction(() => window.cliAgent.retryDelegation(taskId))
+  }
+  const changeDelegationFallback = (agentId: string, accountId: string): void => {
+    setDelegationFallback((current) => {
+      const next = { ...current }
+      if (accountId) next[agentId] = accountId
+      else delete next[agentId]
+      localStorage.setItem(DELEGATION_FALLBACK_STORAGE_KEY, JSON.stringify(next))
+      return next
+    })
+  }
+  const autoRetryWithFallback = async (taskId: string, fallback: AgentAccount): Promise<void> => {
+    try {
+      const inspected = await window.cliAgent.inspectAccount(fallback)
+      if (!inspected) return // the fallback sign-in is broken too; leave it to the user
+      const created = await window.cliAgent.retryDelegation(taskId)
+      const retryTask = created.tasks.find((task) => task.retryOfId === taskId && task.status === 'awaiting_approval')
+      if (!retryTask) {
+        setDelegationSnapshot(created)
+        return
+      }
+      // Keep the approval modal from flashing while we approve it ourselves.
+      setDismissedApprovalIds((current) => new Set(current).add(retryTask.id))
+      setDelegationSnapshot(created)
+      const approved = await window.cliAgent.approveDelegation({ taskId: retryTask.id, account: inspected })
+      setDelegationSnapshot(approved)
+      acknowledgeDelegationNotification(retryTask.id)
+    } catch {
+      // The failed task keeps its manual retry button.
+    }
+  }
+  // When a task fails from a usage limit or sign-in problem and a fallback
+  // account is configured for that agent, retry once with it automatically.
+  const handledDelegationFailures = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    const tasks = delegationSnapshot?.tasks
+    if (!tasks) return
+    if (!handledDelegationFailures.current) {
+      // Failures that predate this window only get the manual retry button.
+      handledDelegationFailures.current = new Set(tasks.filter((task) => task.status === 'failed').map((task) => task.id))
+      return
+    }
+    const handled = handledDelegationFailures.current
+    for (const task of tasks) {
+      if (task.status !== 'failed' || handled.has(task.id)) continue
+      handled.add(task.id)
+      // Retries never chain: one automatic hop, then it's the user's call.
+      if (task.retryOfId || !delegationFailureKind(task)) continue
+      const fallbackId = delegationFallback[task.agent]
+      if (!fallbackId || fallbackId === task.accountId) continue
+      const fallback = accounts.find((account) => account.id === fallbackId && account.agentId === task.agent)
+      if (!fallback) continue
+      void autoRetryWithFallback(task.id, fallback)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [delegationSnapshot, delegationFallback, accounts])
   const setDelegationEnabled = (enabled: boolean): void => {
     runDelegationAction(() => window.cliAgent.setDelegationEnabled(enabled))
   }
@@ -1845,6 +1915,8 @@ export function App() {
           updateError={updateError}
           notificationSettings={notificationSnapshot.settings}
           delegation={delegationSnapshot}
+          accounts={accounts}
+          delegationFallback={delegationFallback}
           profiles={profiles}
           profilesById={profilesById}
           agentIcons={agentIcons}
@@ -1872,6 +1944,8 @@ export function App() {
           onRegenerateDelegationToken={regenerateDelegationToken}
           onReviewDelegation={openDelegationTask}
           onCancelDelegation={cancelDelegation}
+          onRetryDelegation={retryDelegation}
+          onDelegationFallbackChange={changeDelegationFallback}
           onAgentIconChange={changeAgentIcon}
           onOpenIconPicker={setIconPickerAgentId}
           onImportAgentIcon={importAgentIcon}

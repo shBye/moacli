@@ -20,6 +20,7 @@ export interface DelegationTaskRequest {
   cwd: string
   timeoutMs: number
   caller: string
+  retryOf?: string
 }
 
 export type DelegationTaskEvent = 'awaiting_approval' | 'completed' | 'failed'
@@ -37,6 +38,7 @@ interface TaskRecord {
   finishedAt?: number
   account?: AgentAccount
   workerSessionId?: string
+  retryOf?: string
   result?: string
   error?: string
   detail?: string
@@ -60,6 +62,7 @@ interface TaskRow {
   account_id: string | null
   account_email: string | null
   worker_session_id: string | null
+  retry_of: string | null
   result: string | null
   error: string | null
   detail: string | null
@@ -126,6 +129,9 @@ export class DelegationTaskRegistry {
         if (match && match[1] !== 'unknown') backfill.run(match[1], row.id)
       }
     }
+    if (!columns.includes('retry_of')) {
+      this.database.exec('ALTER TABLE delegation_tasks ADD COLUMN retry_of TEXT')
+    }
     for (const row of this.database.prepare('SELECT worker_session_id FROM delegation_tasks WHERE worker_session_id IS NOT NULL').all() as Array<{ worker_session_id: string }>) {
       this.workerSessionIds.add(row.worker_session_id)
     }
@@ -169,14 +175,15 @@ export class DelegationTaskRegistry {
       timeoutMs: request.timeoutMs,
       status: 'awaiting_approval',
       createdAt: Date.now(),
+      ...(request.retryOf ? { retryOf: request.retryOf } : {}),
       log: '',
       waiters: [],
     }
     this.tasks.set(record.id, record)
     this.database.prepare(`
-      INSERT INTO delegation_tasks (id, agent, caller, prompt, cwd, timeout_ms, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(record.id, record.agent, record.caller, record.prompt, record.cwd, record.timeoutMs, record.status, record.createdAt)
+      INSERT INTO delegation_tasks (id, agent, caller, prompt, cwd, timeout_ms, status, created_at, retry_of)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(record.id, record.agent, record.caller, record.prompt, record.cwd, record.timeoutMs, record.status, record.createdAt, record.retryOf ?? null)
     record.approvalTimer = setTimeout(() => {
       if (record.status === 'awaiting_approval') this.finish(record, 'rejected', { error: 'Nobody approved the task within 15 minutes' })
     }, APPROVAL_TIMEOUT_MS)
@@ -219,6 +226,23 @@ export class DelegationTaskRegistry {
     }, (error: unknown) => {
       if (record.status === 'cancelled') return
       this.finish(record, 'failed', { error: error instanceof Error ? error.message : String(error) })
+    })
+  }
+
+  // Re-queues a finished task as a fresh approval request, so the user can
+  // pick another account (e.g. after a usage limit or an expired sign-in).
+  retry(taskId: string): DelegationTask {
+    const original = this.requireTask(taskId)
+    if (original.status !== 'failed' && original.status !== 'cancelled') {
+      throw new Error('Only failed or cancelled tasks can be retried')
+    }
+    return this.create({
+      agent: original.agent,
+      prompt: original.prompt,
+      cwd: original.cwd,
+      timeoutMs: original.timeoutMs,
+      caller: original.caller,
+      retryOf: original.id,
     })
   }
 
@@ -353,6 +377,7 @@ export class DelegationTaskRegistry {
       ...(row.finished_at ? { finishedAt: row.finished_at } : {}),
       ...(row.account_id ? { account: { id: row.account_id, agentId: row.agent, email: row.account_email ?? '', configDir: '' } } : {}),
       ...(row.worker_session_id ? { workerSessionId: row.worker_session_id } : {}),
+      ...(row.retry_of ? { retryOf: row.retry_of } : {}),
       ...(row.result ? { result: row.result } : {}),
       ...(row.error ? { error: row.error } : {}),
       ...(row.detail ? { detail: row.detail } : {}),
@@ -376,6 +401,7 @@ export class DelegationTaskRegistry {
       ...(record.finishedAt ? { finishedAt: record.finishedAt } : {}),
       ...(record.account ? { accountId: record.account.id, accountEmail: record.account.email } : {}),
       ...(record.workerSessionId ? { workerSessionId: record.workerSessionId } : {}),
+      ...(record.retryOf ? { retryOfId: record.retryOf } : {}),
       ...(record.result ? { resultPreview: preview(record.result, RESULT_PREVIEW_CHARS) } : {}),
       ...(record.error ? { error: record.error } : {}),
       ...(record.detail ? { detail: record.detail } : {}),

@@ -701,6 +701,10 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .delegation-meta dd { display: flex; min-width: 0; align-items: center; gap: 6px; margin: 0; overflow: hidden; color: rgba(255,255,255,.78); text-overflow: ellipsis; white-space: nowrap; }
 .delegation-meta dd svg { flex: none; color: var(--state-running); }
 .delegation-modal-error { margin: 0; color: var(--state-error); font-size: 11px; }
+.delegation-account-auth { display: inline-flex; flex: none; align-items: center; gap: 4px; font-size: 10px; }
+.delegation-account-auth.ok { color: var(--state-running); }
+.delegation-account-auth.warn { color: var(--state-error); }
+.delegation-account-auth.warn svg { color: var(--state-error); }
 .delegation-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .delegation-settings { padding: 16px 18px 20px; }
 .delegation-settings-heading { display: flex; min-height: 48px; align-items: flex-start; justify-content: space-between; gap: 18px; border-bottom: 1px solid rgba(255,255,255,.06); }
@@ -726,9 +730,17 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .delegation-task-copy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
 .delegation-task-copy strong { overflow: hidden; color: rgba(255,255,255,.78); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .delegation-task-copy small { overflow: hidden; color: rgba(255,255,255,.45); font: 400 10px/1.35 'JetBrains Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
+.delegation-task-copy small.delegation-failure-hint { color: var(--state-error); }
 
 .delegation-auto-approve { margin-top: 10px; padding: 4px 13px 10px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; background: rgba(0,0,0,.13); }
 .delegation-auto-approve p { margin: 2px 0 0; color: rgba(255,255,255,.48); font-size: 10px; line-height: 1.5; }
+
+.delegation-fallback { margin-top: 10px; padding: 10px 13px 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; background: rgba(0,0,0,.13); }
+.delegation-fallback > strong { color: rgba(255,255,255,.75); font-size: 11px; }
+.delegation-fallback > p { margin: 4px 0 8px; color: rgba(255,255,255,.48); font-size: 10px; line-height: 1.5; }
+.delegation-fallback-row { display: grid; grid-template-columns: 96px minmax(0, 220px); align-items: center; gap: 10px; padding: 3px 0; }
+.delegation-fallback-row > span { color: rgba(255,255,255,.62); font-size: 11px; }
+.delegation-fallback-row small { color: rgba(255,255,255,.42); font-size: 10px; }
 
 .folder-menu-backdrop { position: fixed; z-index: 118; inset: 0; padding: 0; border: 0; background: transparent; cursor: default; }
 .folder-menu { position: fixed; z-index: 119; display: grid; width: 186px; padding: 4px; border: 1px solid rgba(255,255,255,.12); border-radius: 9px; background: rgba(28,31,36,.99); box-shadow: 0 14px 40px rgba(0,0,0,.5); animation: search-modal-in 120ms ease-out; }

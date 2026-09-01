@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Ban, Check, Copy, RefreshCw } from 'lucide-react'
-import type { AgentHealth, DelegationSnapshot, DelegationTask } from '../../../electron/contracts'
+import { Ban, Check, Copy, RefreshCw, RotateCcw } from 'lucide-react'
+import type { AgentAccount, AgentHealth, DelegationSnapshot, DelegationTask } from '../../../electron/contracts'
+import { SelectBox } from '../../components/SelectBox'
 import { SettingsToggle } from '../../components/SettingsToggle'
-import { delegationPromptLine, delegationStatusLabel, delegationTimeLabel, isOpenDelegation } from './delegation-display'
+import { delegationFailureKind, delegationFailureLabel, delegationPromptLine, delegationStatusLabel, delegationTimeLabel, isOpenDelegation, isRetryableDelegation } from './delegation-display'
 
 interface DelegationSettingsSectionProps {
   visible: boolean
@@ -13,7 +14,14 @@ interface DelegationSettingsSectionProps {
   onRegenerateToken: () => void
   onReviewTask: (taskId: string) => void
   onCancelTask: (taskId: string) => void
+  onRetryTask: (taskId: string) => void
+  accounts: readonly AgentAccount[]
+  fallbackAccounts: Readonly<Record<string, string>>
+  onFallbackAccountChange: (agentId: string, accountId: string) => void
 }
+
+// The two CLIs that can run as delegation workers today.
+const WORKER_AGENTS = ['claude', 'codex'] as const
 
 const COPIED_RESET_MS = 1600
 
@@ -38,6 +46,10 @@ export function DelegationSettingsSection({
   onRegenerateToken,
   onReviewTask,
   onCancelTask,
+  onRetryTask,
+  accounts,
+  fallbackAccounts,
+  onFallbackAccountChange,
 }: DelegationSettingsSectionProps) {
   const [copiedKey, setCopiedKey] = useState('')
   const [confirmRegenerate, setConfirmRegenerate] = useState(false)
@@ -102,6 +114,33 @@ export function DelegationSettingsSection({
         <p>Delegations start immediately with the default account — no approval dialog. Leave this off unless you trust every registered caller.</p>
       </div>
 
+      <div className="delegation-fallback">
+        <strong>Fallback account</strong>
+        <p>If a task fails from a usage limit or sign-in problem, MoaCLI retries it once with this account automatically. Leave on “None” to be asked instead.</p>
+        {WORKER_AGENTS.map((agentId) => {
+          const agentAccounts = accounts.filter((account) => account.agentId === agentId)
+          const selected = fallbackAccounts[agentId] ?? ''
+          return (
+            <div className="delegation-fallback-row" key={agentId}>
+              <span>{profilesById.get(agentId)?.label ?? agentId}</span>
+              {agentAccounts.length
+                ? (
+                  <SelectBox
+                    value={agentAccounts.some((account) => account.id === selected) ? selected : ''}
+                    options={[
+                      { value: '', label: 'None — ask me first' },
+                      ...agentAccounts.map((account) => ({ value: account.id, label: account.email || account.configDir })),
+                    ]}
+                    ariaLabel={`Fallback account for ${profilesById.get(agentId)?.label ?? agentId}`}
+                    onChange={(accountId) => onFallbackAccountChange(agentId, accountId)}
+                  />
+                )
+                : <small>Add accounts in Settings → Accounts first.</small>}
+            </div>
+          )
+        })}
+      </div>
+
       <div className="delegation-register">
         <div className="delegation-register-block">
           <div className="delegation-register-title">
@@ -141,6 +180,7 @@ export function DelegationSettingsSection({
         {!tasks.length && <p className="delegation-tasks-empty">No delegated tasks yet.</p>}
         {tasks.map((task: DelegationTask) => {
           const profile = profilesById.get(task.agent)
+          const failureKind = delegationFailureKind(task)
           return (
             <div className={`delegation-task-row ${task.status}`} key={task.id}>
               <span className="delegation-task-status">{delegationStatusLabel(task.status)}</span>
@@ -150,12 +190,17 @@ export function DelegationSettingsSection({
                   {profile?.label ?? task.agent}
                   {task.accountEmail ? ` · ${task.accountEmail}` : ''}
                   {` · from ${task.caller}`}
+                  {task.retryOfId ? ' · retry' : ''}
                   {` · ${delegationTimeLabel(task.createdAt)}`}
                   {task.error ? ` · ${task.error}` : ''}
                 </small>
+                {failureKind && <small className="delegation-failure-hint">{delegationFailureLabel(failureKind)}</small>}
               </span>
               {task.status === 'awaiting_approval' && (
                 <button className="secondary-button" onClick={() => onReviewTask(task.id)}>Review</button>
+              )}
+              {isRetryableDelegation(task) && (
+                <button className="icon-button" title="Retry with another account" onClick={() => onRetryTask(task.id)}><RotateCcw size={14} /></button>
               )}
               {isOpenDelegation(task) && (
                 <button className="icon-button" title="Cancel task" onClick={() => onCancelTask(task.id)}><Ban size={14} /></button>

@@ -33,6 +33,8 @@ interface SettingsModalProps {
   updateError: string
   notificationSettings: NotificationSettings
   delegation: DelegationSnapshot | null
+  accounts: readonly AgentAccount[]
+  delegationFallback: Readonly<Record<string, string>>
   profiles: readonly AgentHealth[]
   profilesById: ReadonlyMap<string, AgentHealth>
   agentIcons: Readonly<Record<string, AgentIconPreference>>
@@ -54,6 +56,8 @@ interface SettingsModalProps {
   onRegenerateDelegationToken: () => void
   onReviewDelegation: (taskId: string) => void
   onCancelDelegation: (taskId: string) => void
+  onRetryDelegation: (taskId: string) => void
+  onDelegationFallbackChange: (agentId: string, accountId: string) => void
   onAgentIconChange: (agentId: string, preference: AgentIconPreference) => void
   onOpenIconPicker: (agentId: string) => void
   onImportAgentIcon: (agentId: string, file?: File) => void
@@ -81,6 +85,8 @@ export function SettingsModal({
   updateError,
   notificationSettings,
   delegation,
+  accounts,
+  delegationFallback,
   profiles,
   profilesById,
   agentIcons,
@@ -102,6 +108,8 @@ export function SettingsModal({
   onRegenerateDelegationToken,
   onReviewDelegation,
   onCancelDelegation,
+  onRetryDelegation,
+  onDelegationFallbackChange,
   onAgentIconChange,
   onOpenIconPicker,
   onImportAgentIcon,
@@ -175,6 +183,10 @@ export function SettingsModal({
               onRegenerateToken={onRegenerateDelegationToken}
               onReviewTask={onReviewDelegation}
               onCancelTask={onCancelDelegation}
+              onRetryTask={onRetryDelegation}
+              accounts={accounts}
+              fallbackAccounts={delegationFallback}
+              onFallbackAccountChange={onDelegationFallbackChange}
             />
             <AgentIconSettingsSection
               visible={section === 'icons'}

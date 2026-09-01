@@ -120,6 +120,9 @@ export interface DelegationTask {
   accountEmail?: string
   // Session/thread id the worker CLI recorded its transcript under.
   workerSessionId?: string
+  // Id of the failed/cancelled task this one was retried from. Retries are
+  // never auto-approved: the point of retrying is picking another account.
+  retryOfId?: string
   resultPreview?: string
   error?: string
   detail?: string
@@ -255,6 +258,7 @@ export interface CliAgentApi {
   approveDelegation: (approval: DelegationApproval) => Promise<DelegationSnapshot>
   rejectDelegation: (taskId: string) => Promise<DelegationSnapshot>
   cancelDelegation: (taskId: string) => Promise<DelegationSnapshot>
+  retryDelegation: (taskId: string) => Promise<DelegationSnapshot>
   setDelegationEnabled: (enabled: boolean) => Promise<DelegationSnapshot>
   setDelegationAutoApprove: (enabled: boolean) => Promise<DelegationSnapshot>
   regenerateDelegationToken: () => Promise<DelegationSnapshot>

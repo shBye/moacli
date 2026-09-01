@@ -159,6 +159,7 @@
 - **Codex를 caller로 쓸 때**: 대화형 `codex`는 MCP 툴 호출 시 TUI가 인라인으로 승인을 물음 — 플래그 불필요. headless `codex exec`만 매 호출 `--approve-for-me` 필요. Codex는 툴 타임아웃 60초 기본이라 긴 작업은 `start_task`→`check_task` 폴링 필수(`tool_timeout_sec = 630`으로 상향해 둠).
 - **worker 계정 변경**: 승인 모달의 Account SelectBox에서 작업별 선택(설정 → Accounts에 등록된 계정, 비감지 계정은 `CLAUDE_CONFIG_DIR`/`CODEX_HOME` 주입). 계정 만료/한도 시 worker가 실패로 남고, 재위임 때 다른 계정을 고르면 됨. 기본 CLI 계정 전환 자체는 `claude login`/`codex login` 영역.
 - **자동 승인 모드**: 설정 → Delegation의 "Auto-approve requests" 토글(기본 off, `delegation-server.json`의 `autoApprove`로 영속). 켜면 요청이 모달 없이 기본 계정으로 즉시 실행되고, 동시 실행 상한에 걸리면 승인 모달로 폴백. 완료/실패 알림은 그대로 옴.
+- **Fallback account** (2026-08-31): 설정 → Delegation의 에이전트별 드롭다운(기본 "None — ask me first", localStorage `cli-agent-manager.delegation-fallback-accounts`). 설정하면 작업이 한도/인증 실패로 분류될 때 해당 계정으로 **1회 자동 재시도**(렌더러가 실패 전환 감지 → `inspectAccount`로 fallback 로그인 확인 → retry+approve, 모달 플래시 방지 위해 dismissed 처리). 재시도의 재시도는 자동 안 함(1홉 보장), fallback이 실패 계정과 같거나 만료면 자동 대신 수동 재시도 버튼만 남음. 미설정이면 실패 알림 → 설정의 재시도 버튼 → 승인 모달(계정 선택) 흐름.
 
 ## 7. 현재 상태 / 재개 시 체크리스트 (2026-08-28 기준)
 
@@ -168,9 +169,9 @@
 - 서버 접속 정보는 `%APPDATA%\cli-agent-manager\delegation-server.json`(port 38017 + bearer token)에 영속, 앱 재시작에도 등록 유지됨.
 - Phase 0은 v0.1.17에, Phase 1은 그 다음 커밋(2026-08-28)에 포함. Phase 1 구현 내역·검증은 §4 참고.
 - **다음 작업 (예약, 2026-08-31 사용자 지시)**:
-  1. **승인 모달에 계정별 인증 상태 뱃지** — 계정 SelectBox 옆에 로그인됨/만료 표시. `session-history.ts`의 `claudeEmail()`/`codexEmail()` 검사 로직 재사용(만료·로그아웃이면 이메일 조회 실패). 모달 열릴 때 비동기 검사, 만료 계정은 라벨에 경고.
+  1. (완료 2026-08-31) **승인 모달에 계정별 인증 상태 뱃지** — 모달이 열릴 때 계정마다 기존 `accounts:inspect` IPC(`inspectAccount`, 내부적으로 `claudeEmail()`/`codexEmail()`)를 비동기로 호출해 null이면 만료로 판정. 만료 계정은 SelectBox 라벨에 "— sign-in expired" 경고, 선택된 계정 옆에 Signed in(초록)/Sign-in expired(빨강) 뱃지.
   2-0. (완료 2026-08-31) 자동 승인 토글 — §6.9 참고.
-  2. **실패/취소 작업 "다른 계정으로 재시도"** — 설정 Delegation의 Recent tasks 행에 재시도 버튼: 동일 prompt/cwd/timeout으로 새 태스크 생성 → 승인 모달(계정 선택 포함) 재진입. 레지스트리에 원본 task id 참조 저장.
+  2. (완료 2026-08-31) **실패/취소 작업 "다른 계정으로 재시도"** — Recent tasks의 failed/cancelled 행에 재시도 버튼(RotateCcw) → `delegation:retry` IPC → `DelegationTaskRegistry.retry()`가 동일 prompt/cwd/timeout/caller로 새 태스크 생성(`retry_of` 컬럼에 원본 id, 마이그레이션 포함) → 승인 모달 재진입. **재시도는 auto-approve를 건너뜀**(`task.retryOfId`면 자동 승인 분기 제외 — 재시도의 목적이 계정 선택이므로). 실패 detail 텍스트를 정규식으로 분류해 한도(`usage limit|rate limit|quota`)/인증(`401|unauthorized|token expired…`) 실패면 행에 "retry with another account" 힌트 표시(`delegation-display.ts`의 `delegationFailureKind`). 하네스 검증: 클론 필드/이벤트의 retryOfId/open·rejected 거부/재시작 후 sqlite 왕복/구스키마 마이그레이션 모두 통과.
   2-1. **(설계 메모, 2026-08-31) 세션 이어가기 + 계정 교체** — 토큰 소진/계정 이슈로 막힌 대화를 같은 대화 상태로 다른 계정에서 이어가기. 이론상 완전히 가능함을 조사로 확인: 두 CLI 모두 대화를 로컬 JSONL로 저장하고 resume는 그 파일을 읽어 복원할 뿐, 파일이 계정에 묶여 있지 않다(커뮤니티 도구 claude-swap/codex-auth 등이 auth만 교체하는 방식으로 실증).
      - 저장 위치: Claude `{CLAUDE_CONFIG_DIR}/projects/<경로 인코딩>/<session-id>.jsonl`, Codex `{CODEX_HOME}/sessions/YYYY/MM/DD/rollout-*.jsonl`. Codex는 재로그인해도 세션 보존.
      - **MoaCLI 함정**: 우리는 계정을 디렉터리 전체(`CLAUDE_CONFIG_DIR`/`CODEX_HOME`)로 분리하므로 계정 B 디렉터리에는 계정 A의 세션 파일이 없다. env만 바꿔 `--resume`하면 "세션 없음".

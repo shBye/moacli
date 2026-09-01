@@ -105,6 +105,7 @@ const api: CliAgentApi = {
   approveDelegation: (approval) => ipcRenderer.invoke('delegation:approve', approval),
   rejectDelegation: (taskId) => ipcRenderer.invoke('delegation:reject', taskId),
   cancelDelegation: (taskId) => ipcRenderer.invoke('delegation:cancel', taskId),
+  retryDelegation: (taskId) => ipcRenderer.invoke('delegation:retry', taskId),
   setDelegationEnabled: (enabled) => ipcRenderer.invoke('delegation:set-enabled', enabled),
   setDelegationAutoApprove: (enabled) => ipcRenderer.invoke('delegation:set-auto-approve', enabled),
   regenerateDelegationToken: () => ipcRenderer.invoke('delegation:regenerate-token'),

@@ -255,6 +255,10 @@ ipcMain.handle('delegation:cancel', (_event, taskId: string) => {
   delegationRegistryOrThrow().cancel(taskId)
   return delegationSnapshot()
 })
+ipcMain.handle('delegation:retry', (_event, taskId: string) => {
+  delegationRegistryOrThrow().retry(taskId)
+  return delegationSnapshot()
+})
 ipcMain.handle('delegation:set-enabled', async (_event, enabled: boolean) => {
   if (!delegationServer) throw new Error('Delegation server is not available')
   await delegationServer.setEnabled(enabled === true)
@@ -319,7 +323,9 @@ app.whenReady().then(async () => {
       (task, event) => {
         // Auto-approve starts the worker with the default account right away;
         // if that fails (e.g. concurrency cap), fall back to asking the user.
-        if (event === 'awaiting_approval' && delegationServer?.autoApprove) {
+        // Retries always go through the approval modal — the point of retrying
+        // is choosing another account.
+        if (event === 'awaiting_approval' && delegationServer?.autoApprove && !task.retryOfId) {
           queueMicrotask(() => {
             try {
               delegationRegistry?.approve(task.id)

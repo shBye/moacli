@@ -27,3 +27,23 @@ export function delegationPolicyLabel(agent: string): string {
 export function isOpenDelegation(task: DelegationTask): boolean {
   return task.status === 'awaiting_approval' || task.status === 'running'
 }
+
+export function isRetryableDelegation(task: DelegationTask): boolean {
+  return task.status === 'failed' || task.status === 'cancelled'
+}
+
+export type DelegationFailureKind = 'limit' | 'auth'
+
+// The CLIs report limit/auth failures only as free-form message text, so match
+// leniently: this feeds a hint label and never gates behavior.
+export function delegationFailureKind(task: DelegationTask): DelegationFailureKind | undefined {
+  if (task.status !== 'failed') return undefined
+  const text = `${task.error ?? ''} ${task.detail ?? ''}`
+  if (/usage limit|rate.?limit|limit reached|quota/i.test(text)) return 'limit'
+  if (/401|unauthori[sz]ed|invalid api key|token.*(expired|revoked|used)|refresh.*failed|not logged in|please run.*login|authentication/i.test(text)) return 'auth'
+  return undefined
+}
+
+export function delegationFailureLabel(kind: DelegationFailureKind): string {
+  return kind === 'limit' ? 'Usage limit hit — retry with another account' : 'Sign-in problem — log in again or retry with another account'
+}
