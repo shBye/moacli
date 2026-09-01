@@ -65,7 +65,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   --acc-ink: #1a1409;
   --state-running: #3ed598;
   --state-processing: #72c7f0;
-  --state-attention: #f4c95d;
+  /* Attention follows the accent theme; the literal is only the pre-theme fallback. */
+  --state-attention: var(--acc, #f4c95d);
   --state-error: #ff7e86;
   --term-dim: .5;
   display: grid;
@@ -224,7 +225,7 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .state-dot.running { background: var(--state-running); box-shadow: 0 0 0 3px rgba(62,213,152,.18); }
 .state-dot.starting { background: var(--acc); }
 .state-dot.processing { background: var(--state-processing); box-shadow: 0 0 0 3px rgba(114,199,240,.16); animation: status-pulse 1.25s ease-in-out infinite; }
-.state-dot.needs_attention { background: var(--state-attention); box-shadow: 0 0 0 3px rgba(244,201,93,.18); }
+.state-dot.needs_attention { background: var(--state-attention); box-shadow: 0 0 0 3px color-mix(in oklch, var(--state-attention) 18%, transparent); }
 .session-notification-marker { display: grid; width: 17px; height: 17px; flex: none; place-items: center; border-radius: 50%; color: var(--acc); background: color-mix(in oklch, var(--acc) 14%, transparent); }
 .session-notification-marker.failed { color: var(--state-error); background: rgba(255,126,134,.13); }
 .session-notification-marker.completed { color: var(--state-running); background: rgba(62,213,152,.12); }
@@ -297,7 +298,7 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .session-tab-select { display: flex; min-width: 0; height: 100%; flex: 1; align-items: center; gap: 7px; padding: 0 6px 0 9px; overflow: hidden; border: 0; outline: 0; color: inherit; background: transparent; cursor: pointer; text-align: left; }
 .session-tab-select:focus-visible { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--acc) 62%, transparent); }
 .session-tab .agent-monogram { display: grid; width: 18px; height: 18px; padding: 0; place-items: center; border-color: rgba(255,255,255,.09); border-radius: 5px; line-height: 0; box-shadow: none; }
-.session-tab.active .agent-monogram { border-color: color-mix(in oklch, var(--agent) 34%, rgba(255,255,255,.07)); box-shadow: none; }
+.session-tab.active .agent-monogram { border-color: color-mix(in oklch, var(--acc) 46%, rgba(255,255,255,.07)); box-shadow: none; }
 .session-tab .agent-monogram > span { display: grid; width: 100%; height: 100%; place-items: center; line-height: 1; transform: none; }
 .session-tab .agent-monogram svg { display: block; width: 10px; height: 10px; margin: 0; }
 .session-tab .agent-monogram img { display: block; margin: 0; }
@@ -378,7 +379,7 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .state-chip.starting > span { background: var(--acc); }
 .state-chip.processing { border-color: rgba(114,199,240,.28); color: var(--state-processing); background: rgba(114,199,240,.1); }
 .state-chip.processing > span { background: var(--state-processing); animation: status-pulse 1.25s ease-in-out infinite; }
-.state-chip.needs_attention { border-color: rgba(244,201,93,.3); color: var(--state-attention); background: rgba(244,201,93,.11); }
+.state-chip.needs_attention { border-color: color-mix(in oklch, var(--state-attention) 30%, transparent); color: var(--state-attention); background: color-mix(in oklch, var(--state-attention) 11%, transparent); }
 .state-chip.needs_attention > span { background: var(--state-attention); }
 .session-email { flex: none; color: rgba(255,255,255,.5); font: 400 10px/1 'JetBrains Mono', monospace; }
 .session-cwd { min-width: 40px; max-width: 280px; flex: 1; margin-left: auto; overflow: hidden; color: rgba(255,255,255,.5); font: 400 10px/1 'JetBrains Mono', monospace; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
