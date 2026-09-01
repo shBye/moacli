@@ -307,7 +307,10 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
         // xterm.js 5.5 collapses Shift+Enter to CR, and writing LF instead
         // reaches the CLI as Ctrl+Enter after ConPTY's translation. Sending a
         // win32-input-mode key event (VK_RETURN with SHIFT down, then up)
-        // delivers a real Shift+Enter, which Codex maps to a newline.
+        // delivers a real Shift+Enter, which Codex maps to a newline. Without
+        // preventDefault the browser still fires keypress and xterm's keypress
+        // path sends a bare CR after it, submitting the message instead.
+        event.preventDefault()
         reportActivity()
         window.cliAgent.writePty(id, '\x1b[13;28;13;1;16;1_\x1b[13;28;13;0;16;1_')
         return false
