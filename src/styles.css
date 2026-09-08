@@ -349,6 +349,11 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 
 .launcher-field { display: flex; width: 100%; height: 38px; min-width: 0; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 9px; color: rgba(255,255,255,.62); background: rgba(0,0,0,.2); text-align: left; }
 .title-field:focus-within { border-color: color-mix(in oklch, var(--acc) 36%, transparent); background: rgba(0,0,0,.28); }
+.launcher-title-mode { display: flex; gap: 4px; padding: 3px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; background: rgba(0,0,0,.16); }
+.launcher-title-mode button { flex: 1; min-height: 30px; border: 1px solid transparent; border-radius: 5px; color: rgba(255,255,255,.6); background: transparent; font-size: 11px; cursor: pointer; }
+.launcher-title-mode button[aria-pressed='true'] { border-color: color-mix(in oklch, var(--acc) 30%, transparent); color: var(--acc); background: color-mix(in oklch, var(--acc) 9%, transparent); }
+.launcher-title-mode button:focus-visible { outline-offset: -2px; }
+.launcher-title-hint { margin: 0; padding: 6px 2px; color: rgba(255,255,255,.55); font-size: 11px; line-height: 1.5; }
 .title-field > span { flex: none; color: rgba(255,255,255,.55); font-size: 10px; font-weight: 600; text-transform: uppercase; }
 .title-field input { min-width: 0; flex: 1; border: 0; outline: 0; color: #e7e9ea; background: transparent; font-size: 13px; }
 .title-field small { flex: none; color: rgba(255,255,255,.45); font: 400 10px/1 'JetBrains Mono', monospace; }

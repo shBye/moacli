@@ -1,3 +1,5 @@
+import { useSessionTitles } from './features/sessions/useSessionTitles'
+import { initialSessionTitle, resumedSessionTitle, type TitleMode } from './features/sessions/session-title'
 import { DEFAULT_NOTIFICATION_SETTINGS } from './features/notifications/notification-policy'
 import {
   lazy,
@@ -222,10 +224,10 @@ function savedMaxRuntimeSessions(): number {
 export function App() {
   const [profiles, setProfiles] = useState<AgentHealth[]>([])
   const [profilesRefreshing, setProfilesRefreshing] = useState(false)
-  const [history, setHistory] = useState<HistorySession[]>([])
+  const [rawHistory, setHistory] = useState<HistorySession[]>([])
   const [historyQuery, setHistoryQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
-  const [searchResults, setSearchResults] = useState<ConversationSearchResult[]>([])
+  const [rawSearchResults, setSearchResults] = useState<ConversationSearchResult[]>([])
   const [searchIndexState, setSearchIndexState] = useState<SearchIndexState>(EMPTY_SEARCH_INDEX_STATE)
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchError, setSearchError] = useState('')
@@ -267,8 +269,10 @@ export function App() {
   const [removingFolderEntry, setRemovingFolderEntry] = useState('')
   const [agentId, setAgentId] = useState('powershell')
   const [title, setTitle] = useState('')
+  const [titleMode, setTitleMode] = useState<TitleMode>('auto')
   const [cwd, setCwd] = useState('C:\\git_workspace')
   const [sessions, setSessions] = useState<RuntimeSession[]>([])
+  const { history, searchResults, titles: customTitles } = useSessionTitles(rawHistory, rawSearchResults, sessions, setSessions, localStorage)
   const [activeSessionId, setActiveSessionId] = useState('')
   const [launcherOpen, setLauncherOpen] = useState(false)
   const [sectionOpen, setSectionOpen] = useState<SidebarSectionState>(() => loadJson(SECTION_STORAGE_KEY, DEFAULT_SECTIONS))
@@ -809,7 +813,7 @@ export function App() {
     addRuntimeSession({
       agentId,
       cwd: sessionCwd,
-      title: title.trim() || fallbackTitle,
+      ...initialSessionTitle(titleMode, title, fallbackTitle),
       account: selectedAccount,
       purpose: 'session',
       resumeId: '',
@@ -829,6 +833,7 @@ export function App() {
       revealLatestAt: 0,
     })
     setTitle('')
+    setTitleMode('auto')
     setNewSessionFolderId('unsorted')
     setLauncherOpen(false)
   }
@@ -1423,7 +1428,7 @@ export function App() {
     addRuntimeSession({
       agentId: historySession.agentId,
       cwd: sessionCwd,
-      title: historySession.title,
+      ...resumedSessionTitle(historySession, customTitles),
       account,
       purpose: 'session',
       resumeId: historySession.resumeId,
@@ -1528,7 +1533,7 @@ export function App() {
     const id = addRuntimeSession({
       agentId: result.session.agentId,
       cwd: result.session.cwd || cwd.trim() || 'C:\\git_workspace',
-      title: result.session.title,
+      ...resumedSessionTitle(result.session, customTitles),
       account,
       purpose: 'session',
       resumeId: result.session.resumeId,
@@ -1670,6 +1675,8 @@ export function App() {
       agentId={agentId}
       agentIcons={agentIcons}
       title={title}
+      titleMode={titleMode}
+      onTitleModeChange={setTitleMode}
       cwd={cwd}
       folders={folders}
       folderId={newSessionFolderId}

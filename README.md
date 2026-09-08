@@ -193,6 +193,7 @@ The detailed product flow, data model, failure handling, and acceptance criteria
 - [Mobile–Desktop remote communication plan](./docs/MOBILE_DESKTOP_REMOTE.md)
 - [UI polish review](./docs/UI_POLISH_REVIEW.md)
 - [macOS support scope (planning only)](./docs/MACOS_SUPPORT.md)
+- [Automatic and custom session titles](./docs/SESSION_TITLES.md)
 
 | Command | Purpose |
 | --- | --- |

@@ -8,6 +8,7 @@ export interface RuntimeSession {
   agentId: string
   cwd: string
   title: string
+  customTitle?: string
   account?: AgentAccount
   purpose: 'session' | 'login'
   resumeId: string

@@ -1,3 +1,4 @@
+import type { TitleMode } from '../sessions/session-title'
 import type { CSSProperties } from 'react'
 import { Folder, Play } from 'lucide-react'
 import type { AgentAccount, AgentHealth } from '../../../electron/contracts'
@@ -11,6 +12,8 @@ interface SessionLauncherProps {
   profiles: readonly AgentHealth[]
   agentId: string
   agentIcons: Readonly<Record<string, AgentIconPreference>>
+  titleMode: TitleMode
+  onTitleModeChange: (mode: TitleMode) => void
   title: string
   cwd: string
   folders: readonly LogicalFolder[]
@@ -33,6 +36,8 @@ export function SessionLauncher({
   agentId,
   agentIcons,
   title,
+  titleMode,
+  onTitleModeChange,
   cwd,
   folders,
   folderId,
@@ -50,6 +55,7 @@ export function SessionLauncher({
 }: SessionLauncherProps) {
   const startDisabled = !selectedProfile?.available
     || !cwd.trim()
+    || (titleMode === 'custom' && !title.trim())
     || (agentId !== 'powershell' && !selectedAccount)
   const folderOptions = [
     { value: 'unsorted', label: 'Unsorted' },
@@ -85,11 +91,15 @@ export function SessionLauncher({
               </button>
             ))}
           </div>
-          <label className="launcher-field title-field">
+          <div className="launcher-title-mode" role="group" aria-label="Session title mode">
+            <button type="button" aria-pressed={titleMode === 'auto'} onClick={() => onTitleModeChange('auto')}>Automatic (default)</button>
+            <button type="button" aria-pressed={titleMode === 'custom'} onClick={() => onTitleModeChange('custom')}>Custom title</button>
+          </div>
+          {titleMode === 'custom' ? <label className="launcher-field title-field">
             <span>Title</span>
             <input autoFocus maxLength={40} value={title} placeholder="Session title" onChange={(event) => onTitleChange(event.target.value)} />
             <small>{title.length}/40</small>
-          </label>
+          </label> : <p className="launcher-title-hint">{agentId === 'powershell' ? 'Uses the shell and folder name.' : 'Follows the CLI session title when available.'}</p>}
           <button className="launcher-field path-field" onClick={onSelectWorkingDirectory}>
             <Folder size={15} />
             <span>{cwd}</span>

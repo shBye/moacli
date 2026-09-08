@@ -1,3 +1,5 @@
+import { claudeSessionTitle } from './claude-session-title'
+import { CodexSessionTitleReader } from './read-codex-session-titles'
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { existsSync, openSync, closeSync, readFileSync, readSync, readdirSync, statSync } from 'node:fs'
@@ -311,14 +313,12 @@ function parseClaudeSummary(path: string, account: AgentAccount): HistorySession
   const records = jsonLines(readSample(path))
   let sessionId = basename(path, '.jsonl')
   let cwd = ''
-  let title = ''
+  const title = claudeSessionTitle(records)
   let firstPrompt = ''
   let updatedAt = statSync(path).mtimeMs
   for (const record of records) {
     if (typeof record.sessionId === 'string') sessionId = record.sessionId
     if (typeof record.cwd === 'string') cwd = record.cwd
-    if (record.type === 'custom-title' && typeof record.customTitle === 'string') title = record.customTitle
-    else if (!title && record.type === 'ai-title' && typeof record.aiTitle === 'string') title = record.aiTitle
     if (!firstPrompt && record.type === 'user') {
       const message = record.message as Record<string, unknown> | undefined
       firstPrompt = contentText(message?.content)
@@ -496,6 +496,7 @@ function openCodeMessages(data: unknown): HistoryMessage[] {
 }
 
 export class SessionHistoryService {
+  private readonly codexTitles = new CodexSessionTitleReader()
   private sessionFilter: (session: HistorySession) => boolean = () => true
   private sources = new Map<string, HistorySource>()
   private sessions = new Map<string, HistorySession>()
@@ -658,8 +659,13 @@ export class SessionHistoryService {
           source: { agentId: 'claude', path },
         })))
       } else if (account.agentId === 'codex') {
+        const names = this.codexTitles.read(account.configDir)
         local.push(...codexFiles(account.configDir).map((path) => ({
-          summary: cachedSummary('codex', path, account, () => parseCodexSummary(path, account)),
+          summary: (() => {
+            const summary = cachedSummary('codex', path, account, () => parseCodexSummary(path, account))
+            const name = summary && names.get(summary.resumeId)
+            return summary && name ? { ...summary, title: compactTitle(name) } : summary
+          })(),
           source: { agentId: 'codex', path },
         })))
       } else if (account.agentId === 'gemini') {
