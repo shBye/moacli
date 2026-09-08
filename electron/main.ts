@@ -17,11 +17,11 @@ let mainWindow: BrowserWindow | null = null
 app.setPath('userData', join(app.getPath('appData'), 'cli-agent-manager'))
 if (process.platform === 'win32') app.setAppUserModelId('app.moacli.desktop')
 let notificationCenter: NotificationCenter | null = null
-const attentionBridge = new AttentionBridge(({ request, source, reason, generation }) => {
+const attentionBridge = new AttentionBridge(({ request, event, generation }) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('pty:attention', { id: request.id, reason })
+    mainWindow.webContents.send('pty:attention', { id: request.id, event })
   }
-  notificationCenter?.handleNeedsAttention(request, `${source}:${reason}:${generation}`)
+  notificationCenter?.handleAgentEvent(request, event, generation)
 })
 const ptyHost = new PtyHostClient(
   join(__dirname, 'pty-host.js'),

@@ -23,7 +23,9 @@ export function NotificationSettingsSection({
       </div>
       <div className="notification-settings-options">
         <SettingsToggle label="Desktop notifications" checked={settings.desktopEnabled} disabled={!settings.enabled} onChange={(desktopEnabled) => onChange({ desktopEnabled })} />
-        <SettingsToggle label="Needs attention" checked={settings.needsAttention} disabled={!settings.enabled} onChange={(needsAttention) => onChange({ needsAttention })} />
+        <SettingsToggle label="Approval requests" checked={settings.approvals} disabled={!settings.enabled} onChange={(approvals) => onChange({ approvals })} />
+        <SettingsToggle label="Questions and input requests" checked={settings.inputRequired} disabled={!settings.enabled} onChange={(inputRequired) => onChange({ inputRequired })} />
+        <SettingsToggle label="Other attention alerts" checked={settings.needsAttention} disabled={!settings.enabled} onChange={(needsAttention) => onChange({ needsAttention })} />
         <SettingsToggle label="Failed" checked={settings.failed} disabled={!settings.enabled} onChange={(failed) => onChange({ failed })} />
         <SettingsToggle label="Completed" checked={settings.completed} disabled={!settings.enabled} onChange={(completed) => onChange({ completed })} />
       </div>

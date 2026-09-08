@@ -1,3 +1,5 @@
+import type { AgentEvent } from '../src/features/sessions/agent-event'
+
 export interface AgentProfile {
   id: string
   label: string
@@ -60,10 +62,10 @@ export interface PtyExitEvent {
 
 export interface PtyAttentionEvent {
   id: string
-  reason: string
+  event: AgentEvent
 }
 
-export type AppNotificationType = 'needs_attention' | 'completed' | 'failed' | 'account_changed' | 'info'
+export type AppNotificationType = 'needs_attention' | 'approval_required' | 'input_required' | 'completed' | 'failed' | 'account_changed' | 'info'
 
 export interface AppNotification {
   id: string
@@ -75,12 +77,15 @@ export interface AppNotification {
   title: string
   createdAt: number
   desktopDeliveredAt?: number
+  event?: AgentEvent
 }
 
 export interface NotificationSettings {
   enabled: boolean
   desktopEnabled: boolean
   needsAttention: boolean
+  approvals: boolean
+  inputRequired: boolean
   failed: boolean
   completed: boolean
 }
@@ -244,7 +249,7 @@ export interface CliAgentApi {
   stopPty: (id: string) => void
   onPtyData: (id: string, callback: (data: string) => void) => () => void
   onPtyExit: (id: string, callback: (exitCode: number) => void) => () => void
-  onPtyAttention: (id: string, callback: (reason: string) => void) => () => void
+  onPtyAttention: (id: string, callback: (event: AgentEvent) => void) => () => void
   onHistoryChanged: (callback: () => void) => () => void
   getNotificationSnapshot: () => Promise<NotificationSnapshot>
   updateNotificationSettings: (settings: Partial<NotificationSettings>) => Promise<NotificationSnapshot>

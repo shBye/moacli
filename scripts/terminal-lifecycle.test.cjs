@@ -3,11 +3,15 @@ const { test } = require('node:test')
 const fs = require('node:fs')
 const vm = require('node:vm')
 const ts = require('typescript')
+const agentEvents = {}
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/features/sessions/agent-event.ts', 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS },
+}).outputText, { exports: agentEvents })
 
 // Run the actual launch effect with deterministic boundary doubles.
 function harness() {
   const slots = [], starts = [], stops = [], resizes = [], writes = [], states = []
-  let cursor = 0, effects = [], previous = [], resolveStart, rejectStart, terminal
+  let cursor = 0, effects = [], previous = [], resolveStart, rejectStart, terminal, onAttention
   const noop = () => {}
   const disposable = () => ({ dispose: noop })
   const react = {
@@ -42,7 +46,8 @@ function harness() {
     startPty: request => { starts.push(request); return new Promise((resolve, reject) => { resolveStart = resolve; rejectStart = reject }) },
     stopPty: id => stops.push(id),
     resizePty: (...args) => resizes.push(args),
-    onPtyData: () => noop, onPtyExit: () => noop, onPtyAttention: () => noop,
+    onPtyData: () => noop, onPtyExit: () => noop,
+    onPtyAttention: (_id, callback) => { onAttention = callback; return noop },
   }
   const imports = {
     react,
@@ -57,6 +62,7 @@ function harness() {
     './terminal-clipboard': {},
     './terminal-options': { createTerminalOptions: () => ({}) },
     './terminal-paste': { attachTerminalPaste: () => ({ dispose: noop }) },
+    '../features/sessions/agent-event': agentEvents,
   }
   const exports = {}
   const source = fs.readFileSync('src/terminal/TerminalPane.tsx', 'utf8')
@@ -79,6 +85,7 @@ function harness() {
       return changed
     },
     launch: () => effects[0].run(),
+    attention: event => onAttention(event),
     resizeGrid: () => { terminal.cols = 120; terminal.rows = 40 },
     resolve: async () => { resolveStart(); await Promise.resolve(); await Promise.resolve() },
     reject: async () => { rejectStart(Error('late failure')); await Promise.resolve(); await Promise.resolve() },
@@ -116,6 +123,17 @@ test('late startup success stops the orphan without resizing it', async () => {
   const h = harness(); h.render({}); h.launch()(); await h.resolve()
   assert.equal(h.stops.length, 2)
   assert.deepEqual(h.resizes, [])
+})
+
+test('active pane distinguishes approval, unknown attention, and response completion', () => {
+  const h = harness()
+  h.render({ active: true, activityStatusEnabled: true })
+  const dispose = h.launch()
+  for (const kind of ['approval_required', 'attention', 'response_completed']) {
+    h.attention({ kind, name: 'test', source: 'claude-http' })
+  }
+  assert.deepEqual(h.states, ['starting', 'needs_attention', 'needs_attention', 'running'])
+  dispose()
 })
 
 for (const backend of ['conpty', 'posix']) {

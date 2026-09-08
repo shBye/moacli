@@ -4,9 +4,10 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { join } from 'node:path'
 import { getVersion, isVersionAtLeast } from './agent-profiles'
 import type { AgentProfile, StartPtyRequest } from './contracts'
+import type { AgentEvent } from '../src/features/sessions/agent-event'
+import { claudeAttentionHooks, normalizeClaudeHook, normalizeCodexOsc9 } from './attention-events'
 
-const MAX_HOOK_BODY_BYTES = 64 * 1024
-const CLAUDE_ATTENTION_EVENTS = new Set(['PermissionRequest', 'Elicitation', 'Stop', 'StopFailure'])
+const MAX_HOOK_BODY_BYTES = 1024 * 1024
 
 export interface AttentionLaunchOptions {
   args: string[]
@@ -15,8 +16,7 @@ export interface AttentionLaunchOptions {
 
 export interface AttentionSignal {
   request: StartPtyRequest
-  source: 'claude-http' | 'codex-osc9'
-  reason: string
+  event: AgentEvent
   generation: number
 }
 
@@ -25,6 +25,9 @@ interface AttentionRegistration {
   profile: AgentProfile
   generation: number
   settingsPath?: string
+  promptId?: string
+  retiredPromptIds: string[]
+  lastOutcomeKey?: string
 }
 
 function emptyLaunchOptions(): AttentionLaunchOptions {
@@ -75,7 +78,7 @@ export class AttentionBridge {
     const version = await getVersion(profile, executable)
     if (!isVersionAtLeast(version, profile.attention_min_version)) return emptyLaunchOptions()
 
-    const registration: AttentionRegistration = { request, profile, generation: 0 }
+    const registration: AttentionRegistration = { request, profile, generation: 0, retiredPromptIds: [] }
     this.registrations.set(request.id, registration)
 
     try {
@@ -92,17 +95,8 @@ export class AttentionBridge {
 
       if (profile.attention_adapter === 'claude-http' && this.port && this.settingsDirectory) {
         const endpoint = `http://127.0.0.1:${this.port}/attention/${this.token}/${encodeURIComponent(request.id)}`
-        const handler = { type: 'http', url: endpoint, timeout: 5 }
         const settingsPath = join(this.settingsDirectory, `claude-${request.id}.json`)
-        writeFileSync(settingsPath, JSON.stringify({
-          allowedHttpHookUrls: [endpoint],
-          hooks: {
-            PermissionRequest: [{ matcher: '*', hooks: [handler] }],
-            Elicitation: [{ matcher: '*', hooks: [handler] }],
-            Stop: [{ hooks: [handler] }],
-            StopFailure: [{ hooks: [handler] }],
-          },
-        }), 'utf8')
+        writeFileSync(settingsPath, JSON.stringify(claudeAttentionHooks(endpoint)), 'utf8')
         registration.settingsPath = settingsPath
         return { args: ['--settings', settingsPath], env: {} }
       }
@@ -117,10 +111,10 @@ export class AttentionBridge {
 
   // OSC9 sequences are scanned in the PTY host process; it forwards each
   // decoded notification here for registration and generation bookkeeping.
-  signalOsc9(ptyId: string, reason: string): void {
+  signalOsc9(ptyId: string, _reason: string): void {
     const registration = this.registrations.get(ptyId)
     if (registration?.profile.attention_adapter !== 'codex-osc9') return
-    this.emitSignal(registration, 'codex-osc9', reason)
+    this.emitSignal(registration, normalizeCodexOsc9())
   }
 
   release(ptyId: string): void {
@@ -157,28 +151,29 @@ export class AttentionBridge {
       return
     }
 
-    let body = ''
+    const chunks: string[] = []
+    let bodyBytes = 0
     let rejected = false
     request.setEncoding('utf8')
     request.on('data', (chunk: string) => {
       if (rejected) return
-      body += chunk
-      if (Buffer.byteLength(body, 'utf8') > MAX_HOOK_BODY_BYTES) {
+      bodyBytes += Buffer.byteLength(chunk, 'utf8')
+      if (bodyBytes > MAX_HOOK_BODY_BYTES) {
         rejected = true
+        chunks.length = 0
         this.respond(response, 413, { error: 'Payload too large' })
+        return
       }
+      chunks.push(chunk)
     })
     request.on('end', () => {
       if (rejected) return
       try {
-        const payload = JSON.parse(body) as { hook_event_name?: unknown }
-        const reason = typeof payload.hook_event_name === 'string' ? payload.hook_event_name : ''
-        if (!CLAUDE_ATTENTION_EVENTS.has(reason)) {
-          this.respond(response, 400, { error: 'Unsupported hook event' })
-          return
-        }
+        const event = normalizeClaudeHook(JSON.parse(chunks.join('')) as unknown)
+        // Observers never approve, deny, or block a tool. Unknown events are
+        // acknowledged without treating them as a failed hook.
         this.respond(response, 200, {})
-        queueMicrotask(() => this.emitSignal(registration, 'claude-http', reason))
+        if (event) queueMicrotask(() => this.emitSignal(registration, event))
       } catch {
         this.respond(response, 400, { error: 'Invalid JSON' })
       }
@@ -187,15 +182,27 @@ export class AttentionBridge {
 
   private emitSignal(
     registration: AttentionRegistration,
-    source: AttentionSignal['source'],
-    reason: string,
+    event: AgentEvent,
   ): void {
+    if (this.registrations.get(registration.request.id) !== registration) return
+    if (event.promptId && registration.retiredPromptIds.includes(event.promptId)) return
+    if (event.name === 'UserPromptSubmit') {
+      if (registration.promptId && registration.promptId !== event.promptId) {
+        registration.retiredPromptIds = [...registration.retiredPromptIds, registration.promptId].slice(-32)
+      }
+      registration.promptId = event.promptId
+      registration.lastOutcomeKey = undefined
+    }
+    if (event.promptId && (event.kind === 'response_completed' || event.kind === 'response_failed')) {
+      const key = `${event.promptId}:${event.kind}:${event.errorCode ?? ''}`
+      if (registration.lastOutcomeKey === key) return
+      registration.lastOutcomeKey = key
+    }
     registration.generation += 1
     try {
       this.onSignal({
         request: registration.request,
-        source,
-        reason,
+        event,
         generation: registration.generation,
       })
     } catch {

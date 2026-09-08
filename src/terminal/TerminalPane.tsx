@@ -11,6 +11,7 @@ import { isTerminalPasteShortcut } from './terminal-clipboard'
 import { createTerminalOptions } from './terminal-options'
 import { attachTerminalPaste } from './terminal-paste'
 import type { AgentAccount } from '../../electron/contracts'
+import { agentEventInteractionState, agentEventLabel } from '../features/sessions/agent-event'
 
 interface TerminalPaneProps {
   active: boolean
@@ -228,16 +229,8 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       terminal.write(`\r\n\x1b[90m[process exited: ${exitCode}]\x1b[0m\r\n`)
       stateChangeRef.current('stopped', `exit ${exitCode}`)
     })
-    const offAttention = window.cliAgent.onPtyAttention(id, (reason) => {
-      // The user is already looking at an active pane, so amber attention
-      // styling there is noise (Codex signals after every turn). The turn
-      // still ended, though: leaving the pane in 'processing' would make the
-      // tab's close button demand a confirm click long after work finished.
-      if (activeRef.current) {
-        if (interactionState === 'processing') reportInteractionState('running')
-        return
-      }
-      reportInteractionState('needs_attention', reason)
+    const offAttention = window.cliAgent.onPtyAttention(id, (event) => {
+      reportInteractionState(agentEventInteractionState(event), agentEventLabel(event))
     })
     const cancelBottomLock = (): void => {
       keepBottomUntil = 0

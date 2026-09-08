@@ -13,26 +13,12 @@ import type {
   StartPtyRequest,
 } from './contracts'
 import type { DelegationTaskEvent } from './delegation-tasks'
+import { agentEventLabel, type AgentEvent } from '../src/features/sessions/agent-event'
+import { agentEventNotificationType, DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_PRIORITY as PRIORITY, notificationTypeEnabled, parseNotificationSettings as parseSettings } from '../src/features/notifications/notification-policy'
 
 const DESKTOP_BURST_WINDOW_MS = 600
 const MAX_ACTIVE_NOTIFICATIONS = 10
 const DELEGATION_TITLE_CHARS = 80
-
-const DEFAULT_SETTINGS: NotificationSettings = {
-  enabled: false,
-  desktopEnabled: true,
-  needsAttention: true,
-  failed: true,
-  completed: true,
-}
-
-const PRIORITY: Record<AppNotificationType, number> = {
-  failed: 5,
-  needs_attention: 4,
-  account_changed: 3,
-  completed: 2,
-  info: 1,
-}
 
 interface CreateNotificationInput {
   sessionId: string
@@ -46,6 +32,7 @@ interface CreateNotificationInput {
   activation: NotificationActivation
   // Skip when the user is already looking at the session's terminal.
   skipWhenViewingCli: boolean
+  event?: AgentEvent
 }
 
 interface ActiveNotification extends AppNotification {
@@ -56,25 +43,6 @@ interface ActiveNotification extends AppNotification {
 
 export function delegationNotificationKey(taskId: string): string {
   return `delegation:${taskId}`
-}
-
-function parseSettings(value: unknown): NotificationSettings {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return DEFAULT_SETTINGS
-  const candidate = value as Partial<NotificationSettings>
-  return {
-    enabled: candidate.enabled === true,
-    desktopEnabled: candidate.desktopEnabled !== false,
-    needsAttention: candidate.needsAttention !== false,
-    failed: candidate.failed !== false,
-    completed: candidate.completed !== false,
-  }
-}
-
-function notificationTypeEnabled(settings: NotificationSettings, type: AppNotificationType): boolean {
-  if (type === 'failed') return settings.failed
-  if (type === 'completed') return settings.completed
-  if (type === 'needs_attention') return settings.needsAttention
-  return true
 }
 
 function sessionMessage(type: AppNotificationType): string {
@@ -139,12 +107,19 @@ export class NotificationCenter {
     this.createForSession(request, 'failed', `start:${request.id}`)
   }
 
-  handleNeedsAttention(request: StartPtyRequest, signalKey: string): void {
-    this.createForSession(request, 'needs_attention', `attention:${request.id}:${signalKey}`)
+  handleAgentEvent(request: StartPtyRequest, event: AgentEvent, generation: number): void {
+    if (request.purpose === 'login') return
+    // A subsequent response supersedes an earlier approval/failure, regardless
+    // of display priority. Clear even when that new category is muted.
+    this.acknowledgeSession(request.sessionId)
+    const type = agentEventNotificationType(event)
+    if (!type) return
+    this.createForSession(request, type, `event:${request.id}:${generation}`, event)
   }
 
   handleExit(request: StartPtyRequest, exitCode: number, intentional: boolean): void {
     if (intentional) return
+    this.acknowledgeSession(request.sessionId)
     const type: AppNotificationType = exitCode === 0 ? 'completed' : 'failed'
     this.createForSession(request, type, `exit:${request.id}:${exitCode}`)
   }
@@ -152,10 +127,11 @@ export class NotificationCenter {
   // Delegated tasks surface like sessions: approval requests need attention,
   // and the outcome lands as completed/failed.
   handleDelegation(task: DelegationTask, event: DelegationTaskEvent): void {
-    const type: AppNotificationType = event === 'awaiting_approval' ? 'needs_attention' : event
+    const type: AppNotificationType = event === 'awaiting_approval' ? 'approval_required' : event
     const body = event === 'awaiting_approval'
       ? 'Delegation awaiting your approval'
       : event === 'completed' ? 'Delegated task completed' : 'Delegated task failed'
+    this.acknowledgeSession(delegationNotificationKey(task.id))
     this.create({
       sessionId: delegationNotificationKey(task.id),
       agentId: task.agent,
@@ -220,7 +196,7 @@ export class NotificationCenter {
     this.closeAllNativeNotifications()
   }
 
-  private createForSession(request: StartPtyRequest, type: AppNotificationType, dedupeKey: string): void {
+  private createForSession(request: StartPtyRequest, type: AppNotificationType, dedupeKey: string, event?: AgentEvent): void {
     if (request.purpose === 'login') return
     this.create({
       sessionId: request.sessionId,
@@ -230,7 +206,8 @@ export class NotificationCenter {
       title: request.title?.trim() || request.agentId,
       type,
       dedupeKey,
-      body: sessionMessage(type),
+      body: event ? agentEventLabel(event) : sessionMessage(type),
+      event,
       activation: { kind: 'session', sessionId: request.sessionId },
       skipWhenViewingCli: true,
     })
@@ -271,6 +248,7 @@ export class NotificationCenter {
       type: input.type,
       title: input.title,
       createdAt: Date.now(),
+      event: input.event,
       dedupeKey: input.dedupeKey,
       body: input.body,
       activation: input.activation,
@@ -361,10 +339,10 @@ export class NotificationCenter {
 
   private readSettings(): NotificationSettings {
     try {
-      if (!existsSync(this.settingsPath)) return DEFAULT_SETTINGS
+      if (!existsSync(this.settingsPath)) return { ...DEFAULT_NOTIFICATION_SETTINGS }
       return parseSettings(JSON.parse(readFileSync(this.settingsPath, 'utf8')) as unknown)
     } catch {
-      return DEFAULT_SETTINGS
+      return { ...DEFAULT_NOTIFICATION_SETTINGS }
     }
   }
 

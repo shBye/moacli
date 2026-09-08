@@ -2,6 +2,19 @@
 
 These rules apply to the entire repository.
 
+## Product principle
+
+- Product slogan: "최대한 사용자들이 사용하기 쉬우면서 편한 기능들을 제공하는 것".
+- Prioritize understandable state, fewer steps, and useful defaults. Reveal advanced settings only when users need them.
+- Evaluate visual polish by whether it improves clarity and ease of use as well as appearance.
+
+## Collaboration on core logic
+
+- Discuss and agree on the design and change scope with the user before implementing core logic changes.
+- This includes communication protocols, authentication, data processing, storage, synchronization, and ownership of state or services.
+- Present alternatives and tradeoffs first. Do not independently choose or implement these decisions, including for mobile/Desktop remote features.
+- Research, read-only reviews, documentation, and verification may continue while those decisions are pending.
+
 ## Architecture
 
 - Organize code by feature. Keep app composition in `src/app`, reusable UI in `src/components`, domain features in `src/features`, external integrations in `electron` or explicit adapter modules, and cross-feature utilities in `src/shared`.

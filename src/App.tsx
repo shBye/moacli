@@ -1,3 +1,4 @@
+import { DEFAULT_NOTIFICATION_SETTINGS } from './features/notifications/notification-policy'
 import {
   lazy,
   Suspense,
@@ -84,13 +85,6 @@ const DEFAULT_FOLDERS: LogicalFolder[] = [
   { id: 'prototype', name: 'Prototype' },
   { id: 'unsorted', name: 'Unsorted' },
 ]
-const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
-  enabled: false,
-  desktopEnabled: true,
-  needsAttention: true,
-  failed: true,
-  completed: true,
-}
 const EMPTY_NOTIFICATION_SNAPSHOT: NotificationSnapshot = {
   version: 0,
   notifications: [],

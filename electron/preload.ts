@@ -4,7 +4,7 @@ import type { HostToRendererMessage, RendererToHostMessage } from './pty-host-pr
 
 type PtyDataCallback = (data: string) => void
 type PtyExitCallback = (exitCode: number) => void
-type PtyAttentionCallback = (reason: string) => void
+type PtyAttentionCallback = (event: PtyAttentionEvent['event']) => void
 
 const ptyDataCallbacks = new Map<string, Set<PtyDataCallback>>()
 const ptyExitCallbacks = new Map<string, Set<PtyExitCallback>>()
@@ -52,7 +52,7 @@ ipcRenderer.on('pty:exit', (_event, payload: PtyExitEvent) => {
   for (const callback of ptyExitCallbacks.get(payload.id) ?? []) callback(payload.exitCode)
 })
 ipcRenderer.on('pty:attention', (_event, payload: PtyAttentionEvent) => {
-  for (const callback of ptyAttentionCallbacks.get(payload.id) ?? []) callback(payload.reason)
+  for (const callback of ptyAttentionCallbacks.get(payload.id) ?? []) callback(payload.event)
 })
 
 const api: CliAgentApi = {

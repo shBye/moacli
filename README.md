@@ -187,6 +187,12 @@ The detailed product flow, data model, failure handling, and acceptance criteria
 
 ## Scripts
 
+### Event integration and mobile planning
+
+- [CLI event mapping and limitations](./docs/AGENT_EVENTS.md)
+- [Mobile–Desktop remote communication plan](./docs/MOBILE_DESKTOP_REMOTE.md)
+- [UI polish review](./docs/UI_POLISH_REVIEW.md)
+
 | Command | Purpose |
 | --- | --- |
 | `npm.cmd run dev` | Start Electron with the development renderer |
