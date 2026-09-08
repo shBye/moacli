@@ -13,8 +13,12 @@ export interface TerminalAppearance {
 export function createTerminalOptions(
   appearance: Readonly<TerminalAppearance>,
   cursorBlink: boolean,
+  backend: 'conpty' | 'posix',
 ): ITerminalOptions {
   return {
+    // ConPTY owns screen replay on resize; pulling scrollback back into the
+    // viewport as a Unix PTY would can overwrite rows when that replay arrives.
+    windowsPty: backend === 'conpty' ? { backend: 'conpty' } : undefined,
     cursorBlink,
     cursorStyle: 'bar',
     fontFamily: appearance.fontFamily,

@@ -41,6 +41,9 @@ const TERMINAL_ZOOM_KEYS = new Set(['=', '+', '-', '_', '0'])
 const CODEX_MOUSE_TRACKING_MODES = new Set([9, 1000, 1002, 1003, 1005, 1006, 1015, 1016])
 
 function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, renderer, revealLatestAt, fontFamily, fontSize, background, foreground, cursorColor, activityStatusEnabled, onActivity, onStateChange }: TerminalPaneProps) {
+  // Explicit restart uses terminalRevision to remount this component.
+  // History linking and renaming must never restart a running PTY.
+  const [launch] = useState(() => ({ sessionId, agentId, cwd, title, account, purpose, resumeId }))
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -77,6 +80,7 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
   activityStatusEnabledRef.current = activityStatusEnabled
 
   useEffect(() => {
+    const { sessionId, agentId, cwd, title, account, purpose, resumeId } = launch
     const container = containerRef.current
     if (!container) return
 
@@ -87,7 +91,7 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       background,
       foreground,
       cursorColor,
-    }, activeRef.current))
+    }, activeRef.current, window.cliAgent.terminalBackend))
     terminalRef.current = terminal
     const fitAddon = new FitAddon()
     fitAddonRef.current = fitAddon
@@ -382,18 +386,21 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       cols: terminal.cols,
       rows: terminal.rows,
     }).then(() => {
-      started = true
-      ptyReadyRef.current = true
       if (disposed) {
         window.cliAgent.stopPty(id)
         return
       }
+      started = true
+      ptyReadyRef.current = true
+      // The grid may have changed during async launch preparation.
+      window.cliAgent.resizePty(id, terminal.cols, terminal.rows)
       if (receivedData) reportRunning()
       else fallbackReadyTimer = setTimeout(reportRunning, 1800)
       if (activeRef.current) requestTerminalFocus(id, () => {
         if (!disposed) terminal.focus()
       })
     }).catch((error: unknown) => {
+      if (disposed) return
       const message = error instanceof Error ? error.message : String(error)
       terminal.writeln(`\x1b[31mUnable to start session: ${message}\x1b[0m`)
       stateChangeRef.current('stopped', message)
@@ -430,7 +437,7 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       ptyIdRef.current = ''
       ptyReadyRef.current = false
     }
-  }, [sessionId, agentId, cwd, title, account?.id, purpose, resumeId])
+  }, [launch])
 
   useEffect(() => {
     if (renderer !== 'webgl') return undefined
@@ -466,7 +473,7 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       addon = undefined
       container.dataset.renderer = 'default'
     }
-  }, [renderer, sessionId, agentId, cwd, title, account?.id, purpose, resumeId])
+  }, [renderer, launch])
 
   useEffect(() => {
     const terminal = terminalRef.current
@@ -532,12 +539,14 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
     terminal.options.fontFamily = fontFamily
     terminal.options.fontSize = fontSize
     terminal.options.theme = { ...terminal.options.theme, background, foreground, cursor: cursorColor }
-    requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(() => {
       const currentTerminal = terminalRef.current
       const fitAddon = fitAddonRef.current
       if (!currentTerminal || !fitAddon) return
       const before = currentTerminal.buffer.active
       const distanceFromBottom = Math.max(0, before.baseY - before.viewportY)
+      const previousCols = currentTerminal.cols
+      const previousRows = currentTerminal.rows
       fitAddon.fit()
       currentTerminal.refresh(0, Math.max(0, currentTerminal.rows - 1))
       if (distanceFromBottom <= 1) {
@@ -546,10 +555,12 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
         const after = currentTerminal.buffer.active
         currentTerminal.scrollToLine(Math.max(0, after.baseY - distanceFromBottom))
       }
-      if (ptyReadyRef.current && ptyIdRef.current) {
+      if (ptyReadyRef.current && ptyIdRef.current
+        && (currentTerminal.cols !== previousCols || currentTerminal.rows !== previousRows)) {
         window.cliAgent.resizePty(ptyIdRef.current, currentTerminal.cols, currentTerminal.rows)
       }
     })
+    return () => cancelAnimationFrame(frame)
   }, [fontFamily, fontSize, background, foreground, cursorColor])
 
   return (

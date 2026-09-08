@@ -225,6 +225,7 @@ export interface AppUpdateInfo {
 }
 
 export interface CliAgentApi {
+  terminalBackend: 'conpty' | 'posix'
   getProfiles: () => Promise<AgentHealth[]>
   detectAccounts: () => Promise<AgentAccount[]>
   inspectAccount: (account: AgentAccount) => Promise<AgentAccount | null>

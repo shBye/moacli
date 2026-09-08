@@ -56,6 +56,7 @@ ipcRenderer.on('pty:attention', (_event, payload: PtyAttentionEvent) => {
 })
 
 const api: CliAgentApi = {
+  terminalBackend: process.platform === 'win32' ? 'conpty' : 'posix',
   getProfiles: () => ipcRenderer.invoke('profiles:list'),
   detectAccounts: () => ipcRenderer.invoke('accounts:detect'),
   inspectAccount: (account) => ipcRenderer.invoke('accounts:inspect', account),

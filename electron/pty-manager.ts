@@ -68,7 +68,9 @@ export class PtyManager {
 
   resize(id: string, cols: number, rows: number): void {
     if (cols < 2 || rows < 1) return
-    this.processes.get(id)?.resize(cols, rows)
+    const instance = this.processes.get(id)
+    if (!instance || (instance.cols === cols && instance.rows === rows)) return
+    instance.resize(cols, rows)
   }
 
   stop(id: string): void {
