@@ -192,6 +192,7 @@ The detailed product flow, data model, failure handling, and acceptance criteria
 - [CLI event mapping and limitations](./docs/AGENT_EVENTS.md)
 - [Mobile–Desktop remote communication plan](./docs/MOBILE_DESKTOP_REMOTE.md)
 - [UI polish review](./docs/UI_POLISH_REVIEW.md)
+- [macOS support scope (planning only)](./docs/MACOS_SUPPORT.md)
 
 | Command | Purpose |
 | --- | --- |
