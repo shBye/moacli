@@ -30,6 +30,7 @@ export interface AgentHealth extends AgentProfile {
 }
 
 export interface StartPtyRequest {
+  historyKey?: string
   id: string
   sessionId: string
   agentId: string
@@ -68,6 +69,10 @@ export interface PtyAttentionEvent {
 export type AppNotificationType = 'needs_attention' | 'approval_required' | 'input_required' | 'completed' | 'failed' | 'account_changed' | 'info'
 
 export interface AppNotification {
+  body?: string
+  context?: string
+  preview?: string
+  actionHint?: string
   id: string
   sessionId: string
   agentId: string
@@ -81,6 +86,7 @@ export interface AppNotification {
 }
 
 export interface NotificationSettings {
+  desktopPreviewEnabled: boolean
   enabled: boolean
   desktopEnabled: boolean
   needsAttention: boolean
@@ -99,7 +105,7 @@ export interface NotificationSnapshot {
 
 export interface NotificationContext {
   activeSessionId: string
-  activeView: 'cli' | 'conversation' | 'none'
+  activeView: 'cli' | 'conversation' | 'review' | 'none'
 }
 
 export type NotificationActivation =
@@ -107,9 +113,13 @@ export type NotificationActivation =
   | { kind: 'delegation'; taskId: string }
   | { kind: 'panel' }
 
-export type DelegationTaskStatus = 'awaiting_approval' | 'running' | 'completed' | 'failed' | 'rejected' | 'cancelled'
+export type DelegationTaskStatus = 'awaiting_approval' | 'queued' | 'running' | 'completed' | 'failed' | 'rejected' | 'cancelled'
 
 export interface DelegationTask {
+  source?: import('./review-contracts').ReviewSource
+  mode?: import('./delegation-policy').DelegationMode
+  role?: string
+  depth?: number
   id: string
   agent: string
   caller: string
@@ -131,13 +141,15 @@ export interface DelegationTask {
   resultPreview?: string
   error?: string
   detail?: string
+  reviewSource?: import('./review-contracts').ReviewSource
 }
 
 export interface DelegationServerStatus {
   enabled: boolean
   running: boolean
-  // When on, requests start immediately with the default account.
+  // Independent automatic approval for new analysis and edit requests.
   autoApprove: boolean
+  autoApproveEdits: boolean
   port: number
   url: string
   token: string
@@ -230,6 +242,12 @@ export interface AppUpdateInfo {
 }
 
 export interface CliAgentApi {
+  prepareReview: (cwd: string) => Promise<import('./review-contracts').ReviewSnapshot>
+  startReview: (request: import('./review-contracts').StartReviewRequest) => Promise<string>
+  listReviews: (source: import('./review-contracts').ReviewSource) => Promise<import('./review-contracts').ReviewEntry[]>
+  listSessionTasks: (source: import('./review-contracts').ReviewSource) => Promise<DelegationTask[]>
+  syncTaskSource: (source: import('./review-contracts').ReviewSource) => Promise<void>
+  getSessionTaskResult: (taskId: string) => Promise<string>
   terminalBackend: 'conpty' | 'posix'
   getProfiles: () => Promise<AgentHealth[]>
   detectAccounts: () => Promise<AgentAccount[]>
@@ -267,6 +285,7 @@ export interface CliAgentApi {
   retryDelegation: (taskId: string) => Promise<DelegationSnapshot>
   setDelegationEnabled: (enabled: boolean) => Promise<DelegationSnapshot>
   setDelegationAutoApprove: (enabled: boolean) => Promise<DelegationSnapshot>
+  setDelegationAutoApproveEdits: (enabled: boolean) => Promise<DelegationSnapshot>
   regenerateDelegationToken: () => Promise<DelegationSnapshot>
   onDelegationChanged: (callback: (snapshot: DelegationSnapshot) => void) => () => void
   getAppVersion: () => Promise<string>

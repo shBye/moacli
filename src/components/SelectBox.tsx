@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom'
 import { Check, ChevronDown } from 'lucide-react'
 import { edgeEnabledOptionIndex, nextEnabledOptionIndex } from './select-box-policy'
+import './select-box.css'
 
 export interface SelectBoxOption<Value extends string = string> {
   value: Value
@@ -37,6 +38,7 @@ interface SelectBoxProps<Value extends string> {
   className?: string
   disabled?: boolean
   placeholder?: string
+  variant?: 'default' | 'settings'
 }
 
 const VIEWPORT_MARGIN = 8
@@ -52,6 +54,7 @@ export function SelectBox<Value extends string>({
   className = '',
   disabled = false,
   placeholder = 'Select',
+  variant = 'default',
 }: SelectBoxProps<Value>) {
   const id = useId().replace(/:/g, '')
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -189,7 +192,7 @@ export function SelectBox<Value extends string>({
   } as CSSProperties) : undefined
 
   return (
-    <div className={`select-box ${open ? 'open' : ''} ${className}`.trim()}>
+    <div className={`select-box select-box-${variant} ${open ? 'open' : ''} ${className}`.trim()}>
       <button
         ref={triggerRef}
         type="button"
@@ -210,7 +213,7 @@ export function SelectBox<Value extends string>({
         <div
           ref={menuRef}
           id={`${id}-menu`}
-          className="select-box-menu"
+          className={`select-box-menu select-box-menu-${variant}`}
           role="listbox"
           aria-label={ariaLabel}
           style={menuStyle}

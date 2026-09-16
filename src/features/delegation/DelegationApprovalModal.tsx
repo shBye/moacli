@@ -99,7 +99,8 @@ export function DelegationApprovalModal({
         <dl className="delegation-meta">
           <dt>Working directory</dt><dd title={task.cwd}>{task.cwd}</dd>
           <dt>Time limit</dt><dd>{timeoutMinutes} min</dd>
-          <dt>Permissions</dt><dd><ShieldCheck size={12} />{delegationPolicyLabel(task.agent)}</dd>
+          <dt>Permissions</dt><dd><ShieldCheck size={12} />{delegationPolicyLabel(task.agent, task.mode)}</dd>
+          {task.mode === 'edit' && <><dt>Editing</dt><dd>This task can change files in the project. Avoid editing the same files in another CLI until it finishes.</dd></>}
           <dt>Account</dt>
           <dd>
             <SelectBox

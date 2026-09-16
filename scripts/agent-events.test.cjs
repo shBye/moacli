@@ -25,6 +25,59 @@ function loadTs(file, mocks = {}, cache = new Map()) {
 const { normalizeClaudeHook, normalizeCodexOsc9, claudeAttentionHooks } = loadTs('electron/attention-events.ts')
 const { agentEventInteractionState, agentEventLabel } = loadTs('src/features/sessions/agent-event.ts')
 const { parseNotificationSettings, notificationTypeEnabled } = loadTs('src/features/notifications/notification-policy.ts')
+const { delegatedNotificationContent, sessionNotificationContent, desktopNotificationBody } = loadTs('electron/notification-content.ts')
+
+test('rich delegation notifications expose bounded known details and keep desktop previews opt-in', () => {
+  const task = { agent: 'claude', role: 'reviewer', mode: 'analyze', cwd: 'C:\\projects\\demo', startedAt: 1000, finishedAt: 43000, resultPreview: 'PRIVATE '.repeat(100) }
+  const content = delegatedNotificationContent(task, 'completed')
+  assert(content.context.includes('42s')); assert(content.context.includes('demo'))
+  assert(content.context.includes('Code review')); assert(content.context.includes('Analysis'))
+  assert(content.preview.length <= 201)
+  assert(!desktopNotificationBody(content, false).includes('PRIVATE'))
+  assert(desktopNotificationBody(content, true).includes('PRIVATE'))
+  assert.equal(parseNotificationSettings({ enabled: true }).desktopPreviewEnabled, false)
+  assert.equal(parseNotificationSettings({ desktopPreviewEnabled: 'true' }).desktopPreviewEnabled, false)
+  const failed = delegatedNotificationContent({ ...task, error: 'PRIVATE error' }, 'failed')
+  assert(!desktopNotificationBody(failed, false).includes('PRIVATE'))
+  assert(desktopNotificationBody(failed, true).includes('PRIVATE error'))
+})
+
+test('session details include tool and exit code without inventing Codex completion or result text', () => {
+  const request = { agentId: 'claude', cwd: '/projects/demo' }
+  const permission = sessionNotificationContent(request, 'approval_required', { kind: 'approval_required', toolName: 'Bash' })
+  assert(permission.body.includes('Bash')); assert(permission.actionHint.includes('permission'))
+  const codex = sessionNotificationContent({ ...request, agentId: 'codex' }, 'needs_attention', normalizeCodexOsc9())
+  assert.equal(codex.body, 'Session needs attention'); assert.equal(codex.preview, undefined)
+  assert(sessionNotificationContent(request, 'failed', undefined, 2).body.includes('Exit code 2'))
+})
+
+test('notification snapshots preserve detail and native delivery obeys the preview preference', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'moacli-notification-detail-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const shown = []
+  class NativeNotification {
+    static isSupported() { return true }
+    constructor(options) { this.options = options }
+    once() {} close() {} show() { shown.push(this.options) }
+  }
+  const { NotificationCenter } = loadTs('electron/notification-center.ts', { electron: { Notification: NativeNotification } })
+  const center = new NotificationCenter(path.join(directory, 'settings.json'), () => null)
+  t.after(() => center.dispose())
+  center.updateSettings({ enabled: true })
+  const task = { id: 'task', agent: 'codex', caller: 'test', mode: 'edit', cwd: 'C:/demo', source: { title: 'Source session' }, resultPreview: 'PRIVATE result' }
+  center.handleDelegation(task, 'completed')
+  const notification = center.snapshot().notifications[0]
+  assert.equal(notification.title, 'Source session')
+  assert.equal(notification.preview, 'PRIVATE result')
+  assert(notification.context.includes('File editing'))
+  center.flushDesktopDelivery()
+  assert(!shown[0].body.includes('PRIVATE'))
+  center.updateSettings({ desktopPreviewEnabled: true })
+  center.handleDelegation({ ...task, id: 'second' }, 'completed')
+  center.flushDesktopDelivery()
+  assert(shown[1].body.includes('PRIVATE result'))
+  assert.equal(parseNotificationSettings(JSON.parse(fs.readFileSync(path.join(directory, 'settings.json'), 'utf8'))).desktopPreviewEnabled, true)
+})
 
 for (const [name, fields, kind] of [
   ['PermissionRequest', { tool_name: 'Bash' }, 'approval_required'],

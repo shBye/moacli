@@ -1,7 +1,7 @@
 import type { AgentAccount, ConversationHistory } from '../../../electron/contracts'
 
 export type SessionState = 'idle' | 'starting' | 'running' | 'processing' | 'needs_attention' | 'stopped'
-export type SessionView = 'cli' | 'conversation'
+export type SessionView = 'cli' | 'conversation' | 'review'
 
 export interface RuntimeSession {
   id: string
@@ -29,4 +29,5 @@ export interface RuntimeSession {
   lastViewedAt: number
   lastActivityAt: number
   revealLatestAt: number
+  pendingPaste?: { id: string; text: string }
 }

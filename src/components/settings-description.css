@@ -1,0 +1,2 @@
+.settings-description { margin: 6px 0 12px; max-width: 76ch; font-size: 11px; font-weight: 400; line-height: 1.65; color: color-mix(in srgb, var(--app-fg) 58%, transparent); overflow-wrap: anywhere; }
+.settings-description.settings-description-warning { color: color-mix(in srgb, var(--acc) 78%, var(--app-fg)); }

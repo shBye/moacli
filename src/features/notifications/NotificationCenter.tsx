@@ -4,6 +4,7 @@ import { AgentAvatar } from '../../components/AgentAvatar'
 import type { AgentIconPreference } from '../agent-icons/types'
 import { notificationTypeLabel } from './notification-display'
 import { NotificationTypeIcon } from './NotificationTypeIcon'
+import './notification-content.css'
 
 interface NotificationCenterProps {
   snapshot: NotificationSnapshot
@@ -66,6 +67,10 @@ export function NotificationCenter({
                           <NotificationTypeIcon notification={notification} size={12} />{notificationTypeLabel(notification)}
                         </span>
                         <strong title={notification.title}>{notification.title}</strong>
+                        {notification.body && <span className="notification-body">{notification.body}</span>}
+                        {notification.context && <span className="notification-context">{notification.context}</span>}
+                        {notification.preview && <span className="notification-preview">{notification.preview}</span>}
+                        {notification.actionHint && <span className="notification-hint">{notification.actionHint}</span>}
                         <small>
                           {profile?.label ?? notification.agentId}
                           {notification.accountLabel ? ` · ${notification.accountLabel}` : ''}

@@ -36,6 +36,7 @@ export function AccountsSettingsSection({
             <AgentAvatar agentId={account.agentId} className="tinted" color={profile?.color ?? '#7e878d'} preference={resolvedPreference(account.agentId)} />
             <div className="account-inputs">
               <SelectBox
+                  variant="settings"
                 value={account.agentId}
                 options={profiles.filter((item) => item.id !== 'powershell').map((item) => ({ value: item.id, label: item.label }))}
                 ariaLabel={`Agent for ${account.email || `account ${index + 1}`}`}

@@ -1,0 +1,23 @@
+.select-box { position: relative; min-width: 0; width: 100%; }
+.select-box-trigger { font-family: inherit; font-size: 12px; line-height: 1.4; display: flex; width: 100%; height: 32px; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 0 9px 0 10px; overflow: hidden; border: 1px solid rgba(255,255,255,.09); border-radius: 7px; outline: 0; color: rgba(255,255,255,.76); background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(0,0,0,.13)); cursor: pointer; text-align: left; transition: border-color 110ms ease, background 110ms ease, box-shadow 110ms ease; }
+.select-box-trigger:hover:not(:disabled) { border-color: rgba(255,255,255,.15); background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(0,0,0,.1)); }
+.select-box.open .select-box-trigger, .select-box-trigger:focus-visible { border-color: color-mix(in oklch, var(--acc) 52%, rgba(255,255,255,.1)); outline: 0; box-shadow: 0 0 0 2px color-mix(in oklch, var(--acc) 10%, transparent); }
+.select-box-trigger:disabled { color: rgba(255,255,255,.38); cursor: default; opacity: .7; }
+.select-box-value { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-box-value.placeholder { color: rgba(255,255,255,.34); }
+.select-box-chevron { flex: none; color: rgba(255,255,255,.34); transition: color 110ms ease, transform 140ms ease; }
+.select-box.open .select-box-chevron { color: var(--acc); transform: rotate(180deg); }
+.select-box-menu { font-size: 12px; line-height: 1.4; position: fixed; z-index: 10000; overflow-x: hidden; overflow-y: auto; padding: 4px; border: 1px solid color-mix(in oklch, var(--select-app-fg) 11%, transparent); border-radius: 8px; color: var(--select-app-fg); background: color-mix(in oklch, var(--select-app-bg) 94%, #fff 6%); box-shadow: var(--elevation-popover); font-family: var(--select-font-family); transform-origin: center var(--select-origin); animation: select-box-menu-in 115ms cubic-bezier(.2,.8,.2,1); }
+.select-box-menu::-webkit-scrollbar { width: 7px; }
+.select-box-menu::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: rgba(255,255,255,.18); background-clip: padding-box; }
+.select-box-option { font: inherit; display: flex; width: 100%; height: 31px; align-items: center; justify-content: space-between; gap: 10px; padding: 0 8px 0 9px; border: 0; border-radius: 5px; outline: 0; color: color-mix(in oklch, var(--select-app-fg) 68%, transparent); background: transparent; cursor: pointer; text-align: left; }
+.select-box-option > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-box-option.highlighted { color: color-mix(in oklch, var(--select-app-fg) 92%, transparent); background: color-mix(in oklch, var(--select-app-fg) 7%, transparent); }
+.select-box-option.selected { color: color-mix(in oklch, var(--select-accent) 72%, white); background: color-mix(in oklch, var(--select-accent) 11%, transparent); }
+.select-box-option.selected.highlighted { background: color-mix(in oklch, var(--select-accent) 16%, transparent); }
+.select-box-option svg { flex: none; color: var(--select-accent); }
+.select-box-option:disabled { opacity: .35; cursor: default; }
+@keyframes select-box-menu-in { from { opacity: 0; transform: translateY(var(--select-shift)) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .select-box-menu { animation: none; } .select-box-chevron { transition: none; } }
+.select-box-settings .select-box-trigger { height: 32px; border-radius: 6px; font-size: 11px; background: color-mix(in srgb, var(--app-fg) 3%, var(--app-bg)); }
+.select-box-menu.select-box-menu-settings { font-size: 11px; }

@@ -1,4 +1,4 @@
-import { Download } from 'lucide-react'
+import { Check, Download, RefreshCw } from 'lucide-react'
 import type { AppUpdateInfo } from '../../../electron/contracts'
 import { sessionStateLabel } from './session-display'
 import { SessionClock } from './SessionClock'
@@ -6,6 +6,8 @@ import type { RuntimeSession } from './types'
 
 interface StatusBarProps {
   activeSession?: RuntimeSession
+  loginRefreshing: boolean
+  onRefreshAccount: () => void
   activeProfileVersion?: string | null
   openSessionCount: number
   maximumSessionCount: number
@@ -19,6 +21,8 @@ interface StatusBarProps {
 export function StatusBar({
   activeSession,
   activeProfileVersion,
+  loginRefreshing,
+  onRefreshAccount,
   openSessionCount,
   maximumSessionCount,
   update,
@@ -27,12 +31,31 @@ export function StatusBar({
   getLastActivityAt,
   onOpenUpdate,
 }: StatusBarProps) {
+  const accountVerified = activeSession?.statusDetail.startsWith('Verified account:') ?? false
+  const email = activeSession?.account?.email
   return (
     <footer className="status-bar">
       <span className={`status-pill ${activeSession?.state ?? 'idle'}`}>
         <span className="status-dot" />{sessionStateLabel(activeSession?.state ?? 'idle')}
       </span>
-      <span>{activeSession ? activeProfileVersion ?? activeSession.agentId : 'No session'}</span>
+      <span className="status-cli-version" title={activeProfileVersion ?? activeSession?.agentId}>{activeSession ? activeProfileVersion ?? activeSession.agentId : 'No session'}</span>
+      {(email || activeSession?.purpose === 'login') && (
+        <div className="status-account" aria-label="Current session account">
+          <span className="status-account-label">Account</span>
+          <span className="status-account-email" title={email || 'Not signed in'}>{email || 'Not signed in'}</span>
+          {activeSession?.purpose === 'login' && (
+            <button
+              className="status-account-refresh"
+              title={accountVerified ? activeSession.statusDetail : 'Refresh signed-in account'}
+              aria-label={accountVerified ? activeSession.statusDetail : 'Refresh signed-in account'}
+              disabled={loginRefreshing}
+              onClick={onRefreshAccount}
+            >
+              {accountVerified ? <Check size={12} /> : <RefreshCw className={loginRefreshing ? 'spinning' : ''} size={12} />}
+            </button>
+          )}
+        </div>
+      )}
       <span>{openSessionCount}/{maximumSessionCount} open</span>
       {update?.updateAvailable && (
         <button

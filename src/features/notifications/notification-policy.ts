@@ -2,6 +2,7 @@ import type { AppNotificationType, NotificationSettings } from '../../../electro
 import type { AgentEvent } from '../sessions/agent-event'
 
 export const DEFAULT_NOTIFICATION_SETTINGS: Readonly<NotificationSettings> = {
+  desktopPreviewEnabled: false,
   enabled: false, desktopEnabled: true, needsAttention: true,
   approvals: true, inputRequired: true, failed: true, completed: true,
 }
@@ -18,6 +19,7 @@ export function parseNotificationSettings(value: unknown): NotificationSettings 
   return {
     enabled: candidate.enabled === true,
     desktopEnabled: candidate.desktopEnabled !== false,
+    desktopPreviewEnabled: candidate.desktopPreviewEnabled === true,
     needsAttention: attention,
     // Preserve an existing user's disabled attention preference when migrating.
     approvals: typeof candidate.approvals === 'boolean' ? candidate.approvals : attention,

@@ -1,10 +1,12 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, rmdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { detectBinary, executableCommand } from './agent-profiles'
 import type { AgentAccount } from './contracts'
+import { reviewWorkerArgs } from './review-worker-policy'
+import { delegatedWorkerArgs, type DelegationMode } from './delegation-policy'
 
 export type WorkerAgentId = 'claude' | 'codex'
 
@@ -16,6 +18,8 @@ export interface WorkerStart {
   cwd: string
   timeoutMs: number
   account?: AgentAccount
+  reviewOnly?: boolean
+  mode?: DelegationMode
   // Receives a human-readable progress line as the worker reports activity.
   onProgress: (line: string) => void
   // Receives the session/thread id the worker CLI writes its transcript under.
@@ -52,6 +56,7 @@ function compactLine(value: string): string {
 }
 
 function quoteForShell(argument: string): string {
+  if (!argument) return '""'
   return /[\s"]/.test(argument) ? `"${argument.replace(/"/g, '""')}"` : argument
 }
 
@@ -67,6 +72,8 @@ function killWorkerTree(pid: number | undefined): void {
 function workerEnvironment(start: WorkerStart): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = { ...process.env, MOACLI_DELEGATED: '1', MOACLI_DELEGATION_DEPTH: '1' }
   const account = start.account
+  delete environment.MOACLI_TOKEN
+  delete environment.MOACLI_DELEGATION_TOKEN
   if (account?.configDir && !account.detected) {
     if (start.agent === 'claude') environment.CLAUDE_CONFIG_DIR = account.configDir
     if (start.agent === 'codex') environment.CODEX_HOME = account.configDir
@@ -194,11 +201,12 @@ function codexProgress(event: Record<string, unknown>): string | null {
 function startClaudeWorker(start: WorkerStart): WorkerHandle {
   const binary = detectBinary('claude')
   if (!binary) throw new Error('Claude Code CLI was not found on this machine')
-  // MCP servers are disabled inside the worker so a delegated task can never
-  // reach back into MoaCLI and delegate again.
+  // Remove the normal MCP route back into MoaCLI. This is a worker policy,
+  // not OS isolation against a process deliberately using shell-based bypasses.
   const args = [
     '-p', '--output-format', 'stream-json', '--verbose', '--max-turns', '30',
     '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+    ...(start.reviewOnly ? reviewWorkerArgs('claude') : delegatedWorkerArgs('claude', start.mode ?? 'analyze')),
   ]
   let finalEvent: Record<string, unknown> | undefined
   const { outcome, cancel } = runWorkerProcess(binary, args, start, (line) => {
@@ -217,6 +225,7 @@ function startClaudeWorker(start: WorkerStart): WorkerHandle {
   const done = outcome.then(({ stdout, stderr, exitCode, timedOut, cancelled }) => {
     if (cancelled) throw new Error('Claude worker was cancelled')
     if (timedOut) throw new Error(`Claude worker timed out after ${start.timeoutMs / 1000}s`)
+    if (exitCode !== 0) throw new Error(`Claude worker exited with code ${exitCode}: ${truncateOutput(stderr.trim() || stdout.trim(), 2000)}`)
     if (!finalEvent || typeof finalEvent.result !== 'string') {
       if (exitCode !== 0) {
         throw new Error(`Claude worker exited with code ${exitCode}: ${truncateOutput(stderr.trim() || stdout.trim(), 2000)}`)
@@ -242,7 +251,14 @@ function startCodexWorker(start: WorkerStart): WorkerHandle {
   mkdirSync(lastMessageDirectory, { recursive: true })
   const lastMessagePath = join(lastMessageDirectory, `codex-${randomUUID()}.txt`)
   const args = ['exec', '--json', '--skip-git-repo-check', '--output-last-message', lastMessagePath, '-']
-  const { outcome, cancel } = runWorkerProcess(binary, args, start, (line) => {
+  args.splice(args.length - 1, 0, ...delegatedWorkerArgs('codex', start.mode ?? 'analyze'), ...(start.reviewOnly ? reviewWorkerArgs('codex') : []))
+  // Avoid loading project-local MCP/skills by starting outside the project.
+  // The requested project is explicitly named and only added as writable for edit tasks.
+  const runDirectory = join(tmpdir(), 'moacli-workers', randomUUID())
+  mkdirSync(runDirectory, { recursive: true })
+  if (start.mode === 'edit' && !start.reviewOnly) args.splice(args.length - 1, 0, '--add-dir', start.cwd)
+  const workerStart = { ...start, cwd: runDirectory, prompt: `Target project directory: ${start.cwd}\nUse absolute paths when inspecting or changing the target project.\n\n${start.prompt}` }
+  const { outcome, cancel } = runWorkerProcess(binary, args, workerStart, (line) => {
     const event = parseJsonLine(line)
     if (!event) return
     if (event.type === 'thread.started' && typeof event.thread_id === 'string' && event.thread_id) start.onSessionId?.(event.thread_id)
@@ -253,13 +269,15 @@ function startCodexWorker(start: WorkerStart): WorkerHandle {
     if (cancelled) throw new Error('Codex worker was cancelled')
     if (timedOut) throw new Error(`Codex worker timed out after ${start.timeoutMs / 1000}s`)
     const lastMessage = existsSync(lastMessagePath) ? readFileSync(lastMessagePath, 'utf8').trim() : ''
-    if (exitCode !== 0 && !lastMessage) {
+    if (exitCode !== 0) {
       throw new Error(`Codex worker exited with code ${exitCode}: ${truncateOutput(stderr.trim() || stdout.trim(), 2000)}`)
     }
     if (!lastMessage) throw new Error('Codex worker finished without a final message')
-    return { text: lastMessage, detail: `exit code ${exitCode}, read-only sandbox` }
+    return { text: lastMessage, detail: `exit code ${exitCode}, ${start.mode === 'edit' ? 'workspace-write' : 'read-only'} sandbox; no agent delegation` }
   }).finally(() => {
     rmSync(lastMessagePath, { force: true })
+    // Remove only our empty scratch directory; never discard worker-created files.
+    try { rmdirSync(runDirectory) } catch { /* non-empty or already removed */ }
   })
   return { done, cancel }
 }
@@ -269,10 +287,10 @@ const WORKER_STARTERS: Record<WorkerAgentId, (start: WorkerStart) => WorkerHandl
   codex: startCodexWorker,
 }
 
-export function describeWorkerPolicy(agent: WorkerAgentId): string {
+export function describeWorkerPolicy(agent: WorkerAgentId, mode: DelegationMode = 'analyze'): string {
   return agent === 'claude'
-    ? 'Claude Code default permissions: cannot approve risky actions, MCP servers disabled'
-    : 'Codex read-only sandbox'
+    ? `Claude ${mode === 'edit' ? 'file editing' : 'analysis'}; MCP and agent delegation disabled`
+    : `Codex ${mode === 'edit' ? 'workspace-write' : 'read-only'} sandbox; MCP and agent delegation disabled`
 }
 
 export function listWorkerAgents(): { id: WorkerAgentId; available: boolean; path: string | null; policy: string }[] {

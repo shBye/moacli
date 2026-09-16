@@ -24,7 +24,7 @@ interface AppSidebarProps {
   sections: SidebarSectionState
   folders: LogicalFolder[]
   folderViews: Map<string, FolderView>
-  selectedFolderId: string
+  openFolderIds: readonly string[]
   newFolderName: string | null
   draggedItem: DraggedSidebarItem | null
   dragOverFolderId: string
@@ -85,7 +85,7 @@ export function AppSidebar({
   sections,
   folders,
   folderViews,
-  selectedFolderId,
+  openFolderIds,
   newFolderName,
   draggedItem,
   dragOverFolderId,
@@ -153,7 +153,7 @@ export function AppSidebar({
         recentOpen={sections.recent}
         folders={folders}
         folderViews={folderViews}
-        selectedFolderId={selectedFolderId}
+        openFolderIds={openFolderIds}
         newFolderName={newFolderName}
         draggedItem={draggedItem}
         dragOverFolderId={dragOverFolderId}

@@ -7,7 +7,9 @@ import { getAgentHealth } from './agent-profiles'
 import { checkForAppUpdate, downloadAppUpdate } from './app-updates'
 import { AttentionBridge } from './attention-bridge'
 import { DelegationServer } from './delegation-server'
+import { shouldAutoApproveTask } from './delegation-policy'
 import { DelegationTaskRegistry } from './delegation-tasks'
+import { ReviewService, reviewSourceSchema } from './review-service'
 import type { AgentAccount, DelegationApproval, DelegationSnapshot, NotificationContext, NotificationSettings, SearchIndexState, StartPtyRequest } from './contracts'
 import { HistoryHostClient } from './history-host-client'
 import { NotificationCenter } from './notification-center'
@@ -28,6 +30,10 @@ const ptyHost = new PtyHostClient(
   () => mainWindow?.webContents ?? null,
   attentionBridge,
   ({ request, exitCode, intentional }) => notificationCenter?.handleExit(request, exitCode, intentional),
+  {
+    prepare: (request) => delegationServer?.prepareSession(request) ?? [],
+    release: (id) => delegationServer?.sessionLinks.release(id),
+  },
 )
 const sessionHistory = new HistoryHostClient(
   join(__dirname, 'history-host.js'),
@@ -37,6 +43,36 @@ const sessionHistory = new HistoryHostClient(
 )
 let delegationServer: DelegationServer | null = null
 let delegationRegistry: DelegationTaskRegistry | null = null
+const reviewService = new ReviewService()
+ipcMain.handle('reviews:prepare', (event, cwd: string) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error('Invalid review caller')
+  return reviewService.prepare(cwd)
+})
+ipcMain.handle('reviews:start', (event, request) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error('Invalid review caller')
+  return reviewService.start(request, delegationRegistryOrThrow())
+})
+ipcMain.handle('reviews:list', (event, source) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error('Invalid review caller')
+  return delegationRegistryOrThrow().listReviews(reviewSourceSchema.parse(source))
+})
+ipcMain.handle('delegation:session-tasks', (event, input) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error('Invalid task caller')
+  return delegationRegistryOrThrow().listSessionTasks(reviewSourceSchema.parse(input))
+})
+ipcMain.handle('delegation:sync-source', (event, input) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error('Invalid task caller')
+  const source = reviewSourceSchema.parse(input)
+  delegationServer?.sessionLinks.update(source)
+  delegationRegistryOrThrow().syncTaskSource(source)
+})
+ipcMain.handle('delegation:session-result', (event, taskId) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error('Invalid task caller')
+  if (typeof taskId !== 'string' || !taskId || taskId.length > 200) throw new Error('Invalid task ID')
+  const result = delegationRegistryOrThrow().result(taskId)
+  if (result.task.status !== 'completed') throw new Error('Task has not completed')
+  return result.text
+})
 const historyWatchers = new Map<string, FSWatcher>()
 let historyChangeTimer: ReturnType<typeof setTimeout> | undefined
 const HISTORY_CHANGE_DEBOUNCE_MS = 700
@@ -46,7 +82,7 @@ const CLIPBOARD_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.
 function delegationSnapshot(): DelegationSnapshot {
   return {
     server: delegationServer?.status() ?? {
-      enabled: false, running: false, autoApprove: false, port: 0, url: '', token: '', claudeRegisterCommand: '', codexConfigSnippet: '', codexConfigPath: '',
+      enabled: false, running: false, autoApprove: false, autoApproveEdits: false, port: 0, url: '', token: '', claudeRegisterCommand: '', codexConfigSnippet: '', codexConfigPath: '',
     },
     tasks: delegationRegistry?.snapshot() ?? [],
   }
@@ -274,6 +310,12 @@ ipcMain.handle('delegation:set-auto-approve', (_event, enabled: boolean) => {
   delegationServer.setAutoApprove(enabled === true)
   return delegationSnapshot()
 })
+ipcMain.handle('delegation:set-auto-approve-edits', (event, enabled: boolean) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error('Invalid task caller')
+  if (!delegationServer) throw new Error('Delegation server is not available')
+  delegationServer.setAutoApproveEdits(enabled === true)
+  return delegationSnapshot()
+})
 ipcMain.handle('delegation:regenerate-token', () => {
   if (!delegationServer) throw new Error('Delegation server is not available')
   delegationServer.regenerateToken()
@@ -321,11 +363,13 @@ app.whenReady().then(async () => {
       join(app.getPath('userData'), 'delegation.sqlite'),
       emitDelegationChanged,
       (task, event) => {
+        // The explicit Start review action owns approval and the chosen account.
+        if (task.reviewSource && event === 'awaiting_approval') return
         // Auto-approve starts the worker with the default account right away;
         // if that fails (e.g. concurrency cap), fall back to asking the user.
         // Retries always go through the approval modal — the point of retrying
         // is choosing another account.
-        if (event === 'awaiting_approval' && delegationServer?.autoApprove && !task.retryOfId) {
+        if (event === 'awaiting_approval' && delegationServer && shouldAutoApproveTask(task, delegationServer)) {
           queueMicrotask(() => {
             try {
               delegationRegistry?.approve(task.id)

@@ -13,14 +13,14 @@ import type {
   StartPtyRequest,
 } from './contracts'
 import type { DelegationTaskEvent } from './delegation-tasks'
-import { agentEventLabel, type AgentEvent } from '../src/features/sessions/agent-event'
+import type { AgentEvent } from '../src/features/sessions/agent-event'
+import { compactNotificationText, delegatedNotificationContent, desktopNotificationBody, sessionNotificationContent, type NotificationContent } from './notification-content'
 import { agentEventNotificationType, DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_PRIORITY as PRIORITY, notificationTypeEnabled, parseNotificationSettings as parseSettings } from '../src/features/notifications/notification-policy'
 
 const DESKTOP_BURST_WINDOW_MS = 600
 const MAX_ACTIVE_NOTIFICATIONS = 10
-const DELEGATION_TITLE_CHARS = 80
 
-interface CreateNotificationInput {
+interface CreateNotificationInput extends NotificationContent {
   sessionId: string
   agentId: string
   accountId: string
@@ -45,20 +45,6 @@ export function delegationNotificationKey(taskId: string): string {
   return `delegation:${taskId}`
 }
 
-function sessionMessage(type: AppNotificationType): string {
-  if (type === 'failed') return 'Session failed'
-  if (type === 'completed') return 'Session completed'
-  if (type === 'needs_attention') return 'Session needs attention'
-  if (type === 'account_changed') return 'Account changed'
-  return 'Session activity'
-}
-
-function delegationTitle(task: DelegationTask): string {
-  const compact = task.promptPreview.replace(/\s+/g, ' ').trim()
-  const preview = compact.length <= DELEGATION_TITLE_CHARS ? compact : `${compact.slice(0, DELEGATION_TITLE_CHARS)}…`
-  return `Delegation: ${preview || task.agent}`
-}
-
 export class NotificationCenter {
   private readonly active = new Map<string, ActiveNotification>()
   private readonly mutedSessionIds = new Set<string>()
@@ -81,7 +67,7 @@ export class NotificationCenter {
       version: this.version,
       notifications: [...this.active.values()]
         .sort((left, right) => PRIORITY[right.type] - PRIORITY[left.type] || right.createdAt - left.createdAt)
-        .map(({ dedupeKey: _dedupeKey, body: _body, activation: _activation, ...notification }) => notification),
+        .map(({ dedupeKey: _dedupeKey, activation: _activation, ...notification }) => notification),
       settings: { ...this.settings },
       mutedSessionIds: [...this.mutedSessionIds],
     }
@@ -99,7 +85,7 @@ export class NotificationCenter {
   updateContext(context: NotificationContext): void {
     this.context = {
       activeSessionId: typeof context.activeSessionId === 'string' ? context.activeSessionId : '',
-      activeView: ['cli', 'conversation', 'none'].includes(context.activeView) ? context.activeView : 'none',
+      activeView: ['cli', 'conversation', 'review', 'none'].includes(context.activeView) ? context.activeView : 'none',
     }
   }
 
@@ -121,26 +107,24 @@ export class NotificationCenter {
     if (intentional) return
     this.acknowledgeSession(request.sessionId)
     const type: AppNotificationType = exitCode === 0 ? 'completed' : 'failed'
-    this.createForSession(request, type, `exit:${request.id}:${exitCode}`)
+    this.createForSession(request, type, `exit:${request.id}:${exitCode}`, undefined, exitCode)
   }
 
   // Delegated tasks surface like sessions: approval requests need attention,
   // and the outcome lands as completed/failed.
   handleDelegation(task: DelegationTask, event: DelegationTaskEvent): void {
     const type: AppNotificationType = event === 'awaiting_approval' ? 'approval_required' : event
-    const body = event === 'awaiting_approval'
-      ? 'Delegation awaiting your approval'
-      : event === 'completed' ? 'Delegated task completed' : 'Delegated task failed'
+    const content = delegatedNotificationContent(task, event)
     this.acknowledgeSession(delegationNotificationKey(task.id))
     this.create({
       sessionId: delegationNotificationKey(task.id),
       agentId: task.agent,
       accountId: task.accountId ?? '',
       accountLabel: task.accountEmail ?? task.caller,
-      title: delegationTitle(task),
+      title: compactNotificationText((task.source ?? task.reviewSource)?.title || 'Delegated task', 80),
       type,
       dedupeKey: `delegation:${task.id}:${event}`,
-      body,
+      ...content,
       activation: { kind: 'delegation', taskId: task.id },
       skipWhenViewingCli: false,
     })
@@ -196,17 +180,17 @@ export class NotificationCenter {
     this.closeAllNativeNotifications()
   }
 
-  private createForSession(request: StartPtyRequest, type: AppNotificationType, dedupeKey: string, event?: AgentEvent): void {
+  private createForSession(request: StartPtyRequest, type: AppNotificationType, dedupeKey: string, event?: AgentEvent, exitCode?: number): void {
     if (request.purpose === 'login') return
     this.create({
       sessionId: request.sessionId,
       agentId: request.agentId,
       accountId: request.account?.id ?? '',
       accountLabel: request.account?.email ?? '',
-      title: request.title?.trim() || request.agentId,
+      title: compactNotificationText(request.title?.trim() || request.agentId, 80),
       type,
       dedupeKey,
-      body: event ? agentEventLabel(event) : sessionMessage(type),
+      ...sessionNotificationContent(request, type, event, exitCode),
       event,
       activation: { kind: 'session', sessionId: request.sessionId },
       skipWhenViewingCli: true,
@@ -251,6 +235,9 @@ export class NotificationCenter {
       event: input.event,
       dedupeKey: input.dedupeKey,
       body: input.body,
+      context: input.context,
+      preview: input.preview,
+      actionHint: input.actionHint,
       activation: input.activation,
     }
     this.active.set(input.sessionId, notification)
@@ -287,7 +274,7 @@ export class NotificationCenter {
 
     const activation: NotificationActivation = items.length === 1 ? items[0].activation : { kind: 'panel' }
     const nativeNotification = new Notification(items.length === 1
-      ? { title: items[0].title, body: items[0].body, silent: true }
+      ? { title: items[0].title, body: desktopNotificationBody(items[0], this.settings.desktopPreviewEnabled), silent: true }
       : { title: 'MoaCLI', body: `${items.length} sessions have new activity`, silent: true })
     this.nativeNotifications.set(nativeNotification, new Set(items.map((item) => item.sessionId)))
     nativeNotification.once('click', () => this.activate(activation))

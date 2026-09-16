@@ -90,6 +90,7 @@ export function AppearanceSettingsSection({
         <div className="appearance-field">
           <span>Maximum tabs</span>
           <SelectBox
+                  variant="settings"
             value={String(maximumTabs)}
             options={maximumTabOptions}
             ariaLabel="Maximum tabs"
@@ -99,6 +100,7 @@ export function AppearanceSettingsSection({
         <div className="appearance-field">
           <span>Interface font</span>
           <SelectBox
+                  variant="settings"
             value={appearance.uiFont}
             options={UI_FONT_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
             ariaLabel="Interface font"
@@ -108,6 +110,7 @@ export function AppearanceSettingsSection({
         <div className="appearance-field">
           <span>Terminal font</span>
           <SelectBox
+                  variant="settings"
             value={appearance.terminalFont}
             options={TERMINAL_FONT_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
             ariaLabel="Terminal font"
@@ -117,6 +120,7 @@ export function AppearanceSettingsSection({
         <div className="appearance-field">
           <span>Terminal renderer</span>
           <SelectBox
+                  variant="settings"
             value={appearance.terminalRenderer}
             options={TERMINAL_RENDERER_OPTIONS}
             ariaLabel="Terminal renderer"

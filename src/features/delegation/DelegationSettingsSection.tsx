@@ -3,6 +3,7 @@ import { Ban, Check, Copy, RefreshCw, RotateCcw } from 'lucide-react'
 import type { AgentAccount, AgentHealth, DelegationSnapshot, DelegationTask } from '../../../electron/contracts'
 import { SelectBox } from '../../components/SelectBox'
 import { SettingsToggle } from '../../components/SettingsToggle'
+import { SettingsDescription } from '../../components/SettingsDescription'
 import { delegationFailureKind, delegationFailureLabel, delegationPromptLine, delegationStatusLabel, delegationTimeLabel, isOpenDelegation, isRetryableDelegation } from './delegation-display'
 
 interface DelegationSettingsSectionProps {
@@ -11,6 +12,7 @@ interface DelegationSettingsSectionProps {
   profilesById: ReadonlyMap<string, AgentHealth>
   onToggleEnabled: (enabled: boolean) => void
   onToggleAutoApprove: (enabled: boolean) => void
+  onToggleAutoApproveEdits: (enabled: boolean) => void
   onRegenerateToken: () => void
   onReviewTask: (taskId: string) => void
   onCancelTask: (taskId: string) => void
@@ -43,6 +45,7 @@ export function DelegationSettingsSection({
   profilesById,
   onToggleEnabled,
   onToggleAutoApprove,
+  onToggleAutoApproveEdits,
   onRegenerateToken,
   onReviewTask,
   onCancelTask,
@@ -79,7 +82,7 @@ export function DelegationSettingsSection({
       <div className="delegation-settings-heading">
         <div>
           <h3 id="delegation-settings-title">Delegation</h3>
-          <p>Let Claude Code or Codex hand tasks to another agent through MoaCLI. Every request is approved by you first.</p>
+          <p>Let your main CLI delegate focused tasks. Mini agents work one level deep and cannot delegate again.</p>
         </div>
         <SettingsToggle label="Enabled" checked={Boolean(server?.enabled)} disabled={!available} onChange={onToggleEnabled} />
       </div>
@@ -106,17 +109,25 @@ export function DelegationSettingsSection({
 
       <div className="delegation-auto-approve">
         <SettingsToggle
-          label="Auto-approve requests"
+          label="Auto-approve analysis"
           checked={Boolean(server?.autoApprove)}
           disabled={!available || !server?.enabled}
           onChange={onToggleAutoApprove}
         />
-        <p>Delegations start immediately with the default account — no approval dialog. Leave this off unless you trust every registered caller.</p>
+        <p>New analysis tasks start with the default account without an approval dialog.</p>
+        <SettingsToggle
+          label="Auto-approve file edits"
+          checked={Boolean(server?.autoApproveEdits)}
+          disabled={!available || !server?.enabled}
+          onChange={onToggleAutoApproveEdits}
+        />
+        <SettingsDescription tone="warning">When enabled, delegated tasks can change project files without asking again. Off by default; edits are never automatically retried.</SettingsDescription>
+        <p>These settings apply to new requests only. Up to 3 tasks run at once; edits in overlapping workspaces run one at a time.</p>
       </div>
 
       <div className="delegation-fallback">
         <strong>Fallback account</strong>
-        <p>If a task fails from a usage limit or sign-in problem, MoaCLI retries it once with this account automatically. Leave on “None” to be asked instead.</p>
+        <p>If an analysis task fails from a usage limit or sign-in problem, MoaCLI retries it once with this account automatically. Edit tasks and snapshot tasks require a new user action. Leave on “None” to be asked instead.</p>
         {WORKER_AGENTS.map((agentId) => {
           const agentAccounts = accounts.filter((account) => account.agentId === agentId)
           const selected = fallbackAccounts[agentId] ?? ''
@@ -126,6 +137,7 @@ export function DelegationSettingsSection({
               {agentAccounts.length
                 ? (
                   <SelectBox
+                    variant="settings"
                     value={agentAccounts.some((account) => account.id === selected) ? selected : ''}
                     options={[
                       { value: '', label: 'None — ask me first' },
@@ -142,6 +154,7 @@ export function DelegationSettingsSection({
       </div>
 
       <div className="delegation-register">
+        <SettingsDescription>MoaCLI sessions connect automatically. Use the setup below only for external terminals; their tasks appear in the global list.</SettingsDescription>
         <div className="delegation-register-block">
           <div className="delegation-register-title">
             <strong>Claude Code</strong>
@@ -167,7 +180,7 @@ export function DelegationSettingsSection({
         {confirmRegenerate
           ? (
             <>
-              <span>Existing registrations stop working until you update them.</span>
+              <span>Update external registrations and restart open MoaCLI CLI sessions after regenerating the token.</span>
               <button className="secondary-button" onClick={() => setConfirmRegenerate(false)}>Keep token</button>
               <button className="modal-save" onClick={() => { setConfirmRegenerate(false); onRegenerateToken() }}>Regenerate</button>
             </>

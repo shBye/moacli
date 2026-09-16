@@ -3,6 +3,7 @@ import type { DelegationTask, DelegationTaskStatus } from '../../../electron/con
 export function delegationStatusLabel(status: DelegationTaskStatus): string {
   if (status === 'awaiting_approval') return 'Awaiting approval'
   if (status === 'running') return 'Running'
+  if (status === 'queued') return 'Queued'
   if (status === 'completed') return 'Completed'
   if (status === 'failed') return 'Failed'
   if (status === 'rejected') return 'Declined'
@@ -18,18 +19,16 @@ export function delegationPromptLine(task: DelegationTask, limit = 120): string 
   return compact.length <= limit ? compact : `${compact.slice(0, limit)}…`
 }
 
-export function delegationPolicyLabel(agent: string): string {
-  return agent === 'codex'
-    ? 'Codex read-only sandbox'
-    : 'Claude Code default permissions · cannot approve risky actions · MCP disabled'
+export function delegationPolicyLabel(_agent: string, mode: 'analyze' | 'edit' = 'analyze'): string {
+  return `${mode === 'edit' ? 'Project file changes allowed' : 'Analysis only'} · no further delegation`
 }
 
 export function isOpenDelegation(task: DelegationTask): boolean {
-  return task.status === 'awaiting_approval' || task.status === 'running'
+  return task.status === 'awaiting_approval' || task.status === 'queued' || task.status === 'running'
 }
 
 export function isRetryableDelegation(task: DelegationTask): boolean {
-  return task.status === 'failed' || task.status === 'cancelled'
+  return !task.reviewSource && (task.status === 'failed' || task.status === 'cancelled')
 }
 
 export type DelegationFailureKind = 'limit' | 'auth'

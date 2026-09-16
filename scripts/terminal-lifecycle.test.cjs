@@ -11,11 +11,11 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/features/sessions/age
 // Run the actual launch effect with deterministic boundary doubles.
 function harness() {
   const slots = [], starts = [], stops = [], resizes = [], writes = [], states = []
-  let cursor = 0, effects = [], previous = [], resolveStart, rejectStart, terminal, onAttention
+  let cursor = 0, effects = [], previous = [], resolveStart, rejectStart, terminal, onAttention, compareProps
   const noop = () => {}
   const disposable = () => ({ dispose: noop })
   const react = {
-    memo: value => value,
+    memo: (value, compare) => { compareProps = compare; return value },
     useState: initial => {
       const index = cursor++
       if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial
@@ -41,6 +41,7 @@ function harness() {
     attachCustomKeyEventHandler() {}
     write(data) { writes.push(data) }
     writeln(data) { writes.push(data) }
+    paste(data) { writes.push(data) }
   }
   const api = {
     startPty: request => { starts.push(request); return new Promise((resolve, reject) => { resolveStart = resolve; rejectStart = reject }) },
@@ -76,6 +77,8 @@ function harness() {
   })
   return {
     starts, stops, resizes, writes, states,
+    equal: (a, b) => compareProps(a, b),
+    paste: () => effects[1].run(),
     render(props) {
       cursor = 0; effects = []
       exports.TerminalPane({ active: false, sessionId: 'session', agentId: 'codex', cwd: '.', title: 'New', resumeId: '', renderer: 'dom', onActivity: noop, onStateChange: state => states.push(state), ...props })
@@ -91,6 +94,23 @@ function harness() {
     reject: async () => { rejectStart(Error('late failure')); await Promise.resolve(); await Promise.resolve() },
   }
 }
+
+test('memo observes paste requests and a ready terminal consumes each request only once', async () => {
+  const h = harness()
+  let consumed = 0
+  const old = { active: true, pendingPaste: { id: 'one', text: 'old' } }
+  const next = { active: true, pendingPaste: { id: 'two', text: 'hello\x00world' }, onPasteConsumed: () => consumed++ }
+  assert.equal(h.equal(old, next), false)
+  assert.equal(h.equal(old, { ...old, pendingPaste: { id: 'one', text: 'new' } }), false)
+  assert.equal(h.equal(old, { ...old }), true)
+  h.render(next)
+  const dispose = h.launch()
+  await h.resolve()
+  h.paste(); h.paste()
+  assert.deepEqual(h.writes, ['helloworld'])
+  assert.equal(consumed, 1)
+  dispose()
+})
 
 for (const agentId of ['codex', 'claude']) {
   test(agentId + ': first history link and rename preserve the running terminal', async () => {

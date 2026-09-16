@@ -25,7 +25,7 @@ interface SidebarFoldersSectionProps {
   recentOpen: boolean
   folders: readonly LogicalFolder[]
   folderViews: ReadonlyMap<string, FolderView>
-  selectedFolderId: string
+  openFolderIds: readonly string[]
   newFolderName: string | null
   draggedItem: DraggedSidebarItem | null
   dragOverFolderId: string
@@ -74,7 +74,7 @@ export function SidebarFoldersSection({
   recentOpen,
   folders,
   folderViews,
-  selectedFolderId,
+  openFolderIds,
   newFolderName,
   draggedItem,
   dragOverFolderId,
@@ -167,8 +167,8 @@ export function SidebarFoldersSection({
         onToggle={onToggle}
         actions={(
           <span className="heading-actions">
-            <button className="mini-icon-button" title={selectedFolderId ? 'Collapse open folder' : 'Reopen last folder'} onClick={onCollapseAll}>
-              {selectedFolderId ? <ChevronsDownUp size={13} /> : <ChevronsUpDown size={13} />}
+            <button className="mini-icon-button" title={openFolderIds.length ? 'Collapse open folders' : 'Reopen previous folders'} onClick={onCollapseAll}>
+              {openFolderIds.length ? <ChevronsDownUp size={13} /> : <ChevronsUpDown size={13} />}
             </button>
             <button className="mini-icon-button" title="New folder" onClick={onNewFolder}><FolderPlus size={13} /></button>
             <button className="mini-icon-button" title="New session" onClick={onNewSession}><Plus size={15} strokeWidth={2.4} /></button>
@@ -212,12 +212,12 @@ export function SidebarFoldersSection({
                 ) : (
                   <div className={`tree-row-shell ${confirmingFolderId === folder.id ? 'confirming-remove' : ''}`}>
                     <button
-                      className={`tree-row ${selectedFolderId === folder.id ? 'active' : ''}`}
-                      aria-expanded={selectedFolderId === folder.id}
+                      className={`tree-row ${openFolderIds.includes(folder.id) ? 'active' : ''}`}
+                      aria-expanded={openFolderIds.includes(folder.id)}
                       onClick={() => onToggleFolder(folder.id)}
                       onDoubleClick={() => beginRename(folder)}
                     >
-                      {selectedFolderId === folder.id ? <FolderOpen size={15} /> : folder.locked ? <FolderLock size={15} /> : <Folder size={15} />}
+                      {openFolderIds.includes(folder.id) ? <FolderOpen size={15} /> : folder.locked ? <FolderLock size={15} /> : <Folder size={15} />}
                       <span>{folder.name}</span>
                       {folderEntryCount > 0 && <small className="folder-count">{folderEntryCount}</small>}
                     </button>
@@ -234,7 +234,7 @@ export function SidebarFoldersSection({
                     </span>
                   </div>
                 )}
-                <div className={`folder-contents ${selectedFolderId === folder.id ? 'open' : ''}`}>
+                <div className={`folder-contents ${openFolderIds.includes(folder.id) ? 'open' : ''}`}>
                   <div className="folder-contents-inner">
                     {folderView.entries.map((entry) => {
                       const dropClass = dropIndicator?.folderId === folder.id && dropIndicator.orderKey === entry.orderKey

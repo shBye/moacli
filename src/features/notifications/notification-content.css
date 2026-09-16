@@ -1,0 +1,3 @@
+.notification-body { font-size: 11px; line-height: 1.5; color: color-mix(in srgb, var(--app-fg) 82%, transparent); }
+.notification-context, .notification-hint { font-size: 10px; line-height: 1.5; color: color-mix(in srgb, var(--app-fg) 55%, transparent); overflow-wrap: anywhere; }
+.notification-preview { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-size: 11px; line-height: 1.55; color: color-mix(in srgb, var(--app-fg) 72%, transparent); padding: 5px 8px; border-left: 2px solid color-mix(in srgb, var(--acc) 45%, transparent); background: color-mix(in srgb, var(--app-fg) 3%, transparent); }

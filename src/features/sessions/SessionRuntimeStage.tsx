@@ -18,6 +18,7 @@ interface SessionRuntimeStageProps {
   onLoadOlderMessages: (sessionId: string, before: number) => void
   onActivity: (sessionId: string) => void
   onStateChange: (sessionId: string, state: SessionState, detail?: string) => void
+  onPasteConsumed: (sessionId: string) => void
 }
 
 export function SessionRuntimeStage({
@@ -34,9 +35,10 @@ export function SessionRuntimeStage({
   onLoadOlderMessages,
   onActivity,
   onStateChange,
+  onPasteConsumed,
 }: SessionRuntimeStageProps) {
   return (
-    <div className={`session-view-stage ${sessions.some((session) => session.id === activeSessionId) ? '' : 'dormant'}`}>
+    <div className={`session-view-stage ${sessions.some((session) => session.id === activeSessionId) ? '' : 'dormant'} ${sessions.find((session) => session.id === activeSessionId)?.view === 'review' ? 'review-hidden' : ''}`}>
       {sessions.map((session) => (
         <div className={`runtime-session ${activeSessionId === session.id ? 'active' : ''}`} key={session.id}>
           <div className={`terminal-view ${session.view === 'cli' ? 'active' : ''}`}>
@@ -45,7 +47,8 @@ export function SessionRuntimeStage({
                 <LazyTerminalPane
                   key={session.terminalRevision}
                   active={activeSessionId === session.id && session.view === 'cli'}
-                  sessionId={session.id}
+                    sessionId={session.id}
+                    historyKey={session.historyKey}
                   agentId={session.agentId}
                   cwd={session.cwd}
                   title={session.title}
@@ -61,6 +64,8 @@ export function SessionRuntimeStage({
                   cursorColor={cursorColor}
                   activityStatusEnabled={statusAwareAgents.has(session.agentId)}
                   onActivity={() => onActivity(session.id)}
+                  pendingPaste={session.pendingPaste}
+                  onPasteConsumed={() => onPasteConsumed(session.id)}
                   onStateChange={(state, detail) => onStateChange(session.id, state, detail)}
                 />
               </Suspense>

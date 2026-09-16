@@ -56,6 +56,12 @@ ipcRenderer.on('pty:attention', (_event, payload: PtyAttentionEvent) => {
 })
 
 const api: CliAgentApi = {
+  prepareReview: (cwd) => ipcRenderer.invoke('reviews:prepare', cwd),
+  startReview: (request) => ipcRenderer.invoke('reviews:start', request),
+  listReviews: (source) => ipcRenderer.invoke('reviews:list', source),
+  listSessionTasks: (source) => ipcRenderer.invoke('delegation:session-tasks', source),
+  syncTaskSource: (source) => ipcRenderer.invoke('delegation:sync-source', source),
+  getSessionTaskResult: (taskId) => ipcRenderer.invoke('delegation:session-result', taskId),
   terminalBackend: process.platform === 'win32' ? 'conpty' : 'posix',
   getProfiles: () => ipcRenderer.invoke('profiles:list'),
   detectAccounts: () => ipcRenderer.invoke('accounts:detect'),
@@ -109,6 +115,7 @@ const api: CliAgentApi = {
   retryDelegation: (taskId) => ipcRenderer.invoke('delegation:retry', taskId),
   setDelegationEnabled: (enabled) => ipcRenderer.invoke('delegation:set-enabled', enabled),
   setDelegationAutoApprove: (enabled) => ipcRenderer.invoke('delegation:set-auto-approve', enabled),
+  setDelegationAutoApproveEdits: (enabled) => ipcRenderer.invoke('delegation:set-auto-approve-edits', enabled),
   regenerateDelegationToken: () => ipcRenderer.invoke('delegation:regenerate-token'),
   onDelegationChanged: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, snapshot: DelegationSnapshot): void => callback(snapshot)

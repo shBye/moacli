@@ -1,21 +1,26 @@
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { AGENT_ROLES, AGENT_ROLE_IDS, roleTaskPrompt, type AgentRoleId } from './agent-roles'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, realpathSync, statSync } from 'node:fs'
+import { assertRootCaller, type DelegationMode } from './delegation-policy'
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { z } from 'zod'
 import type { DelegationServerStatus } from './contracts'
 import { isFinishedStatus, type DelegationTaskRegistry } from './delegation-tasks'
 import { describeWorkerPolicy, listWorkerAgents } from './delegation-workers'
+import { DelegationSessionLinks } from './delegation-session-links'
+import type { ReviewSource } from './review-contracts'
+import type { StartPtyRequest } from './contracts'
 
 const MCP_PATH = '/mcp'
 const PREFERRED_PORT = 38017
 const PORT_SCAN_RANGE = 20
 const DEFAULT_TIMEOUT_SECONDS = 300
 const MAX_TIMEOUT_SECONDS = 600
-const MAX_RESULT_CHARS = 200_000
+const MAX_RESULT_CHARS = 6000
 const LOCAL_ORIGIN_PATTERN = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i
 const LOCAL_HOST_PATTERN = /^(?:localhost|127\.0\.0\.1)(?::\d+)?$/i
 
@@ -24,6 +29,7 @@ interface StoredServerConfig {
   token: string
   enabled: boolean
   autoApprove: boolean
+  autoApproveEdits: boolean
 }
 
 interface CallerInfo {
@@ -64,11 +70,17 @@ function jsonResult(value: unknown): { content: Array<{ type: 'text'; text: stri
 }
 
 export class DelegationServer {
+  readonly sessionLinks = new DelegationSessionLinks()
+
+  prepareSession(request: StartPtyRequest): string[] {
+    return this.enabled && this.httpServer ? this.sessionLinks.prepare(request, this.url) : []
+  }
   private httpServer: HttpServer | null = null
   private token = ''
   private port = 0
   private enabled = true
   private autoApproveEnabled = false
+  private autoApproveEditsEnabled = false
   private readonly configPath: string
   private readonly resultsDirectory: string
   private readonly registry: DelegationTaskRegistry
@@ -93,6 +105,7 @@ export class DelegationServer {
       enabled: this.enabled,
       running,
       autoApprove: this.autoApproveEnabled,
+      autoApproveEdits: this.autoApproveEditsEnabled,
       port: this.port,
       url: running ? this.url : '',
       token: this.token,
@@ -112,10 +125,12 @@ export class DelegationServer {
   }
 
   async start(): Promise<void> {
+    if (process.env.MOACLI_DELEGATED === '1') throw new Error('A delegated worker cannot start a delegation server')
     const stored = this.readStoredConfig()
     this.token = stored?.token ?? randomBytes(24).toString('hex')
     this.enabled = stored?.enabled ?? true
     this.autoApproveEnabled = stored?.autoApprove ?? false
+    this.autoApproveEditsEnabled = stored?.autoApproveEdits ?? false
     this.port = stored?.port ?? PREFERRED_PORT
     if (!this.enabled) {
       this.persistConfig()
@@ -142,14 +157,23 @@ export class DelegationServer {
     return this.autoApproveEnabled
   }
 
+  get autoApproveEdits(): boolean { return this.autoApproveEditsEnabled }
+
+  setAutoApproveEdits(enabled: boolean): void {
+    this.autoApproveEditsEnabled = enabled
+    this.persistConfig()
+    this.onChanged()
+  }
+
   setAutoApprove(enabled: boolean): void {
     this.autoApproveEnabled = enabled
     this.persistConfig()
-    log(enabled ? 'Auto-approve enabled: requests start without the approval dialog' : 'Auto-approve disabled')
+    log(enabled ? 'Analysis auto-approve enabled' : 'Analysis auto-approve disabled')
     this.onChanged()
   }
 
   regenerateToken(): void {
+    this.sessionLinks.clear()
     this.token = randomBytes(24).toString('hex')
     this.persistConfig()
     log('Bearer token regenerated; previously registered clients must be updated')
@@ -157,6 +181,7 @@ export class DelegationServer {
   }
 
   dispose(): void {
+    this.sessionLinks.clear()
     this.httpServer?.close()
     this.httpServer = null
   }
@@ -186,7 +211,7 @@ export class DelegationServer {
         && (parsed as StoredServerConfig).token.length >= 16
       ) {
         const config = parsed as Partial<StoredServerConfig>
-        return { port: config.port!, token: config.token!, enabled: config.enabled !== false, autoApprove: config.autoApprove === true }
+        return { port: config.port!, token: config.token!, enabled: config.enabled !== false, autoApprove: config.autoApprove === true, autoApproveEdits: config.autoApproveEdits === true }
       }
     } catch {
       // Missing or corrupt config falls through to a fresh token/port.
@@ -196,7 +221,7 @@ export class DelegationServer {
 
   private persistConfig(): void {
     mkdirSync(this.options.userDataDirectory, { recursive: true })
-    writeFileSync(this.configPath, JSON.stringify({ port: this.port, token: this.token, url: this.url, enabled: this.enabled, autoApprove: this.autoApproveEnabled }, null, 2))
+    writeFileSync(this.configPath, JSON.stringify({ port: this.port, token: this.token, url: this.url, enabled: this.enabled, autoApprove: this.autoApproveEnabled, autoApproveEdits: this.autoApproveEditsEnabled }, null, 2))
   }
 
   private tryListen(port: number): Promise<boolean> {
@@ -216,10 +241,15 @@ export class DelegationServer {
     const origin = request.headers.origin
     if (origin && !LOCAL_ORIGIN_PATTERN.test(origin)) return false
     if (!LOCAL_HOST_PATTERN.test(request.headers.host ?? '')) return false
-    return (request.headers.authorization ?? '') === `Bearer ${this.token}`
+    return (request.headers.authorization ?? '') === `Bearer ${this.token}` || Boolean(this.sessionLinks.resolve(request.headers.authorization))
   }
 
   private async handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    if (request.headers['x-moacli-delegation-depth'] && request.headers['x-moacli-delegation-depth'] !== '0') {
+      response.writeHead(403, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ error: 'Mini agents cannot delegate again' }))
+      return
+    }
     if ((request.url ?? '').split('?', 1)[0] !== MCP_PATH) {
       response.writeHead(404, { 'content-type': 'application/json' })
       response.end(JSON.stringify({ error: 'not found' }))
@@ -233,7 +263,7 @@ export class DelegationServer {
     }
     // Stateless mode: each request gets fresh server+transport instances so any
     // number of CLI clients can talk to the same endpoint without session state.
-    const mcpServer = this.buildMcpServer()
+    const mcpServer = this.buildMcpServer(this.sessionLinks.resolve(request.headers.authorization))
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
     response.on('close', () => {
       void transport.close()
@@ -251,9 +281,12 @@ export class DelegationServer {
     }
   }
 
-  private buildMcpServer(): McpServer {
+  private buildMcpServer(source?: ReviewSource): McpServer {
     const server = new McpServer({ name: 'moacli', version: this.appVersion })
     const taskInput = {
+      role: z.enum(AGENT_ROLE_IDS).optional().describe('Optional role preset. Role and execution mode are independent. Use list_roles for details.'),
+      mode: z.enum(['analyze', 'edit']).default('analyze').describe('Default analyze. Edit requests require approval unless the user enabled edit auto-approval; do not edit the same files yourself while the worker runs.'),
+      delegation_depth: z.literal(0).optional().describe('Only original CLIs may submit tasks (depth 0). Mini agents must return to the original caller, never submit tasks.'),
       agent: z.enum(['claude', 'codex']).describe('Which agent executes the task'),
       prompt: z.string().min(1).max(100_000).describe('Complete, self-contained task description'),
       cwd: z.string().optional().describe('Absolute working directory for the task (defaults to the user home directory)'),
@@ -274,15 +307,29 @@ export class DelegationServer {
         ...(task.detail ? { detail: task.detail } : {}),
       }
     }
-    const createTask = (input: { agent: 'claude' | 'codex'; prompt: string; cwd?: string; timeout_seconds?: number }, extra: CallerInfo) => (
-      this.registry.create({
+    const createTask = (input: { agent: 'claude' | 'codex'; prompt: string; cwd?: string; timeout_seconds?: number; role?: AgentRoleId; mode?: DelegationMode; delegation_depth?: number }, extra: CallerInfo) => {
+      assertRootCaller(input.delegation_depth ?? 0)
+      if (input.mode === 'edit' && !input.cwd) throw new Error('Edit tasks require an explicit project directory')
+      if (input.cwd && !isAbsolute(input.cwd)) throw new Error('The working directory must be an absolute path')
+      const cwd = realpathSync(input.cwd || homedir())
+      if (!statSync(cwd).isDirectory()) throw new Error('The working directory is not a directory')
+      return this.registry.create({
+        source,
+        callerDepth: input.delegation_depth ?? 0,
+        mode: input.mode ?? 'analyze',
+        role: input.role,
         agent: input.agent,
-        prompt: input.prompt,
-        cwd: input.cwd && existsSync(input.cwd) ? input.cwd : homedir(),
+        prompt: roleTaskPrompt(input.prompt, input.role),
+        cwd,
         timeoutMs: (input.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000,
-        caller: callerLabel(extra),
+        caller: input.role ? `${callerLabel(extra)} · ${input.role}` : callerLabel(extra),
       })
-    )
+    }
+
+    server.registerTool('list_roles', {
+      description: 'List the specialist roles available for delegate_task and start_task. A role defines the task focus; agent selects Claude or Codex, not the role.',
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    }, () => jsonResult(AGENT_ROLES.map(({ id, label, description }) => ({ id, label, description }))))
 
     server.registerTool('list_agents', {
       description: 'List the CLI coding agents MoaCLI can delegate work to on this machine, with availability and the permission policy each worker runs under.',
@@ -296,12 +343,12 @@ export class DelegationServer {
     server.registerTool('delegate_task', {
       description: [
         'Delegate a self-contained task to another CLI coding agent running headless on this machine and wait for its answer.',
-        'The user must approve the delegation in MoaCLI first, and the worker runs with conservative permissions',
-        '(read-oriented; it cannot approve risky actions), so delegate analysis, reading, and summarization tasks rather',
-        'than large write operations. Provide the full task in `prompt` — the worker shares no conversation context with you.',
-        'For tasks that may take longer than your tool timeout, use start_task and poll check_task instead.',
+        'Keep easy work in the original CLI. Delegate only a bounded task that benefits from another agent.',
+        'Default analyze; choose edit explicitly for file changes. Approval follows the user settings for each mode. Workers cannot delegate again.',
+        'Provide only necessary context and an explicit scope; workers share no conversation history.',
+        'For parallel work use start_task, then wait_task. Results are bounded; get_task_result retrieves more.',
       ].join(' '),
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
       inputSchema: taskInput,
     }, async (input, extra) => {
       let taskId = ''
@@ -315,7 +362,8 @@ export class DelegationServer {
           return textResult(`Delegation ${finished.status}: ${finished.error ?? 'no result'}`, true)
         }
         log(`delegate_task ${task.id} finished (${finished.detail ?? ''})`)
-        return textResult(truncateResult(this.registry.result(task.id).text, MAX_RESULT_CHARS))
+        const result = this.registry.result(task.id).text
+        return jsonResult({ task_id: task.id, text: result.slice(0, MAX_RESULT_CHARS), total_chars: result.length, next_offset: result.length > MAX_RESULT_CHARS ? MAX_RESULT_CHARS : null })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         log(`delegate_task ${taskId || 'request'} failed — ${message}`)
@@ -326,10 +374,11 @@ export class DelegationServer {
     server.registerTool('start_task', {
       description: [
         'Start a delegated task on another CLI coding agent and return immediately with a task_id.',
-        'The user approves the delegation in MoaCLI before the worker starts. Poll check_task for progress,',
-        'then call get_task_result once the status is completed. Same prompt guidance as delegate_task.',
+        'Use for independent parallel tasks. Up to 3 run concurrently; approved excess tasks queue (10 open max).',
+        'Workers cannot re-delegate. Prefer wait_task to frequent polling, then retrieve only needed output.',
+        'Default analyze; edit requires approval unless the user enabled edit auto-approval. Avoid concurrent edits by the original CLI in the same files.',
       ].join(' '),
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
       inputSchema: taskInput,
     }, (input, extra) => {
       try {
@@ -338,8 +387,8 @@ export class DelegationServer {
         return jsonResult({
           task_id: task.id,
           status: task.status,
-          worker_policy: describeWorkerPolicy(task.agent === 'codex' ? 'codex' : 'claude'),
-          note: 'Waiting for the user to approve the delegation in MoaCLI. Poll check_task; approval can take a while.',
+          worker_policy: describeWorkerPolicy(task.agent === 'codex' ? 'codex' : 'claude', task.mode),
+          note: 'Use wait_task (up to 30 seconds) instead of frequent polling. The user may need to approve first.',
         })
       } catch (error) {
         return textResult(`Could not start the task: ${error instanceof Error ? error.message : String(error)}`, true)
@@ -347,37 +396,45 @@ export class DelegationServer {
     })
 
     server.registerTool('check_task', {
-      description: 'Check the status of a delegated task, with a tail of its progress log. Statuses: awaiting_approval, running, completed, failed, rejected, cancelled.',
+      description: 'Check task status. Log output is opt-in to keep responses small. States include awaiting_approval, queued, running, completed, failed, rejected, cancelled.',
       annotations: { readOnlyHint: true, openWorldHint: false },
-      inputSchema: taskIdInput,
-    }, ({ task_id }) => {
+      inputSchema: { ...taskIdInput, include_log: z.boolean().default(false) },
+    }, ({ task_id, include_log }) => {
       const summary = describeTask(task_id)
       if (!summary) return textResult(`Unknown task: ${task_id}`, true)
       const task = this.registry.get(task_id)!
       return jsonResult({
         ...summary,
-        progress: this.registry.logTail(task_id),
+        ...(include_log ? { progress: this.registry.logTail(task_id) } : {}),
         ...(task.status === 'completed' ? { result_preview: task.resultPreview ?? '', next: 'Call get_task_result for the full answer.' } : {}),
       })
     })
 
-    server.registerTool('get_task_result', {
-      description: 'Return the full answer of a completed delegated task. Very large answers are written to a file and its path is returned with the beginning of the text.',
+    server.registerTool('wait_task', {
+      description: 'Wait up to 30 seconds for completion without model polling. Returns compact status; retrieve the result separately when finished.',
       annotations: { readOnlyHint: true, openWorldHint: false },
-      inputSchema: taskIdInput,
-    }, ({ task_id }) => {
+      inputSchema: { ...taskIdInput, timeout_seconds: z.number().int().min(1).max(30).default(30) },
+    }, async ({ task_id, timeout_seconds }) => {
+      if (!this.registry.get(task_id)) return textResult(`Unknown task: ${task_id}`, true)
+      await this.registry.waitForFinish(task_id, timeout_seconds * 1000)
+      return jsonResult(describeTask(task_id))
+    })
+
+    server.registerTool('get_task_result', {
+      description: 'Read a completed result in bounded pages (6000 characters by default). Use next_offset only when you need more context.',
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      inputSchema: { ...taskIdInput, offset: z.number().int().min(0).default(0), max_chars: z.number().int().min(200).max(20_000).default(MAX_RESULT_CHARS) },
+    }, ({ task_id, offset, max_chars }) => {
       const task = this.registry.get(task_id)
       if (!task) return textResult(`Unknown task: ${task_id}`, true)
-      if (!isFinishedStatus(task.status)) return textResult(`Task ${task_id} is still ${task.status}; poll check_task until it finishes.`, true)
+      if (!isFinishedStatus(task.status)) return textResult(`Task ${task_id} is still ${task.status}; use wait_task until it finishes.`, true)
       if (task.status !== 'completed') return textResult(`Task ${task_id} ${task.status}: ${task.error ?? 'no result'}`, true)
       const { text } = this.registry.result(task_id)
-      if (text.length <= MAX_RESULT_CHARS) return textResult(text)
-      const path = this.registry.writeResultFile(task_id, this.resultsDirectory)
-      return textResult(`${text.slice(0, MAX_RESULT_CHARS)}\n\n… (${text.length - MAX_RESULT_CHARS} more chars; full result saved to ${path})`)
+      return jsonResult({ task_id, text: text.slice(offset, offset + max_chars), total_chars: text.length, next_offset: offset + max_chars < text.length ? offset + max_chars : null })
     })
 
     server.registerTool('cancel_task', {
-      description: 'Cancel a delegated task that is awaiting approval or running.',
+      description: 'Cancel a delegated task that is awaiting approval, queued, or running.',
       annotations: { openWorldHint: false },
       inputSchema: taskIdInput,
     }, ({ task_id }) => {

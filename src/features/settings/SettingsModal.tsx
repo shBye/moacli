@@ -53,6 +53,7 @@ interface SettingsModalProps {
   onNotificationSettingsChange: (update: Partial<NotificationSettings>) => void
   onDelegationEnabledChange: (enabled: boolean) => void
   onDelegationAutoApproveChange: (enabled: boolean) => void
+  onDelegationAutoApproveEditsChange: (enabled: boolean) => void
   onRegenerateDelegationToken: () => void
   onReviewDelegation: (taskId: string) => void
   onCancelDelegation: (taskId: string) => void
@@ -105,6 +106,7 @@ export function SettingsModal({
   onNotificationSettingsChange,
   onDelegationEnabledChange,
   onDelegationAutoApproveChange,
+  onDelegationAutoApproveEditsChange,
   onRegenerateDelegationToken,
   onReviewDelegation,
   onCancelDelegation,
@@ -180,6 +182,7 @@ export function SettingsModal({
               profilesById={profilesById}
               onToggleEnabled={onDelegationEnabledChange}
               onToggleAutoApprove={onDelegationAutoApproveChange}
+              onToggleAutoApproveEdits={onDelegationAutoApproveEditsChange}
               onRegenerateToken={onRegenerateDelegationToken}
               onReviewTask={onReviewDelegation}
               onCancelTask={onCancelDelegation}

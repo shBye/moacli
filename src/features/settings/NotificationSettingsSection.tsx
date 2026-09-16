@@ -1,6 +1,7 @@
 import { Check, TriangleAlert } from 'lucide-react'
 import type { AgentHealth, NotificationSettings } from '../../../electron/contracts'
 import { SettingsToggle } from '../../components/SettingsToggle'
+import { SettingsDescription } from '../../components/SettingsDescription'
 
 interface NotificationSettingsSectionProps {
   visible: boolean
@@ -23,6 +24,8 @@ export function NotificationSettingsSection({
       </div>
       <div className="notification-settings-options">
         <SettingsToggle label="Desktop notifications" checked={settings.desktopEnabled} disabled={!settings.enabled} onChange={(desktopEnabled) => onChange({ desktopEnabled })} />
+        <SettingsToggle label="Result previews on desktop" checked={settings.desktopPreviewEnabled} disabled={!settings.enabled || !settings.desktopEnabled} onChange={(desktopPreviewEnabled) => onChange({ desktopPreviewEnabled })} />
+        <SettingsDescription>Off by default. Desktop previews may expose task results or error details to others. In-app notifications show previews when available; session titles remain visible on desktop.</SettingsDescription>
         <SettingsToggle label="Approval requests" checked={settings.approvals} disabled={!settings.enabled} onChange={(approvals) => onChange({ approvals })} />
         <SettingsToggle label="Questions and input requests" checked={settings.inputRequired} disabled={!settings.enabled} onChange={(inputRequired) => onChange({ inputRequired })} />
         <SettingsToggle label="Other attention alerts" checked={settings.needsAttention} disabled={!settings.enabled} onChange={(needsAttention) => onChange({ needsAttention })} />

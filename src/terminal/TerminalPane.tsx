@@ -14,6 +14,7 @@ import type { AgentAccount } from '../../electron/contracts'
 import { agentEventInteractionState, agentEventLabel } from '../features/sessions/agent-event'
 
 interface TerminalPaneProps {
+  historyKey?: string
   active: boolean
   sessionId: string
   agentId: string
@@ -31,6 +32,8 @@ interface TerminalPaneProps {
   cursorColor: string
   activityStatusEnabled: boolean
   onActivity: () => void
+  pendingPaste?: { id: string; text: string }
+  onPasteConsumed?: () => void
   onStateChange: (state: 'starting' | 'running' | 'processing' | 'needs_attention' | 'stopped', detail?: string) => void
 }
 
@@ -41,10 +44,10 @@ const STARTUP_FOLLOW_EXTEND_MS = 1200
 const TERMINAL_ZOOM_KEYS = new Set(['=', '+', '-', '_', '0'])
 const CODEX_MOUSE_TRACKING_MODES = new Set([9, 1000, 1002, 1003, 1005, 1006, 1015, 1016])
 
-function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account, purpose = 'session', resumeId, renderer, revealLatestAt, fontFamily, fontSize, background, foreground, cursorColor, activityStatusEnabled, onActivity, onStateChange }: TerminalPaneProps) {
+function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, title, account, purpose = 'session', resumeId, renderer, revealLatestAt, fontFamily, fontSize, background, foreground, cursorColor, activityStatusEnabled, onActivity, onStateChange, pendingPaste, onPasteConsumed }: TerminalPaneProps) {
   // Explicit restart uses terminalRevision to remount this component.
   // History linking and renaming must never restart a running PTY.
-  const [launch] = useState(() => ({ sessionId, agentId, cwd, title, account, purpose, resumeId }))
+  const [launch] = useState(() => ({ sessionId, historyKey, agentId, cwd, title, account, purpose, resumeId }))
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -55,6 +58,7 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
   const openSearchRef = useRef<() => void>(() => undefined)
   const ptyIdRef = useRef('')
   const ptyReadyRef = useRef(false)
+  const consumedPasteRef = useRef('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   openSearchRef.current = () => {
@@ -368,6 +372,7 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
 
     stateChangeRef.current('starting')
     void window.cliAgent.startPty({
+      historyKey: launch.historyKey,
       id,
       sessionId,
       agentId,
@@ -431,6 +436,16 @@ function TerminalPaneComponent({ active, sessionId, agentId, cwd, title, account
       ptyReadyRef.current = false
     }
   }, [launch])
+
+  useEffect(() => {
+    if (!active || !pendingPaste || consumedPasteRef.current === pendingPaste.id || !ptyReadyRef.current) return
+    consumedPasteRef.current = pendingPaste.id
+    // Strip terminal control sequences from model output; xterm applies bracketed paste.
+    const text = pendingPaste.text.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '')
+    terminalRef.current?.paste(text)
+    terminalRef.current?.focus()
+    onPasteConsumed?.()
+  }, [active, pendingPaste, onPasteConsumed])
 
   useEffect(() => {
     if (renderer !== 'webgl') return undefined
@@ -603,6 +618,8 @@ function terminalPanePropsEqual(previous: TerminalPaneProps, next: TerminalPaneP
     && previous.foreground === next.foreground
     && previous.cursorColor === next.cursorColor
     && previous.activityStatusEnabled === next.activityStatusEnabled
+    && previous.pendingPaste?.id === next.pendingPaste?.id
+    && previous.pendingPaste?.text === next.pendingPaste?.text
 }
 
 export const TerminalPane = memo(TerminalPaneComponent, terminalPanePropsEqual)

@@ -1,3 +1,5 @@
+import { useFolderExpansion } from './features/folders/useFolderExpansion'
+import { useRevealFolderSession } from './features/folders/useRevealFolderSession'
 import { useSessionTitles } from './features/sessions/useSessionTitles'
 import { initialSessionTitle, resumedSessionTitle, type TitleMode } from './features/sessions/session-title'
 import { DEFAULT_NOTIFICATION_SETTINGS } from './features/notifications/notification-policy'
@@ -47,6 +49,9 @@ import { buildFolderViews } from './features/folders/folder-view'
 import type { LogicalFolder } from './features/folders/types'
 import { useLocalFonts } from './features/fonts/useLocalFonts'
 import { SessionLauncher } from './features/launcher/SessionLauncher'
+import { SessionReview } from './features/reviews/SessionReview'
+import { taskBelongsToSession, taskSource } from './features/delegation/session-task-display'
+import { useReviewSourceLinks } from './features/reviews/useReviewSourceLinks'
 import { DelegationApprovalModal } from './features/delegation/DelegationApprovalModal'
 import { delegationFailureKind } from './features/delegation/delegation-display'
 import { NotificationCenter } from './features/notifications/NotificationCenter'
@@ -261,6 +266,7 @@ export function App() {
   const [folderAssignments, setFolderAssignments] = useState<Record<string, string>>(savedFolderAssignments)
   const [folderOrders, setFolderOrders] = useState<Record<string, string[]>>(savedFolderOrders)
   const [selectedFolderId, setSelectedFolderId] = useState('prototype')
+  const folderExpansion = useFolderExpansion(folders)
   const [newSessionFolderId, setNewSessionFolderId] = useState('unsorted')
   const [newFolderName, setNewFolderName] = useState<string | null>(null)
   const [draggedSidebarItem, setDraggedSidebarItem] = useState<DraggedSidebarItem | null>(null)
@@ -272,6 +278,7 @@ export function App() {
   const [titleMode, setTitleMode] = useState<TitleMode>('auto')
   const [cwd, setCwd] = useState('C:\\git_workspace')
   const [sessions, setSessions] = useState<RuntimeSession[]>([])
+  useReviewSourceLinks(window.cliAgent, sessions, delegationSnapshot)
   const { history, searchResults, titles: customTitles } = useSessionTitles(rawHistory, rawSearchResults, sessions, setSessions, localStorage)
   const [activeSessionId, setActiveSessionId] = useState('')
   const [launcherOpen, setLauncherOpen] = useState(false)
@@ -310,6 +317,7 @@ export function App() {
   const activeSessionIdRef = useRef(activeSessionId)
   const sessionActivityTimesRef = useRef(new Map<string, number>())
   const folderSessionRefs = useRef(new Map<string, HTMLDivElement>())
+  const scrollToFolderSession = useRevealFolderSession(folderSessionRefs)
   const profileRefreshInFlight = useRef(false)
   const historyRefreshInFlight = useRef(false)
   const historyRefreshQueued = useRef(false)
@@ -659,12 +667,14 @@ export function App() {
     sessionActivityTimesRef.current.set(id, Date.now())
   }
 
-  const lastOpenFolderRef = useRef('')
   const toggleFolderLock = (folderId: string): void => {
     const locking = folders.find((folder) => folder.id === folderId)?.locked !== true
     setFolders((items) => items.map((folder) => folder.id === folderId ? { ...folder, locked: !folder.locked } : folder))
     // Locking the folder that is currently expanded collapses it right away.
-    if (locking) setSelectedFolderId((current) => current === folderId ? '' : current)
+    if (locking) {
+      folderExpansion.collapseFolder(folderId)
+      setSelectedFolderId((current) => current === folderId ? '' : current)
+    }
   }
 
   const revealSessionFolder = (session: RuntimeSession): void => {
@@ -675,13 +685,13 @@ export function App() {
       localStorage.setItem(SECTION_STORAGE_KEY, JSON.stringify(next))
       return next
     })
-    // A locked folder stays collapsed even when one of its sessions activates.
-    if (folders.find((folder) => folder.id === folderId)?.locked !== true) setSelectedFolderId(folderId)
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        folderSessionRefs.current.get(session.id)?.scrollIntoView({ block: 'nearest' })
-      })
-    })
+    if (folders.find((folder) => folder.id === folderId)?.locked === true) {
+      scrollToFolderSession(null)
+      return
+    }
+    setSelectedFolderId(folderId)
+    folderExpansion.expandFolder(folderId)
+    scrollToFolderSession(session.id)
   }
 
   const addRuntimeSession = (session: Omit<RuntimeSession, 'id' | 'createdAt' | 'lastViewedAt' | 'lastActivityAt'>): string => {
@@ -1009,12 +1019,21 @@ export function App() {
     }
   }, [])
 
-  const awaitingDelegations = delegationSnapshot?.tasks.filter((task) => task.status === 'awaiting_approval') ?? []
+  const awaitingDelegations = delegationSnapshot?.tasks.filter((task) => task.status === 'awaiting_approval' && !task.reviewSource) ?? []
   const pendingApproval = awaitingDelegations.find((task) => task.id === focusedApprovalId)
     ?? awaitingDelegations.find((task) => !dismissedApprovalIds.has(task.id))
 
   const openDelegationTask = (taskId: string): void => {
     const task = delegationSnapshot?.tasks.find((item) => item.id === taskId)
+    if (task && taskSource(task) && task.status !== 'awaiting_approval') {
+      const source = taskSource(task)!
+      const session = sessionsRef.current.find((item) => item.id === source.sessionId || (source.historyKey && item.historyKey === source.historyKey))
+      if (session) {
+        updateSession(session.id, { view: 'review' })
+        activateSession(session.id)
+        return
+      }
+    }
     if (task?.status === 'awaiting_approval') {
       setDismissedApprovalIds((current) => {
         if (!current.has(taskId)) return current
@@ -1112,7 +1131,7 @@ export function App() {
     }
     const handled = handledDelegationFailures.current
     for (const task of tasks) {
-      if (task.status !== 'failed' || handled.has(task.id)) continue
+      if (task.reviewSource || task.mode === 'edit' || task.status !== 'failed' || handled.has(task.id)) continue
       handled.add(task.id)
       // Retries never chain: one automatic hop, then it's the user's call.
       if (task.retryOfId || !delegationFailureKind(task)) continue
@@ -1129,6 +1148,9 @@ export function App() {
   }
   const setDelegationAutoApprove = (enabled: boolean): void => {
     runDelegationAction(() => window.cliAgent.setDelegationAutoApprove(enabled))
+  }
+  const setDelegationAutoApproveEdits = (enabled: boolean): void => {
+    runDelegationAction(() => window.cliAgent.setDelegationAutoApproveEdits(enabled))
   }
   const regenerateDelegationToken = (): void => {
     runDelegationAction(() => window.cliAgent.regenerateDelegationToken())
@@ -1721,7 +1743,7 @@ export function App() {
           sections={sectionOpen}
           folders={folders}
           folderViews={folderViews}
-          selectedFolderId={selectedFolderId}
+          openFolderIds={folderExpansion.openFolderIds}
           newFolderName={newFolderName}
           draggedItem={draggedSidebarItem}
           dragOverFolderId={dragOverFolderId}
@@ -1753,25 +1775,11 @@ export function App() {
           onRemoveFolder={removeFolder}
           onOpenAccountSettings={openAccountSettings}
           onToggleFolder={(folderId) => {
-            const locked = folders.find((folder) => folder.id === folderId)?.locked === true
-            setSelectedFolderId((current) => {
-              if (current === folderId) return ''
-              return locked ? current : folderId
-            })
+            folderExpansion.toggleFolder(folderId)
+            if (!folders.find((folder) => folder.id === folderId)?.locked) setSelectedFolderId(folderId)
           }}
           onToggleFolderLock={toggleFolderLock}
-          onCollapseAllFolders={() => {
-            // The button toggles: collapse the open folder, or reopen the one
-            // that was open before (falling back to the first unlocked folder).
-            if (selectedFolderId) {
-              lastOpenFolderRef.current = selectedFolderId
-              setSelectedFolderId('')
-              return
-            }
-            const restore = folders.find((folder) => folder.id === lastOpenFolderRef.current && !folder.locked)
-              ?? folders.find((folder) => !folder.locked)
-            if (restore) setSelectedFolderId(restore.id)
-          }}
+          onCollapseAllFolders={folderExpansion.toggleAllFolders}
           onFolderDragEnter={setDragOverFolderId}
           onFolderDragLeave={() => {
             setDragOverFolderId('')
@@ -1830,13 +1838,13 @@ export function App() {
                     session={activeSession}
                     profileColor={activeProfile?.color ?? '#7e878d'}
                     iconPreference={resolvedAgentIcon(activeSession.agentId)}
-                    loginRefreshing={loginAccountRefreshing === activeSession.id}
                     notificationsEnabled={notificationSnapshot.settings.enabled}
                     muted={activeSessionMuted}
-                    onRefreshAccount={() => refreshLoginAccount(activeSession)}
                     onToggleMuted={() => toggleSessionNotificationMute(activeSession.id, !activeSessionMuted)}
                     onShowCli={() => showCli(activeSession.id)}
                     onShowConversation={() => showConversation(activeSession.id)}
+                    onShowReview={() => updateSession(activeSession.id, { view: 'review' })}
+                    reviewCount={delegationSnapshot?.tasks.filter((task) => taskBelongsToSession(task, activeSession)).length ?? 0}
                   />
                 )}
               </div>
@@ -1855,8 +1863,23 @@ export function App() {
               onOpenExternal={window.cliAgent.openExternal}
               onLoadOlderMessages={loadOlderMessages}
               onActivity={recordSessionActivity}
+              onPasteConsumed={(sessionId) => updateSession(sessionId, { pendingPaste: undefined })}
               onStateChange={(sessionId, state, detail) => updateSession(sessionId, { state, statusDetail: detail ?? '' })}
             />
+            {activeSession?.view === 'review' && (
+                <SessionReview
+                  onReviewApproval={openDelegationTask}
+                key={activeSession.id}
+                source={{ sessionId: activeSession.id, historyKey: activeSession.historyKey, title: activeSession.title, cwd: activeSession.cwd }}
+                sourceAgent={activeSession.agentId}
+                api={window.cliAgent}
+                profiles={profiles}
+                accounts={accounts}
+                changes={delegationSnapshot}
+                canPaste={activeSession.terminalEnabled && activeSession.state === 'running' && activeSession.agentId !== 'powershell'}
+                onPaste={(text) => updateSession(activeSession.id, { view: 'cli', pendingPaste: { id: crypto.randomUUID(), text } })}
+              />
+            )}
             {zoomNotice !== null && (
               <div className="zoom-notice" role="status">Terminal {zoomNotice}px</div>
             )}
@@ -1865,6 +1888,8 @@ export function App() {
           <StatusBar
             activeSession={activeSession}
             activeProfileVersion={activeProfile?.version}
+            loginRefreshing={!!activeSession && loginAccountRefreshing === activeSession.id}
+            onRefreshAccount={() => { if (activeSession) void refreshLoginAccount(activeSession) }}
             openSessionCount={sessions.length}
             maximumSessionCount={maxRuntimeSessions}
             update={appUpdate}
@@ -1969,7 +1994,8 @@ export function App() {
           onOpenUpdateDownload={() => void openAppUpdateDownload()}
           onNotificationSettingsChange={changeNotificationSettings}
           onDelegationEnabledChange={setDelegationEnabled}
-          onDelegationAutoApproveChange={setDelegationAutoApprove}
+            onDelegationAutoApproveChange={setDelegationAutoApprove}
+            onDelegationAutoApproveEditsChange={setDelegationAutoApproveEdits}
           onRegenerateDelegationToken={regenerateDelegationToken}
           onReviewDelegation={openDelegationTask}
           onCancelDelegation={cancelDelegation}

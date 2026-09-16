@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { MessageChannelMain, utilityProcess, type UtilityProcess, type WebContents } from 'electron'
 import { detectBinary, executableCommand, getProfile } from './agent-profiles'
 import { AttentionBridge } from './attention-bridge'
+import type { DelegationSessionLaunch } from './delegation-session-links'
 import type { StartPtyRequest } from './contracts'
 import type { HostToMainMessage, MainToHostMessage, PtySpawnSpec } from './pty-host-protocol'
 
@@ -45,6 +46,7 @@ export class PtyHostClient {
     private readonly getWebContents: () => WebContents | null,
     private readonly attentionBridge: AttentionBridge,
     private readonly onLifecycleExit?: (event: PtyLifecycleExitEvent) => void,
+    private readonly delegationLaunch?: DelegationSessionLaunch,
   ) {}
 
   get liveSessionCount(): number {
@@ -88,7 +90,8 @@ export class PtyHostClient {
         throw new Error(`${profile.label} does not expose a supported ${action} command`)
       }
       const attentionOptions = await this.attentionBridge.prepare(request, profile, executable)
-      const command = executableCommand(executable, [...attentionOptions.args, ...baseArgs, ...titleArgs])
+      const delegationArgs = this.delegationLaunch?.prepare(request) ?? []
+      const command = executableCommand(executable, [...attentionOptions.args, ...baseArgs, ...titleArgs, ...delegationArgs])
       const spec: PtySpawnSpec = {
         id: request.id,
         file: command.file,
@@ -103,6 +106,7 @@ export class PtyHostClient {
       this.live.set(request.id, request)
     } catch (error) {
       this.attentionBridge.release(request.id)
+      this.delegationLaunch?.release(request.id)
       throw error
     } finally {
       this.starting.delete(request.id)
@@ -121,6 +125,7 @@ export class PtyHostClient {
     this.rendererContents = null
     for (const pending of this.pendingSpawns.values()) pending.reject(new Error('PTY host is shutting down'))
     this.pendingSpawns.clear()
+    for (const id of [...this.live.keys(), ...this.starting]) this.delegationLaunch?.release(id)
     this.live.clear()
     this.starting.clear()
     if (!host) return
@@ -190,6 +195,7 @@ export class PtyHostClient {
       const request = this.live.get(message.id)
       this.live.delete(message.id)
       this.attentionBridge.release(message.id)
+      this.delegationLaunch?.release(message.id)
       if (request) {
         queueMicrotask(() => this.onLifecycleExit?.({ request, exitCode: message.exitCode, intentional: message.intentional }))
       }
@@ -210,6 +216,7 @@ export class PtyHostClient {
     const contents = this.getWebContents()
     for (const [id, request] of crashed) {
       this.attentionBridge.release(id)
+      this.delegationLaunch?.release(id)
       if (contents && !contents.isDestroyed()) contents.send('pty:exit', { id, exitCode: -1 })
       queueMicrotask(() => this.onLifecycleExit?.({ request, exitCode: -1, intentional: false }))
     }

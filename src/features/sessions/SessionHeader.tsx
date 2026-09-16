@@ -1,4 +1,4 @@
-import { Bell, BellOff, Check, RefreshCw } from 'lucide-react'
+import { Bell, BellOff } from 'lucide-react'
 import { AgentAvatar } from '../../components/AgentAvatar'
 import type { AgentIconPreference } from '../agent-icons/types'
 import { sessionStateLabel } from './session-display'
@@ -8,28 +8,27 @@ interface SessionHeaderProps {
   session: RuntimeSession
   profileColor: string
   iconPreference: AgentIconPreference
-  loginRefreshing: boolean
   notificationsEnabled: boolean
   muted: boolean
-  onRefreshAccount: () => void
   onToggleMuted: () => void
   onShowCli: () => void
   onShowConversation: () => void
+  onShowReview: () => void
+  reviewCount: number
 }
 
 export function SessionHeader({
   session,
   profileColor,
   iconPreference,
-  loginRefreshing,
   notificationsEnabled,
   muted,
-  onRefreshAccount,
   onToggleMuted,
   onShowCli,
   onShowConversation,
+  onShowReview,
+  reviewCount,
 }: SessionHeaderProps) {
-  const accountVerified = session.statusDetail.startsWith('Verified account:')
   return (
     <header className="session-context">
       <div className="session-summary">
@@ -38,20 +37,7 @@ export function SessionHeader({
         <span className={`state-chip ${session.state}`} title={session.statusDetail}>
           <span />{sessionStateLabel(session.state)}
         </span>
-        {session.account?.email && <span className="session-email">{session.account.email}</span>}
         <span className="session-cwd" title={session.cwd}>{session.cwd}</span>
-        {session.purpose === 'login' && (
-          <button
-            className="icon-button context-account-refresh"
-            title={accountVerified ? session.statusDetail : 'Refresh signed-in account'}
-            disabled={loginRefreshing}
-            onClick={onRefreshAccount}
-          >
-            {accountVerified
-              ? <Check size={15} />
-              : <RefreshCw className={loginRefreshing ? 'spinning' : ''} size={15} />}
-          </button>
-        )}
         {notificationsEnabled && session.purpose === 'session' && (
           <button
             className="icon-button context-notification-mute"
@@ -85,6 +71,11 @@ export function SessionHeader({
             <span className="view-tab-label">Conversation</span>
             {session.conversation && <small>{session.conversation.messages.length}</small>}
           </button>
+        {session.purpose === 'session' && session.agentId !== 'powershell' && (
+          <button className={session.view === 'review' ? 'active' : ''} type="button" role="tab" aria-selected={session.view === 'review'} onClick={onShowReview}>
+            <span className="view-tab-label">Tasks</span>{reviewCount > 0 && <small className="review-tab-count">{reviewCount}</small>}
+          </button>
+        )}
         </nav>
       </div>
     </header>
