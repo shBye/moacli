@@ -1,3 +1,5 @@
+import { attachTerminalDiagnostics } from './attach-terminal-diagnostics'
+import type { DiagnosticReason } from '../shared/terminal-diagnostics'
 import { memo, useEffect, useRef, useState } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
@@ -59,6 +61,7 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
   const ptyIdRef = useRef('')
   const ptyReadyRef = useRef(false)
   const consumedPasteRef = useRef('')
+  const diagnosticRef = useRef<(reason: DiagnosticReason, value?: number) => void>(() => undefined)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   openSearchRef.current = () => {
@@ -144,6 +147,11 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
       end: () => endTerminalComposition(id),
       refresh: () => terminal.refresh(0, Math.max(0, terminal.rows - 1)),
     })
+    const diagnostics = attachTerminalDiagnostics(terminal, container, {
+      id, agent: agentId, active: () => activeRef.current,
+      send: (events) => window.cliAgent.recordTerminalDiagnostics(events),
+    })
+    diagnosticRef.current = diagnostics.record
     let lastActivityReport = 0
     const reportActivity = (): void => {
       const now = Date.now()
@@ -205,6 +213,7 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
     flushInactiveOutputRef.current = flushInactiveOutput
     const offData = window.cliAgent.onPtyData(id, (data) => {
       reportActivity()
+      diagnostics.output(data.length)
       if (!receivedData) {
         receivedData = true
         // Pin the viewport to the newest output while the CLI restores its
@@ -226,14 +235,16 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
       if (started) reportRunning()
     })
     const writeParsedDisposable = terminal.onWriteParsed(() => {
-      if (performance.now() <= keepBottomUntil) terminal.scrollToBottom()
+      if (performance.now() <= keepBottomUntil) { diagnostics.record('startup-follow'); terminal.scrollToBottom() }
     })
     const offExit = window.cliAgent.onPtyExit(id, (exitCode) => {
+      diagnostics.record('exit')
       flushInactiveOutput()
       terminal.write(`\r\n\x1b[90m[process exited: ${exitCode}]\x1b[0m\r\n`)
       stateChangeRef.current('stopped', `exit ${exitCode}`)
     })
     const offAttention = window.cliAgent.onPtyAttention(id, (event) => {
+      diagnostics.record('attention')
       reportInteractionState(agentEventInteractionState(event), agentEventLabel(event))
     })
     const cancelBottomLock = (): void => {
@@ -337,6 +348,7 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
       const height = Math.round(container.clientHeight)
       if (width < 40 || height < 40) return
       if (width === lastObservedWidth && height === lastObservedHeight) return
+      diagnostics.record('resize-observed')
       lastObservedWidth = width
       lastObservedHeight = height
       clearTimeout(resizeTimer)
@@ -351,7 +363,8 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
           const wasAtBottom = distanceFromBottom <= 1 || performance.now() <= keepBottomUntil
           const previousCols = terminal.cols
           const previousRows = terminal.rows
-          if (wasAtBottom) terminal.scrollToBottom()
+          if (wasAtBottom) { diagnostics.record('resize-follow'); terminal.scrollToBottom() }
+          diagnostics.record('resize-fit')
           fitAddon.fit()
           if (started && (terminal.cols !== previousCols || terminal.rows !== previousRows)) {
             window.cliAgent.resizePty(id, terminal.cols, terminal.rows)
@@ -359,9 +372,11 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
 
           if (wasAtBottom) {
             keepBottomUntil = performance.now() + 600
+            diagnostics.record('resize-follow')
             terminal.scrollToBottom()
           } else {
             const after = terminal.buffer.active
+            diagnostics.record('resize-restore', Math.max(0, after.baseY - distanceFromBottom))
             terminal.scrollToLine(Math.max(0, after.baseY - distanceFromBottom))
           }
         })
@@ -370,6 +385,7 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
     const resizeObserver = new ResizeObserver(resize)
     resizeObserver.observe(container)
 
+    diagnostics.record('start')
     stateChangeRef.current('starting')
     void window.cliAgent.startPty({
       historyKey: launch.historyKey,
@@ -405,6 +421,8 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
     })
 
     return () => {
+      diagnostics.dispose()
+      diagnosticRef.current = () => undefined
       disposed = true
       clearTimeout(resizeTimer)
       if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame)
@@ -501,12 +519,15 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
       const distanceFromBottom = Math.max(0, before.baseY - before.viewportY)
       const previousCols = currentTerminal.cols
       const previousRows = currentTerminal.rows
+      diagnosticRef.current('activate-fit')
       currentFitAddon.fit()
       currentTerminal.refresh(0, Math.max(0, currentTerminal.rows - 1))
       if (distanceFromBottom <= 1) {
+        diagnosticRef.current('activate-follow')
         currentTerminal.scrollToBottom()
       } else {
         const after = currentTerminal.buffer.active
+        diagnosticRef.current('activate-restore', Math.max(0, after.baseY - distanceFromBottom))
         currentTerminal.scrollToLine(Math.max(0, after.baseY - distanceFromBottom))
       }
       if (
@@ -530,10 +551,11 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
     const frame = requestAnimationFrame(() => {
       const terminal = terminalRef.current
       if (!terminal) return
+      diagnosticRef.current('reveal-frame')
       terminal.scrollToBottom()
       cancelFocus = requestTerminalFocus(ptyIdRef.current, () => terminalRef.current?.focus())
     })
-    const timer = window.setTimeout(() => terminalRef.current?.scrollToBottom(), 80)
+    const timer = window.setTimeout(() => { diagnosticRef.current('reveal-timer'); terminalRef.current?.scrollToBottom() }, 80)
     return () => {
       cancelAnimationFrame(frame)
       cancelFocus()
@@ -555,12 +577,15 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
       const distanceFromBottom = Math.max(0, before.baseY - before.viewportY)
       const previousCols = currentTerminal.cols
       const previousRows = currentTerminal.rows
+      diagnosticRef.current('appearance-fit')
       fitAddon.fit()
       currentTerminal.refresh(0, Math.max(0, currentTerminal.rows - 1))
       if (distanceFromBottom <= 1) {
+        diagnosticRef.current('appearance-follow')
         currentTerminal.scrollToBottom()
       } else {
         const after = currentTerminal.buffer.active
+        diagnosticRef.current('appearance-restore', Math.max(0, after.baseY - distanceFromBottom))
         currentTerminal.scrollToLine(Math.max(0, after.baseY - distanceFromBottom))
       }
       if (ptyReadyRef.current && ptyIdRef.current

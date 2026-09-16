@@ -5,6 +5,9 @@ import { SessionClock } from './SessionClock'
 import type { RuntimeSession } from './types'
 
 interface StatusBarProps {
+  diagnosticsBusy: boolean
+  diagnosticsMessage: string
+  onSaveDiagnostics: () => void
   activeSession?: RuntimeSession
   loginRefreshing: boolean
   onRefreshAccount: () => void
@@ -19,6 +22,7 @@ interface StatusBarProps {
 }
 
 export function StatusBar({
+  diagnosticsBusy, diagnosticsMessage, onSaveDiagnostics,
   activeSession,
   activeProfileVersion,
   loginRefreshing,
@@ -65,6 +69,11 @@ export function StatusBar({
           onClick={onOpenUpdate}
         ><Download size={11} />v{update.latestVersion} available</button>
       )}
+      <button className="status-diagnostics" disabled={diagnosticsBusy} onClick={onSaveDiagnostics}
+        title={diagnosticsMessage || 'Scroll diagnostics are recording. Save after a jump; no conversation or command text is included.'}>
+        {diagnosticsBusy ? 'Saving...' : 'Save diagnostics'}
+      </button>
+      {diagnosticsMessage && <span className="status-diagnostics-message" role="status" title={diagnosticsMessage}>{diagnosticsMessage}</span>}
       <span className="status-right">
         {activeSession
           ? <SessionClock session={activeSession} getLastActivityAt={getLastActivityAt} />

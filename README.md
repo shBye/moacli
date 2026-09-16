@@ -194,6 +194,7 @@ The detailed product flow, data model, failure handling, and acceptance criteria
 - [UI polish review](./docs/UI_POLISH_REVIEW.md)
 - [macOS support scope (planning only)](./docs/MACOS_SUPPORT.md)
 - [Automatic and custom session titles](./docs/SESSION_TITLES.md)
+- [Terminal scroll diagnostics](./docs/TERMINAL_DIAGNOSTICS.md)
 
 | Command | Purpose |
 | --- | --- |

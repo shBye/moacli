@@ -1,3 +1,4 @@
+import { useDiagnosticExport } from './features/sessions/useDiagnosticExport'
 import { useFolderExpansion } from './features/folders/useFolderExpansion'
 import { useRevealFolderSession } from './features/folders/useRevealFolderSession'
 import { useSessionTitles } from './features/sessions/useSessionTitles'
@@ -227,6 +228,7 @@ function savedMaxRuntimeSessions(): number {
 }
 
 export function App() {
+  const diagnosticExport = useDiagnosticExport(window.cliAgent.exportTerminalDiagnostics)
   const [profiles, setProfiles] = useState<AgentHealth[]>([])
   const [profilesRefreshing, setProfilesRefreshing] = useState(false)
   const [rawHistory, setHistory] = useState<HistorySession[]>([])
@@ -1886,6 +1888,9 @@ export function App() {
           </div>
 
           <StatusBar
+            diagnosticsBusy={diagnosticExport.busy}
+            diagnosticsMessage={diagnosticExport.message}
+            onSaveDiagnostics={() => void diagnosticExport.save()}
             activeSession={activeSession}
             activeProfileVersion={activeProfile?.version}
             loginRefreshing={!!activeSession && loginAccountRefreshing === activeSession.id}

@@ -52,6 +52,7 @@ function harness() {
   }
   const imports = {
     react,
+    './attach-terminal-diagnostics': { attachTerminalDiagnostics: () => ({ record: noop, output: noop, dispose: noop }) },
     'react/jsx-runtime': { jsx: noop, jsxs: noop },
     '@xterm/xterm': { Terminal },
     '@xterm/addon-fit': { FitAddon: class { fit() {} } },

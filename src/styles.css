@@ -749,3 +749,8 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .status-account-refresh:hover:not(:disabled) { color: var(--acc); background: rgba(255,255,255,.06); }
 .status-account-refresh:focus-visible { outline-offset: -2px; }
 .status-account-refresh:disabled { opacity: .45; cursor: default; }
+
+.status-diagnostics { flex: none; padding: 3px 6px; border: 1px solid rgba(255,255,255,.12); border-radius: 4px; color: var(--acc); background: transparent; font: inherit; cursor: pointer; white-space: nowrap; }
+.status-diagnostics:hover:not(:disabled) { background: rgba(255,255,255,.06); }
+.status-diagnostics:disabled { opacity: .5; cursor: default; }
+.status-diagnostics-message { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -1,3 +1,4 @@
+import { attachTerminalDiagnosticsIpc } from './terminal-diagnostics-ipc'
 import { join } from 'node:path'
 import { existsSync, mkdirSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { randomUUID } from 'node:crypto'
@@ -16,6 +17,7 @@ import { NotificationCenter } from './notification-center'
 import { PtyHostClient } from './pty-host-client'
 
 let mainWindow: BrowserWindow | null = null
+let stopTerminalDiagnostics = async (): Promise<void> => {}
 app.setPath('userData', join(app.getPath('appData'), 'cli-agent-manager'))
 if (process.platform === 'win32') app.setAppUserModelId('app.moacli.desktop')
 let notificationCenter: NotificationCenter | null = null
@@ -345,6 +347,10 @@ ipcMain.on('shell:open-external', (event, url: string) => {
 })
 
 app.whenReady().then(async () => {
+  stopTerminalDiagnostics = attachTerminalDiagnosticsIpc({
+    directory: join(app.getPath('userData'), 'terminal-diagnostics'), version: app.getVersion(),
+    window: () => mainWindow, versions: getAgentHealth,
+  })
   session.defaultSession.setPermissionCheckHandler((webContents, permission) => (
     String(permission) === 'local-fonts' && webContents === mainWindow?.webContents
   ))
@@ -417,7 +423,7 @@ app.on('before-quit', (event) => {
   attentionBridge.dispose()
   delegationServer?.dispose()
   delegationRegistry?.close()
-  void Promise.allSettled([ptyHost.shutdown(), sessionHistory.shutdown()]).then(() => app.quit())
+  void Promise.allSettled([ptyHost.shutdown(), sessionHistory.shutdown(), stopTerminalDiagnostics()]).then(() => app.quit())
 })
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

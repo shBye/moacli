@@ -123,6 +123,8 @@ const api: CliAgentApi = {
     return () => ipcRenderer.removeListener('delegation:changed', listener)
   },
   getAppVersion: () => ipcRenderer.invoke('updates:version'),
+  recordTerminalDiagnostics: (events) => ipcRenderer.send('terminal-diagnostics:record', events),
+  exportTerminalDiagnostics: () => ipcRenderer.invoke('terminal-diagnostics:export'),
   checkForAppUpdate: (force?: boolean) => ipcRenderer.invoke('updates:check', force),
   downloadAppUpdate: () => ipcRenderer.invoke('updates:download'),
   minimizeWindow: () => ipcRenderer.send('window:minimize'),

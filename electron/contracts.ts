@@ -1,3 +1,4 @@
+import type { TerminalDiagnosticEvent } from '../src/shared/terminal-diagnostics'
 import type { AgentEvent } from '../src/features/sessions/agent-event'
 
 export interface AgentProfile {
@@ -288,6 +289,8 @@ export interface CliAgentApi {
   setDelegationAutoApproveEdits: (enabled: boolean) => Promise<DelegationSnapshot>
   regenerateDelegationToken: () => Promise<DelegationSnapshot>
   onDelegationChanged: (callback: (snapshot: DelegationSnapshot) => void) => () => void
+  recordTerminalDiagnostics: (events: TerminalDiagnosticEvent[]) => void
+  exportTerminalDiagnostics: () => Promise<boolean>
   getAppVersion: () => Promise<string>
   checkForAppUpdate: (force?: boolean) => Promise<AppUpdateInfo>
   downloadAppUpdate: () => Promise<boolean>
