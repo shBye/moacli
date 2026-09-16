@@ -1,3 +1,8 @@
+import { TerminalPermissionStore } from './terminal-permission-store'
+import { installCodexHooks } from './install-codex-hooks'
+import { codexPermissionArgs, type CodexPermissionMode } from '../src/features/settings/terminal-permissions'
+import { readWorkerModel } from './read-worker-model'
+import { validateModel } from '../src/features/delegation/model-policy'
 import { attachTerminalDiagnosticsIpc } from './terminal-diagnostics-ipc'
 import { join } from 'node:path'
 import { existsSync, mkdirSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
@@ -26,7 +31,8 @@ const attentionBridge = new AttentionBridge(({ request, event, generation }) => 
     mainWindow.webContents.send('pty:attention', { id: request.id, event })
   }
   notificationCenter?.handleAgentEvent(request, event, generation)
-})
+}, request => installCodexHooks(request, join(app.getPath('userData'), 'codex-observer')))
+const terminalPermissions = new TerminalPermissionStore(join(app.getPath('userData'), 'terminal-permissions.json'))
 const ptyHost = new PtyHostClient(
   join(__dirname, 'pty-host.js'),
   () => mainWindow?.webContents ?? null,
@@ -36,6 +42,7 @@ const ptyHost = new PtyHostClient(
     prepare: (request) => delegationServer?.prepareSession(request) ?? [],
     release: (id) => delegationServer?.sessionLinks.release(id),
   },
+  (request) => codexPermissionArgs(request.agentId, request.purpose, terminalPermissions.read()),
 )
 const sessionHistory = new HistoryHostClient(
   join(__dirname, 'history-host.js'),
@@ -84,7 +91,7 @@ const CLIPBOARD_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.
 function delegationSnapshot(): DelegationSnapshot {
   return {
     server: delegationServer?.status() ?? {
-      enabled: false, running: false, autoApprove: false, autoApproveEdits: false, port: 0, url: '', token: '', claudeRegisterCommand: '', codexConfigSnippet: '', codexConfigPath: '',
+      defaultModels: { claude: '', codex: '' }, enabled: false, running: false, autoApprove: false, autoApproveEdits: false, port: 0, url: '', token: '', claudeRegisterCommand: '', codexConfigSnippet: '', codexConfigPath: '',
     },
     tasks: delegationRegistry?.snapshot() ?? [],
   }
@@ -285,10 +292,31 @@ ipcMain.handle('notifications:mute-session', (_event, payload: { sessionId: stri
   notifications().setSessionMuted(payload.sessionId, payload.muted)
 ))
 ipcMain.on('notifications:context', (_event, context: NotificationContext) => notifications().updateContext(context))
+ipcMain.handle('terminal:permissions', (event) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error('Invalid settings caller')
+  return terminalPermissions.read()
+})
+ipcMain.handle('terminal:set-codex-permission', (event, mode: CodexPermissionMode) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error('Invalid settings caller')
+  return terminalPermissions.save(mode)
+})
 ipcMain.handle('delegation:snapshot', () => delegationSnapshot())
-ipcMain.handle('delegation:approve', (_event, approval: DelegationApproval) => {
-  delegationRegistryOrThrow().approve(approval.taskId, approval.account)
+ipcMain.handle('delegation:approve', (event, approval: DelegationApproval) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error('Invalid task caller')
+  delegationRegistryOrThrow().approve(approval.taskId, approval.account, approval.model === undefined ? undefined : validateModel(approval.model))
   return delegationSnapshot()
+})
+ipcMain.handle('delegation:set-model', (event, agent: string, model: string) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error('Invalid task caller')
+  if (!delegationServer) throw new Error('Delegation server is not available')
+  delegationServer.setDefaultModel(agent, model)
+  return delegationSnapshot()
+})
+ipcMain.handle('delegation:get-model', (event, agent: string, account?: AgentAccount) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error('Invalid task caller')
+  if (agent !== 'claude' && agent !== 'codex') throw new Error('Unsupported worker agent')
+  if (account && account.agentId !== agent) throw new Error('Account does not match agent')
+  return readWorkerModel(agent, delegationServer?.defaultModel(agent) ?? '', account)
 })
 ipcMain.handle('delegation:reject', (_event, taskId: string) => {
   delegationRegistryOrThrow().reject(taskId)
@@ -350,6 +378,7 @@ app.whenReady().then(async () => {
   stopTerminalDiagnostics = attachTerminalDiagnosticsIpc({
     directory: join(app.getPath('userData'), 'terminal-diagnostics'), version: app.getVersion(),
     window: () => mainWindow, versions: getAgentHealth,
+    attention: () => attentionBridge.diagnostics.snapshot(),
   })
   session.defaultSession.setPermissionCheckHandler((webContents, permission) => (
     String(permission) === 'local-fonts' && webContents === mainWindow?.webContents
@@ -358,7 +387,8 @@ app.whenReady().then(async () => {
     callback(String(permission) === 'local-fonts' && webContents === mainWindow?.webContents)
   })
   sessionHistory.configureSearch(join(app.getPath('userData'), 'conversation-search.sqlite'))
-  notificationCenter = new NotificationCenter(join(app.getPath('userData'), 'notification-settings.json'), () => mainWindow)
+  notificationCenter = new NotificationCenter(join(app.getPath('userData'), 'notification-settings.json'), () => mainWindow,
+    (terminal, stage, name) => attentionBridge.diagnostics.record(terminal, stage, name))
   try {
     await attentionBridge.start(join(app.getPath('temp'), 'moacli', 'attention-hooks'))
   } catch (error) {
@@ -391,6 +421,8 @@ app.whenReady().then(async () => {
         if (delegationRegistry) sessionHistory.setWorkerSessions(delegationRegistry.workerSessions())
         scheduleHistoryChanged()
       },
+      undefined,
+      (agent, account, model) => readWorkerModel(agent, model ?? delegationServer?.defaultModel(agent) ?? '', account),
     )
     // Worker transcripts belong to delegated tasks, not to the Recent list.
     sessionHistory.setWorkerSessions(delegationRegistry.workerSessions())

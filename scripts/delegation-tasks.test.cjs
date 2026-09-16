@@ -49,16 +49,21 @@ test('legacy settings keep edit approval off and persist both switches independe
   await server.start()
   assert.equal(server.autoApprove, true)
   assert.equal(server.autoApproveEdits, false)
+  server.setDefaultModel('codex', 'configured-model')
+  assert.throws(() => server.setDefaultModel('gemini', 'model'))
+  assert.throws(() => server.setDefaultModel('codex', 'bad;arg'))
   server.setAutoApproveEdits(true)
   server.setAutoApprove(false)
   await reopened.start()
+  assert.equal(reopened.defaultModel('codex'), 'configured-model')
+  assert.equal(reopened.defaultModel('claude'), '')
   assert.equal(reopened.autoApprove, false)
   assert.equal(reopened.autoApproveEdits, true)
   reopened.setAutoApproveEdits(false)
   assert.equal(JSON.parse(fs.readFileSync(configPath, 'utf8')).autoApproveEdits, false)
 })
 
-function fixture(t) {
+function fixture(t, resolveModel) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'moacli-queue-test-'))
   const workers = []
   const databasePath = path.join(directory, 'tasks.sqlite')
@@ -68,7 +73,7 @@ function fixture(t) {
     const worker = { start, resolve, reject, cancelled: false }
     workers.push(worker)
     return { done, cancel: () => { worker.cancelled = true } }
-  })
+  }, resolveModel)
   t.after(() => { registry.close(); fs.rmSync(directory, { recursive: true, force: true }) })
   const create = (mode = 'analyze', cwd = directory) => registry.create({ agent: 'codex', prompt: 'Bounded task', cwd, mode, timeoutMs: 1000, caller: 'test' })
   return { registry, workers, create, directory, databasePath }
@@ -266,3 +271,21 @@ test('session list carries bounded summaries while result retrieval preserves fu
   assert(JSON.stringify(list).length < 6000)
   assert.equal(registry.result(task.id).text, full)
 })
+
+ test('approved model is fixed for queued workers, persisted, and defaults are independent of task requests', async t => {
+  let defaultModel='default-one'
+  const { registry,workers,create,databasePath }=fixture(t,(_agent,_account,model)=>model??defaultModel)
+  const tasks=Array.from({length:4},()=>create())
+  tasks.forEach(task=>registry.approve(task.id))
+  const manual=create();registry.approve(manual.id,undefined,'manual-model')
+  defaultModel='default-two'
+  workers[0].resolve({text:'done',detail:''});await tick()
+  assert.equal(workers[3].start.model,'default-one')
+  workers[1].resolve({text:'done',detail:''});await tick()
+  assert.equal(workers[4].start.model,'manual-model')
+  assert.equal(registry.get(manual.id).model,'manual-model')
+  const Database=require('better-sqlite3');const db=new Database(databasePath)
+  assert.equal(db.prepare('SELECT model FROM delegation_tasks WHERE id=?').get(manual.id).model,'manual-model');db.close()
+  const bad=create();assert.throws(()=>registry.approve(bad.id,undefined,'bad;arg'))
+  assert.equal(registry.get(bad.id).status,'awaiting_approval')
+ })

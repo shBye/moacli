@@ -11,7 +11,7 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/features/sessions/age
 // Run the actual launch effect with deterministic boundary doubles.
 function harness() {
   const slots = [], starts = [], stops = [], resizes = [], writes = [], states = []
-  let cursor = 0, effects = [], previous = [], resolveStart, rejectStart, terminal, onAttention, compareProps
+  let cursor = 0, effects = [], previous = [], resolveStart, rejectStart, terminal, onAttention, onInput, compareProps
   const noop = () => {}
   const disposable = () => ({ dispose: noop })
   const react = {
@@ -36,7 +36,7 @@ function harness() {
       this.parser = { registerCsiHandler: disposable }
     }
     loadAddon() {} open() {} focus() {} dispose() {}
-    onData() { return disposable() }
+    onData(callback) { onInput = callback; return disposable() }
     onWriteParsed() { return disposable() }
     attachCustomKeyEventHandler() {}
     write(data) { writes.push(data) }
@@ -44,6 +44,7 @@ function harness() {
     paste(data) { writes.push(data) }
   }
   const api = {
+    writePty: noop,
     startPty: request => { starts.push(request); return new Promise((resolve, reject) => { resolveStart = resolve; rejectStart = reject }) },
     stopPty: id => stops.push(id),
     resizePty: (...args) => resizes.push(args),
@@ -52,6 +53,7 @@ function harness() {
   }
   const imports = {
     react,
+    './attach-codex-redraw-follow': { attachCodexRedrawFollow: () => () => {} },
     './attach-terminal-diagnostics': { attachTerminalDiagnostics: () => ({ record: noop, output: noop, dispose: noop }) },
     'react/jsx-runtime': { jsx: noop, jsxs: noop },
     '@xterm/xterm': { Terminal },
@@ -90,6 +92,8 @@ function harness() {
     },
     launch: () => effects[0].run(),
     attention: event => onAttention(event),
+    input: data => onInput(data),
+    activate: () => effects.find(effect => effect.deps.length === 1 && effect.deps[0] === true).run(),
     resizeGrid: () => { terminal.cols = 120; terminal.rows = 40 },
     resolve: async () => { resolveStart(); await Promise.resolve(); await Promise.resolve() },
     reject: async () => { rejectStart(Error('late failure')); await Promise.resolve(); await Promise.resolve() },
@@ -154,6 +158,28 @@ test('active pane distinguishes approval, unknown attention, and response comple
     h.attention({ kind, name: 'test', source: 'claude-http' })
   }
   assert.deepEqual(h.states, ['starting', 'needs_attention', 'needs_attention', 'running'])
+  dispose()
+})
+
+test('Codex structured events own completion; viewing an approval does not acknowledge it', () => {
+  const h = harness()
+  h.render({ active: true, activityStatusEnabled: true })
+  const dispose = h.launch()
+  h.attention({ kind: 'ready', name: 'SessionStart', source: 'codex-hooks' })
+  h.attention({ kind: 'processing', name: 'UserPromptSubmit', source: 'codex-hooks' })
+  h.attention({ kind: 'response_completed', name: 'Stop', source: 'codex-hooks' })
+  h.input('/hooks\r')
+  assert.equal(h.states.at(-1), 'running') // Slash commands are not model turns.
+  h.attention({ kind: 'processing', name: 'UserPromptSubmit', source: 'codex-hooks' })
+  h.attention({ kind: 'approval_required', name: 'PermissionRequest', source: 'codex-hooks' })
+  h.activate()
+  assert.equal(h.states.at(-1), 'needs_attention')
+  h.input('\x1b[B')
+  assert.equal(h.states.at(-1), 'needs_attention')
+  h.input('\r')
+  assert.equal(h.states.at(-1), 'processing')
+  h.attention({ kind: 'response_completed', name: 'Stop', source: 'codex-hooks' })
+  assert.equal(h.states.at(-1), 'running')
   dispose()
 })
 

@@ -1,7 +1,7 @@
 {
   "name": "moacli",
   "productName": "MoaCLI",
-  "version": "0.1.32",
+  "version": "0.1.33",
   "private": true,
   "description": "A desktop workspace that brings CLI coding agents, accounts, sessions, and conversations together",
   "author": "shBye",
@@ -38,6 +38,7 @@
     "react-markdown": "10.1.0",
     "remark-breaks": "4.0.0",
     "remark-gfm": "4.0.1",
+    "smol-toml": "1.8.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

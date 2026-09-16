@@ -47,6 +47,7 @@ export class PtyHostClient {
     private readonly attentionBridge: AttentionBridge,
     private readonly onLifecycleExit?: (event: PtyLifecycleExitEvent) => void,
     private readonly delegationLaunch?: DelegationSessionLaunch,
+    private readonly permissionArgs: (request: StartPtyRequest) => string[] = () => [],
   ) {}
 
   get liveSessionCount(): number {
@@ -91,7 +92,7 @@ export class PtyHostClient {
       }
       const attentionOptions = await this.attentionBridge.prepare(request, profile, executable)
       const delegationArgs = this.delegationLaunch?.prepare(request) ?? []
-      const command = executableCommand(executable, [...attentionOptions.args, ...baseArgs, ...titleArgs, ...delegationArgs])
+      const command = executableCommand(executable, [...attentionOptions.args, ...baseArgs, ...titleArgs, ...delegationArgs, ...this.permissionArgs(request)])
       const spec: PtySpawnSpec = {
         id: request.id,
         file: command.file,

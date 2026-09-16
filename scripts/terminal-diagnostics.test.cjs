@@ -137,6 +137,8 @@ test('collector is observational, batches output, removes listeners, and never r
   collector=attachTerminalDiagnostics(terminal,container,{id:event().terminal,agent:'codex',active:()=>true,send:batch=>sent.push(...batch)})
   listeners.get('keydown')({key:'PRIVATE CHARACTER'})
   collector.output(45); parsed()
+  for (let i = 0; i < 50; i++) collector.record('scroll')
+  collector.record('attention', 4)
   for(const parser of parsers) assert.equal(parser([3,1049,2026]),false)
   terminal.buffer.active.viewportY=0;scrolled()
   await new Promise(r=>setTimeout(r,300))
@@ -145,6 +147,7 @@ test('collector is observational, batches output, removes listeners, and never r
   assert.equal(disposed,7)
   assert.ok(sent.some(e=>e.jump))
   assert.ok(sent.some(e=>e.outputChars===45))
+  assert.ok(sent.some(e=>e.reason==='attention' && e.value===4))
   assert.ok(!JSON.stringify(sent).includes('PRIVATE'))
   const count=sent.length; collector.record('sample');assert.equal(sent.length,count)
  } finally { if(collector && listeners.size)collector.dispose();global.document=original }

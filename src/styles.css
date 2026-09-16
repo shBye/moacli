@@ -754,3 +754,10 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .status-diagnostics:hover:not(:disabled) { background: rgba(255,255,255,.06); }
 .status-diagnostics:disabled { opacity: .5; cursor: default; }
 .status-diagnostics-message { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.delegation-model-settings { display: grid; gap: 12px; }
+.delegation-model-setting { display: grid; gap: 6px; }
+.delegation-model-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.delegation-model-controls > strong { min-width: 56px; }
+.delegation-model-choice { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.delegation-model-controls input, .delegation-model-choice input { min-width: 140px; max-width: 100%; padding: 7px 9px; border: 1px solid rgba(255,255,255,.14); border-radius: 6px; color: inherit; background: rgba(0,0,0,.18); }

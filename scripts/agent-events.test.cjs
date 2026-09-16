@@ -109,6 +109,49 @@ test('Codex OSC9 is attention, never fabricated completion or approval', () => {
   assert.equal(event.kind, 'attention')
   assert.equal(agentEventInteractionState(event), 'needs_attention')
 })
+
+test('fragmented Codex OSC9 reaches attention for another tab while the app is focused', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'moacli-codex-attention-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const { scanOsc9 } = loadTs('electron/osc9-scanner.ts')
+  const { AttentionBridge } = loadTs('electron/attention-bridge.ts', {
+    './agent-profiles': { getVersion: async () => '0.154.0', isVersionAtLeast: () => true },
+  })
+  const { NotificationCenter } = loadTs('electron/notification-center.ts', {
+    electron: { Notification: { isSupported: () => false } },
+  })
+  const window = { isDestroyed: () => false, isFocused: () => true, webContents: { send() {} } }
+  const center = new NotificationCenter(path.join(directory, 'settings.json'), () => window)
+  t.after(() => center.dispose())
+  center.updateSettings({ enabled: true, needsAttention: true })
+  center.updateContext({ activeSessionId: 'other-session', activeView: 'cli' })
+  const states = []
+  const bridge = new AttentionBridge(({ request, event, generation }) => {
+    states.push(agentEventInteractionState(event))
+    center.handleAgentEvent(request, event, generation)
+  })
+  t.after(() => bridge.dispose())
+  const request = { id: 'codex-pty', sessionId: 'codex-session', agentId: 'codex', purpose: 'session' }
+  const options = await bridge.prepare(request, {
+    attention_adapter: 'codex-osc9', attention_min_version: '0.148.0',
+  }, 'unused')
+  assert(options.args.includes('tui.notification_condition="always"'))
+  let carry = ''
+  for (const data of ['output\x1b]', '9;PRIVATE approval command\x1b', '\\tail']) {
+    const result = scanOsc9(data, carry)
+    carry = result.carry
+    for (const message of result.messages) bridge.signalOsc9(request.id, message)
+  }
+  assert.deepEqual(states, ['needs_attention'])
+  const notifications = center.snapshot().notifications
+  assert.equal(notifications.length, 1)
+  assert.equal(notifications[0].sessionId, request.sessionId)
+  assert.equal(notifications[0].type, 'needs_attention')
+  assert(!JSON.stringify(notifications).includes('PRIVATE'))
+  bridge.release(request.id)
+  bridge.signalOsc9(request.id, 'late')
+  assert.equal(states.length, 1)
+})
 test('legacy notification preferences migrate without re-enabling attention', () => {
   const settings = parseNotificationSettings({ enabled: true, needsAttention: false })
   assert.equal(notificationTypeEnabled(settings, 'approval_required'), false)

@@ -1,3 +1,5 @@
+import { TerminalSettingsSection } from './TerminalSettingsSection'
+import type { TerminalPermissionApi } from './useTerminalPermissions'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { Bell, Download, LogIn, Palette, Shapes, Workflow, X } from 'lucide-react'
 import type {
@@ -18,6 +20,7 @@ import type { AccountSaveNotice, SettingsSection } from './types'
 import { UpdateSettingsSection } from './UpdateSettingsSection'
 
 interface SettingsModalProps {
+  terminalApi: TerminalPermissionApi
   section: SettingsSection
   theme: AccentTheme
   appearance: AppearancePreferences
@@ -53,6 +56,7 @@ interface SettingsModalProps {
   onNotificationSettingsChange: (update: Partial<NotificationSettings>) => void
   onDelegationEnabledChange: (enabled: boolean) => void
   onDelegationAutoApproveChange: (enabled: boolean) => void
+  onDelegationModelChange: (agent: string, model: string) => Promise<void>
   onDelegationAutoApproveEditsChange: (enabled: boolean) => void
   onRegenerateDelegationToken: () => void
   onReviewDelegation: (taskId: string) => void
@@ -71,6 +75,7 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({
+  terminalApi,
   section,
   theme,
   appearance,
@@ -106,6 +111,7 @@ export function SettingsModal({
   onNotificationSettingsChange,
   onDelegationEnabledChange,
   onDelegationAutoApproveChange,
+  onDelegationModelChange,
   onDelegationAutoApproveEditsChange,
   onRegenerateDelegationToken,
   onReviewDelegation,
@@ -138,6 +144,7 @@ export function SettingsModal({
             <button className={section === 'notifications' ? 'active' : ''} onClick={() => onSectionChange('notifications')}><Bell size={15} />Notifications</button>
             <button className={section === 'delegation' ? 'active' : ''} onClick={() => onSectionChange('delegation')}><Workflow size={15} />Delegation</button>
             <button className={section === 'icons' ? 'active' : ''} onClick={() => onSectionChange('icons')}><Shapes size={15} />Agent icons</button>
+            <button className={section === 'terminal' ? 'active' : ''} onClick={() => onSectionChange('terminal')}><Workflow size={15} />CLI permissions</button>
             <button className={section === 'accounts' ? 'active' : ''} onClick={() => onSectionChange('accounts')}><LogIn size={15} />Accounts</button>
             <div className="settings-app-version" aria-label={`MoaCLI version ${appVersion || 'loading'}`}>
               <span>MoaCLI</span>
@@ -145,6 +152,7 @@ export function SettingsModal({
             </div>
           </nav>
           <div className="settings-content scroll">
+            {section === 'terminal' && <TerminalSettingsSection api={terminalApi} />}
             <AppearanceSettingsSection
               visible={section === 'appearance'}
               theme={theme}
@@ -182,6 +190,7 @@ export function SettingsModal({
               profilesById={profilesById}
               onToggleEnabled={onDelegationEnabledChange}
               onToggleAutoApprove={onDelegationAutoApproveChange}
+              onModelChange={onDelegationModelChange}
               onToggleAutoApproveEdits={onDelegationAutoApproveEditsChange}
               onRegenerateToken={onRegenerateDelegationToken}
               onReviewTask={onReviewDelegation}

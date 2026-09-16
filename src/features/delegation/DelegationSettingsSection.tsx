@@ -1,3 +1,4 @@
+import { DelegationModelSetting } from './DelegationModelSetting'
 import { useEffect, useState } from 'react'
 import { Ban, Check, Copy, RefreshCw, RotateCcw } from 'lucide-react'
 import type { AgentAccount, AgentHealth, DelegationSnapshot, DelegationTask } from '../../../electron/contracts'
@@ -7,6 +8,7 @@ import { SettingsDescription } from '../../components/SettingsDescription'
 import { delegationFailureKind, delegationFailureLabel, delegationPromptLine, delegationStatusLabel, delegationTimeLabel, isOpenDelegation, isRetryableDelegation } from './delegation-display'
 
 interface DelegationSettingsSectionProps {
+  onModelChange: (agent: string, model: string) => Promise<void>
   visible: boolean
   snapshot: DelegationSnapshot | null
   profilesById: ReadonlyMap<string, AgentHealth>
@@ -40,6 +42,7 @@ async function copyText(text: string): Promise<void> {
 }
 
 export function DelegationSettingsSection({
+  onModelChange,
   visible,
   snapshot,
   profilesById,
@@ -125,6 +128,14 @@ export function DelegationSettingsSection({
         <p>These settings apply to new requests only. Up to 3 tasks run at once; edits in overlapping workspaces run one at a time.</p>
       </div>
 
+      <div className="delegation-model-settings">
+        <h4>Default worker models</h4>
+        <p>Automatic approvals always use these defaults. You can change the model for one task in its approval dialog.</p>
+        {WORKER_AGENTS.map(agent => <DelegationModelSetting key={agent} agent={agent}
+          value={server?.defaultModels?.[agent] ?? ''} disabled={!available} onSave={onModelChange} />)}
+        <p>CLI default reads the selected account's user model setting when available. Otherwise the CLI chooses. Model availability depends on your CLI and account.</p>
+      </div>
+
       <div className="delegation-fallback">
         <strong>Fallback account</strong>
         <p>If an analysis task fails from a usage limit or sign-in problem, MoaCLI retries it once with this account automatically. Edit tasks and snapshot tasks require a new user action. Leave on “None” to be asked instead.</p>
@@ -201,6 +212,7 @@ export function DelegationSettingsSection({
                 <strong title={task.promptPreview}>{delegationPromptLine(task)}</strong>
                 <small>
                   {profile?.label ?? task.agent}
+                  {task.model !== undefined ? ` / Model: ${task.model || 'CLI default'}` : ''}
                   {task.accountEmail ? ` · ${task.accountEmail}` : ''}
                   {` · from ${task.caller}`}
                   {task.retryOfId ? ' · retry' : ''}

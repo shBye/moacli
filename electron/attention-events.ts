@@ -45,6 +45,28 @@ export function normalizeCodexOsc9(): AgentEvent {
   return { source: 'codex-osc9', name: 'terminal-notification', kind: 'attention' }
 }
 
+export function normalizeCodexHook(payload: unknown): AgentEvent | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null
+  const input = payload as Record<string, unknown>
+  if (identifier(input.agent_id) || !identifier(input.session_id)) return null
+  const name = identifier(input.hook_event_name)
+  const promptId = identifier(input.turn_id)
+  if (name === 'SessionStart' && (input.source === 'startup' || input.source === 'resume')) return { source: 'codex-hooks', name, kind: 'ready' }
+  if (!name || !promptId) return null
+  const event: AgentEvent = { source: 'codex-hooks', name, promptId, kind: 'attention' }
+  switch (name) {
+    case 'UserPromptSubmit':
+    case 'PostToolUse': event.kind = 'processing'; break
+    case 'PermissionRequest': event.kind = 'approval_required'; break
+    case 'Stop': event.kind = 'response_completed'; break
+    case 'Interrupt': event.kind = 'response_interrupted'; break
+    default: return null
+  }
+  // Only known tool labels; never copy MCP arguments, prompts or command text.
+  if (input.tool_name === 'Bash' || input.tool_name === 'apply_patch') event.toolName = input.tool_name
+  return event
+}
+
 export function claudeAttentionHooks(endpoint: string): object {
   const handler = { type: 'http', url: endpoint, timeout: 5 }
   return {

@@ -5,6 +5,7 @@ import { TerminalDiagnosticStore } from './terminal-diagnostic-store'
 export function attachTerminalDiagnosticsIpc(options: {
   directory: string; version: string; window: () => BrowserWindow | null;
   versions: () => Promise<Array<{ id: string; version?: string | null }>>;
+  attention?: () => object;
 }): () => Promise<void> {
   const store = new TerminalDiagnosticStore(options.directory)
   const record = (event: Electron.IpcMainEvent, payload: unknown): void => {
@@ -30,7 +31,7 @@ export function attachTerminalDiagnosticsIpc(options: {
       })
       await writeFile(result.filePath, JSON.stringify({ appVersion: options.version, platform: process.platform,
         electron: process.versions.electron, chrome: process.versions.chrome, xterm: '5.5.0',
-        versions, diagnostics: snapshot }, null, 2), 'utf8')
+        versions, diagnostics: snapshot, attention: options.attention?.() }, null, 2), 'utf8')
       return true
     } catch { throw new Error('Could not save diagnostics. Choose another location and retry.') }
   })

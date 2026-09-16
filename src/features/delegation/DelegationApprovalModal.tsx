@@ -1,3 +1,5 @@
+import { validateModel } from './model-policy'
+import { useDefaultWorkerModel } from './useDefaultWorkerModel'
 import { useEffect, useMemo, useState } from 'react'
 import { ShieldAlert, ShieldCheck, X } from 'lucide-react'
 import type { AgentAccount, AgentHealth, DelegationTask } from '../../../electron/contracts'
@@ -13,7 +15,8 @@ interface DelegationApprovalModalProps {
   resolvedAgentIcon: (agentId: string) => AgentIconPreference
   busy: boolean
   error: string
-  onApprove: (taskId: string, account?: AgentAccount) => void
+  getDefaultModel: (agent: string, account?: AgentAccount) => Promise<string>
+  onApprove: (taskId: string, account?: AgentAccount, model?: string) => void
   onReject: (taskId: string) => void
   onDismiss: () => void
 }
@@ -29,10 +32,14 @@ export function DelegationApprovalModal({
   resolvedAgentIcon,
   busy,
   error,
+  getDefaultModel,
   onApprove,
   onReject,
   onDismiss,
 }: DelegationApprovalModalProps) {
+  const [customModel, setCustomModel] = useState(false)
+  const [model, setModel] = useState('')
+  useEffect(() => { setCustomModel(false); setModel('') }, [task.id])
   const profile = profilesById.get(task.agent)
   const agentLabel = profile?.label ?? task.agent
   const preferredAccountId = accounts.find((account) => account.detected)?.id ?? accounts[0]?.id ?? DEFAULT_ACCOUNT
@@ -75,6 +82,9 @@ export function DelegationApprovalModal({
     ...(accounts.length ? [] : [{ value: DEFAULT_ACCOUNT, label: `Default ${agentLabel} account` }]),
   ], [accounts, agentLabel, authById])
   const selectedAccount = accounts.find((account) => account.id === accountId)
+  const defaultModel = useDefaultWorkerModel(task.agent, selectedAccount, getDefaultModel, task.id)
+  let modelError = ''
+  if (customModel) { try { if (!validateModel(model)) modelError = 'Enter a model ID.' } catch { modelError = 'Invalid model ID.' } }
   const selectedAuth = selectedAccount ? authById.get(selectedAccount.id) : undefined
   const timeoutMinutes = Math.round(task.timeoutMs / 60_000)
 
@@ -101,6 +111,16 @@ export function DelegationApprovalModal({
           <dt>Time limit</dt><dd>{timeoutMinutes} min</dd>
           <dt>Permissions</dt><dd><ShieldCheck size={12} />{delegationPolicyLabel(task.agent, task.mode)}</dd>
           {task.mode === 'edit' && <><dt>Editing</dt><dd>This task can change files in the project. Avoid editing the same files in another CLI until it finishes.</dd></>}
+          <dt>Model</dt>
+          <dd className="delegation-model-choice">
+            <SelectBox ariaLabel="Worker model mode" value={customModel ? 'custom' : 'default'} disabled={busy}
+              options={[{ value: 'default', label: 'Use default setting' }, { value: 'custom', label: 'Change for this task' }]}
+              onChange={value => { setCustomModel(value === 'custom'); if (!model) setModel(defaultModel.model) }} />
+            {customModel ? <input aria-label="Worker model ID" value={model} maxLength={160} disabled={busy}
+              placeholder="Model ID" onChange={event => setModel(event.target.value)} />
+              : <span>{defaultModel.loading ? 'Reading default...' : defaultModel.error || defaultModel.model || 'CLI default (resolved at startup)'}</span>}
+            {modelError && <small role="alert">{modelError}</small>}
+          </dd>
           <dt>Account</dt>
           <dd>
             <SelectBox
@@ -117,7 +137,7 @@ export function DelegationApprovalModal({
         {error && <p className="delegation-modal-error" role="alert">{error}</p>}
         <footer className="delegation-modal-actions">
           <button className="secondary-button" disabled={busy} onClick={() => onReject(task.id)}>Decline</button>
-          <button className="modal-save" disabled={busy} onClick={() => onApprove(task.id, selectedAccount)}>
+          <button className="modal-save" disabled={busy || (customModel ? Boolean(modelError) : defaultModel.loading || Boolean(defaultModel.error))} onClick={() => onApprove(task.id, selectedAccount, customModel ? model.trim() : defaultModel.model)}>
             {busy ? 'Starting…' : `Allow ${agentLabel}`}
           </button>
         </footer>

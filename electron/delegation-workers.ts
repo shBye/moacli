@@ -1,3 +1,4 @@
+import { workerModelArgs } from '../src/features/delegation/model-policy'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, rmdirSync } from 'node:fs'
@@ -13,6 +14,7 @@ export type WorkerAgentId = 'claude' | 'codex'
 export const WORKER_AGENT_IDS: readonly WorkerAgentId[] = ['claude', 'codex']
 
 export interface WorkerStart {
+  model?: string
   agent: WorkerAgentId
   prompt: string
   cwd: string
@@ -204,6 +206,7 @@ function startClaudeWorker(start: WorkerStart): WorkerHandle {
   // Remove the normal MCP route back into MoaCLI. This is a worker policy,
   // not OS isolation against a process deliberately using shell-based bypasses.
   const args = [
+    ...workerModelArgs(start.model),
     '-p', '--output-format', 'stream-json', '--verbose', '--max-turns', '30',
     '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
     ...(start.reviewOnly ? reviewWorkerArgs('claude') : delegatedWorkerArgs('claude', start.mode ?? 'analyze')),
@@ -250,7 +253,7 @@ function startCodexWorker(start: WorkerStart): WorkerHandle {
   const lastMessageDirectory = join(tmpdir(), 'moacli', 'delegation')
   mkdirSync(lastMessageDirectory, { recursive: true })
   const lastMessagePath = join(lastMessageDirectory, `codex-${randomUUID()}.txt`)
-  const args = ['exec', '--json', '--skip-git-repo-check', '--output-last-message', lastMessagePath, '-']
+  const args = ['exec', ...workerModelArgs(start.model), '--json', '--skip-git-repo-check', '--output-last-message', lastMessagePath, '-']
   args.splice(args.length - 1, 0, ...delegatedWorkerArgs('codex', start.mode ?? 'analyze'), ...(start.reviewOnly ? reviewWorkerArgs('codex') : []))
   // Avoid loading project-local MCP/skills by starting outside the project.
   // The requested project is explicitly named and only added as writable for edit tasks.

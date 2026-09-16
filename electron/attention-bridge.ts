@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import { getVersion, isVersionAtLeast } from './agent-profiles'
 import type { AgentProfile, StartPtyRequest } from './contracts'
 import type { AgentEvent } from '../src/features/sessions/agent-event'
-import { claudeAttentionHooks, normalizeClaudeHook, normalizeCodexOsc9 } from './attention-events'
+import { claudeAttentionHooks, normalizeClaudeHook, normalizeCodexOsc9, normalizeCodexHook } from './attention-events'
+import { AttentionDiagnostics } from './attention-diagnostics'
 
 const MAX_HOOK_BODY_BYTES = 1024 * 1024
 
@@ -28,6 +29,8 @@ interface AttentionRegistration {
   promptId?: string
   retiredPromptIds: string[]
   lastOutcomeKey?: string
+  hookSessionId?: string
+  lastStructuredKind?: AgentEvent['kind']
 }
 
 function emptyLaunchOptions(): AttentionLaunchOptions {
@@ -35,13 +38,15 @@ function emptyLaunchOptions(): AttentionLaunchOptions {
 }
 
 export class AttentionBridge {
+  readonly diagnostics = new AttentionDiagnostics()
   private readonly token = randomUUID()
   private readonly registrations = new Map<string, AttentionRegistration>()
   private server: Server | undefined
   private port = 0
   private settingsDirectory = ''
 
-  constructor(private readonly onSignal: (signal: AttentionSignal) => void) {}
+  constructor(private readonly onSignal: (signal: AttentionSignal) => void,
+    private readonly installHooks?: (request: StartPtyRequest) => void) {}
 
   async start(settingsDirectory: string): Promise<void> {
     if (this.server) return
@@ -76,20 +81,33 @@ export class AttentionBridge {
     }
 
     const version = await getVersion(profile, executable)
-    if (!isVersionAtLeast(version, profile.attention_min_version)) return emptyLaunchOptions()
+    if (!isVersionAtLeast(version, profile.attention_min_version)) {
+      this.diagnostics.record(request.id, 'version-unsupported')
+      return emptyLaunchOptions()
+    }
 
     const registration: AttentionRegistration = { request, profile, generation: 0, retiredPromptIds: [] }
     this.registrations.set(request.id, registration)
 
     try {
       if (profile.attention_adapter === 'codex-osc9') {
+        const env: Record<string, string> = {}
+        if (this.installHooks && this.port && isVersionAtLeast(version, '0.154.0')) {
+          try {
+            this.installHooks(request)
+            env.MOACLI_CODEX_HOOK_ENDPOINT = `http://127.0.0.1:${this.port}/attention/${this.token}/${encodeURIComponent(request.id)}`
+            env.MOACLI_HOOK_EXECUTABLE = process.execPath
+            this.diagnostics.record(request.id, 'hooks-installed')
+            this.emitSignal(registration, { source: 'codex-hooks', kind: 'attention', name: 'HookSetupRequired' })
+          } catch { this.diagnostics.record(request.id, 'hooks-unavailable') }
+        }
         return {
           args: [
             '-c', 'tui.notifications=true',
             '-c', 'tui.notification_method="osc9"',
             '-c', 'tui.notification_condition="always"',
           ],
-          env: {},
+          env,
         }
       }
 
@@ -112,12 +130,18 @@ export class AttentionBridge {
   // OSC9 sequences are scanned in the PTY host process; it forwards each
   // decoded notification here for registration and generation bookkeeping.
   signalOsc9(ptyId: string, _reason: string): void {
+    this.diagnostics.record(ptyId, 'osc-received')
     const registration = this.registrations.get(ptyId)
     if (registration?.profile.attention_adapter !== 'codex-osc9') return
+    if (registration.lastStructuredKind && registration.lastStructuredKind !== 'processing') {
+      this.diagnostics.record(ptyId, 'osc-suppressed')
+      return
+    }
     this.emitSignal(registration, normalizeCodexOsc9())
   }
 
   release(ptyId: string): void {
+    this.diagnostics.record(ptyId, 'released')
     const registration = this.registrations.get(ptyId)
     this.registrations.delete(ptyId)
     if (registration?.settingsPath) rmSync(registration.settingsPath, { force: true })
@@ -145,7 +169,7 @@ export class AttentionBridge {
       return
     }
     const registration = this.registrations.get(ptyId)
-    if (!registration || registration.profile.attention_adapter !== 'claude-http') {
+    if (!registration || !['claude-http', 'codex-osc9'].includes(registration.profile.attention_adapter ?? '')) {
       this.respond(response, 404, { error: 'Not found' })
       request.resume()
       return
@@ -169,7 +193,22 @@ export class AttentionBridge {
     request.on('end', () => {
       if (rejected) return
       try {
-        const event = normalizeClaudeHook(JSON.parse(chunks.join('')) as unknown)
+        const payload: unknown = JSON.parse(chunks.join(''))
+        const codex = registration.profile.attention_adapter === 'codex-osc9'
+        const event = codex ? normalizeCodexHook(payload) : normalizeClaudeHook(payload)
+        if (codex && payload && typeof payload === 'object' && !Array.isArray(payload)) {
+          const input = payload as Record<string, unknown>
+          const sessionId = typeof input.session_id === 'string' && input.session_id.length <= 256 ? input.session_id : undefined
+          if (sessionId && !input.agent_id && (input.hook_event_name === 'SessionStart' || input.hook_event_name === 'UserPromptSubmit')) {
+            registration.hookSessionId ??= sessionId
+          }
+          if (!sessionId || input.agent_id || (registration.hookSessionId && registration.hookSessionId !== sessionId)) {
+            this.diagnostics.record(registration.request.id, 'hook-ignored')
+            this.respond(response, 200, {})
+            return
+          }
+        }
+        this.diagnostics.record(registration.request.id, event ? 'hook-received' : 'hook-ignored', event?.name)
         // Observers never approve, deny, or block a tool. Unknown events are
         // acknowledged without treating them as a failed hook.
         this.respond(response, 200, {})
@@ -185,7 +224,15 @@ export class AttentionBridge {
     event: AgentEvent,
   ): void {
     if (this.registrations.get(registration.request.id) !== registration) return
-    if (event.promptId && registration.retiredPromptIds.includes(event.promptId)) return
+    if (event.promptId && registration.retiredPromptIds.includes(event.promptId)) {
+      this.diagnostics.record(registration.request.id, 'stale', event.name)
+      return
+    }
+    if (event.source === 'codex-hooks' && event.promptId && registration.promptId
+      && event.name !== 'UserPromptSubmit' && event.promptId !== registration.promptId) {
+      this.diagnostics.record(registration.request.id, 'stale', event.name)
+      return
+    }
     if (event.name === 'UserPromptSubmit') {
       if (registration.promptId && registration.promptId !== event.promptId) {
         registration.retiredPromptIds = [...registration.retiredPromptIds, registration.promptId].slice(-32)
@@ -193,11 +240,13 @@ export class AttentionBridge {
       registration.promptId = event.promptId
       registration.lastOutcomeKey = undefined
     }
-    if (event.promptId && (event.kind === 'response_completed' || event.kind === 'response_failed')) {
+    if (event.kind === 'processing') registration.lastOutcomeKey = undefined
+    if (event.promptId && (event.kind === 'response_completed' || event.kind === 'response_failed' || event.kind === 'response_interrupted')) {
       const key = `${event.promptId}:${event.kind}:${event.errorCode ?? ''}`
       if (registration.lastOutcomeKey === key) return
       registration.lastOutcomeKey = key
     }
+    if (event.source === 'codex-hooks' && event.name !== 'HookSetupRequired' && event.kind !== 'ready') registration.lastStructuredKind = event.kind
     registration.generation += 1
     try {
       this.onSignal({
@@ -205,6 +254,7 @@ export class AttentionBridge {
         event,
         generation: registration.generation,
       })
+      this.diagnostics.record(registration.request.id, 'delivered', event.name)
     } catch {
       // Attention delivery must never interrupt PTY input or output.
     }

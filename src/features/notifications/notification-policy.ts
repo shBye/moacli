@@ -45,6 +45,8 @@ export function agentEventNotificationType(event: AgentEvent): AppNotificationTy
     case 'response_completed': return 'completed'
     case 'response_failed': return 'failed'
     case 'processing': return null
+    case 'ready': return null
+    case 'response_interrupted': return null
     case 'attention': return 'needs_attention'
   }
 }

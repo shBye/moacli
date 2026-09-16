@@ -1,3 +1,4 @@
+import { validateModel } from '../src/features/delegation/model-policy'
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -31,6 +32,7 @@ export interface DelegationTaskRequest {
 export type DelegationTaskEvent = 'awaiting_approval' | 'completed' | 'failed'
 
 interface TaskRecord {
+  model?: string
   source?: ReviewSource
   mode: DelegationMode
   role?: string
@@ -59,6 +61,7 @@ interface TaskRecord {
 }
 
 interface TaskRow {
+  model: string | null
   source_json: string | null
   mode: string | null
   role: string | null
@@ -107,6 +110,7 @@ export class DelegationTaskRegistry {
     private readonly onEvent: (task: DelegationTask, event: DelegationTaskEvent) => void,
     private readonly onWorkerSession?: (sessionId: string) => void,
     private readonly workerStarter: typeof startWorker = startWorker,
+    private readonly resolveModel: (agent: WorkerAgentId, account?: AgentAccount, model?: string) => string = (_agent, _account, model) => validateModel(model ?? ''),
   ) {
     mkdirSync(dirname(databasePath), { recursive: true })
     this.database = new Database(databasePath)
@@ -132,6 +136,7 @@ export class DelegationTaskRegistry {
       CREATE INDEX IF NOT EXISTS delegation_tasks_created_idx ON delegation_tasks(created_at DESC);
     `)
     const columns = (this.database.pragma('table_info(delegation_tasks)') as Array<{ name: string }>).map((column) => column.name)
+    if (!columns.includes('model')) this.database.exec('ALTER TABLE delegation_tasks ADD COLUMN model TEXT')
     if (!columns.includes('worker_session_id')) {
       this.database.exec('ALTER TABLE delegation_tasks ADD COLUMN worker_session_id TEXT')
       // Earlier Claude workers only recorded their session id inside `detail`.
@@ -229,7 +234,7 @@ export class DelegationTaskRegistry {
     // List queries never load full prompts, results or snapshot patches.
     const rows = this.database.prepare(`SELECT id, agent, caller, cwd, timeout_ms, status,
       created_at, started_at, finished_at, account_id, account_email, worker_session_id,
-      retry_of, mode, role, source_json, error, detail, NULL AS review_json,
+      retry_of, mode, role, model, source_json, error, detail, NULL AS review_json,
       substr(prompt, 1, 4000) AS prompt, length(prompt) AS prompt_length,
       substr(result, 1, 600) AS result
       FROM delegation_tasks WHERE source_json IS NOT NULL
@@ -278,16 +283,17 @@ export class DelegationTaskRegistry {
     return this.publicTask(record)
   }
 
-  approve(taskId: string, account?: AgentAccount): void {
+  approve(taskId: string, account?: AgentAccount, model?: string): void {
     const record = this.requireTask(taskId)
     if (record.status !== 'awaiting_approval') throw new Error('The task is no longer waiting for approval')
     if (account && account.agentId !== record.agent) throw new Error('The selected account does not match the worker agent')
+    record.model = validateModel(this.resolveModel(record.agent, account, model))
     clearTimeout(record.approvalTimer)
     record.approvalTimer = undefined
     if (account && account.agentId === record.agent) record.account = account
     record.status = 'queued'
-    this.database.prepare('UPDATE delegation_tasks SET status = ?, account_id = ?, account_email = ? WHERE id = ?')
-      .run(record.status, record.account?.id ?? null, record.account?.email ?? null, record.id)
+    this.database.prepare('UPDATE delegation_tasks SET status = ?, account_id = ?, account_email = ?, model = ? WHERE id = ?')
+      .run(record.status, record.account?.id ?? null, record.account?.email ?? null, record.model, record.id)
     this.drainQueue()
     this.onChanged()
   }
@@ -309,6 +315,7 @@ export class DelegationTaskRegistry {
     `).run(record.status, record.startedAt, record.account?.id ?? null, record.account?.email ?? null, record.id)
     try {
       record.handle = this.workerStarter({
+        model: record.model,
         agent: record.agent,
         prompt: singleLevelPrompt(record.prompt, record.mode),
         mode: record.mode,
@@ -489,6 +496,7 @@ export class DelegationTaskRegistry {
 
   private recordFromRow(row: TaskRow): TaskRecord {
     return {
+      model: row.model ?? undefined,
       ...(row.source_json ? { source: JSON.parse(row.source_json) as ReviewSource } : {}),
       mode: row.mode === 'edit' ? 'edit' : 'analyze',
       ...(row.role ? { role: row.role } : {}),
@@ -516,6 +524,7 @@ export class DelegationTaskRegistry {
 
   private publicTask(record: TaskRecord): DelegationTask {
     return {
+      model: record.model,
       ...(record.source ? { source: { ...record.source } } : {}),
       mode: record.mode,
       role: record.role,

@@ -12,6 +12,6 @@ export function taskSource(task: DelegationTask): ReviewSource | undefined { ret
 export function sessionTaskRevision(tasks: readonly DelegationTask[], source: ReviewSource, kind: 'mcp' | 'review'): string {
   return JSON.stringify(tasks.filter((task) => Boolean(kind === 'review' ? task.reviewSource : task.source)
     && taskBelongsToSession(task, { id: source.sessionId, historyKey: source.historyKey }))
-    .map((task) => [task.id, task.status, task.startedAt, task.finishedAt, task.error, task.detail, task.accountId, task.resultPreview])
+    .map((task) => [task.id, task.status, task.startedAt, task.finishedAt, task.error, task.detail, task.accountId, task.model, task.resultPreview])
     .sort((a, b) => String(a[0]).localeCompare(String(b[0]))))
 }

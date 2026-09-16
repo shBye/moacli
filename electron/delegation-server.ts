@@ -1,3 +1,4 @@
+import { parseDelegationModels, validateModel, type DelegationModels } from '../src/features/delegation/model-policy'
 import { randomBytes } from 'node:crypto'
 import { AGENT_ROLES, AGENT_ROLE_IDS, roleTaskPrompt, type AgentRoleId } from './agent-roles'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, realpathSync, statSync } from 'node:fs'
@@ -25,6 +26,7 @@ const LOCAL_ORIGIN_PATTERN = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i
 const LOCAL_HOST_PATTERN = /^(?:localhost|127\.0\.0\.1)(?::\d+)?$/i
 
 interface StoredServerConfig {
+  defaultModels: DelegationModels
   port: number
   token: string
   enabled: boolean
@@ -79,6 +81,7 @@ export class DelegationServer {
   private token = ''
   private port = 0
   private enabled = true
+  private defaultModels = parseDelegationModels(undefined)
   private autoApproveEnabled = false
   private autoApproveEditsEnabled = false
   private readonly configPath: string
@@ -104,6 +107,7 @@ export class DelegationServer {
     return {
       enabled: this.enabled,
       running,
+      defaultModels: { ...this.defaultModels },
       autoApprove: this.autoApproveEnabled,
       autoApproveEdits: this.autoApproveEditsEnabled,
       port: this.port,
@@ -129,6 +133,7 @@ export class DelegationServer {
     const stored = this.readStoredConfig()
     this.token = stored?.token ?? randomBytes(24).toString('hex')
     this.enabled = stored?.enabled ?? true
+    this.defaultModels = parseDelegationModels(stored?.defaultModels)
     this.autoApproveEnabled = stored?.autoApprove ?? false
     this.autoApproveEditsEnabled = stored?.autoApproveEdits ?? false
     this.port = stored?.port ?? PREFERRED_PORT
@@ -150,6 +155,19 @@ export class DelegationServer {
     } else if (!this.httpServer) {
       await this.listen(this.port)
     }
+    this.onChanged()
+  }
+
+  defaultModel(agent: string): string {
+    if (agent !== 'claude' && agent !== 'codex') throw new Error('Unsupported worker agent')
+    return this.defaultModels[agent]
+  }
+
+  setDefaultModel(agent: string, model: string): void {
+    this.defaultModel(agent)
+    const previous = this.defaultModels
+    this.defaultModels = { ...previous, [agent]: validateModel(model) }
+    try { this.persistConfig() } catch (error) { this.defaultModels = previous; throw error }
     this.onChanged()
   }
 
@@ -211,7 +229,7 @@ export class DelegationServer {
         && (parsed as StoredServerConfig).token.length >= 16
       ) {
         const config = parsed as Partial<StoredServerConfig>
-        return { port: config.port!, token: config.token!, enabled: config.enabled !== false, autoApprove: config.autoApprove === true, autoApproveEdits: config.autoApproveEdits === true }
+        return { defaultModels: parseDelegationModels(config.defaultModels), port: config.port!, token: config.token!, enabled: config.enabled !== false, autoApprove: config.autoApprove === true, autoApproveEdits: config.autoApproveEdits === true }
       }
     } catch {
       // Missing or corrupt config falls through to a fresh token/port.
@@ -221,7 +239,7 @@ export class DelegationServer {
 
   private persistConfig(): void {
     mkdirSync(this.options.userDataDirectory, { recursive: true })
-    writeFileSync(this.configPath, JSON.stringify({ port: this.port, token: this.token, url: this.url, enabled: this.enabled, autoApprove: this.autoApproveEnabled, autoApproveEdits: this.autoApproveEditsEnabled }, null, 2))
+    writeFileSync(this.configPath, JSON.stringify({ defaultModels: this.defaultModels, port: this.port, token: this.token, url: this.url, enabled: this.enabled, autoApprove: this.autoApproveEnabled, autoApproveEdits: this.autoApproveEditsEnabled }, null, 2))
   }
 
   private tryListen(port: number): Promise<boolean> {

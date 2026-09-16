@@ -22,6 +22,7 @@ export function attachTerminalDiagnostics(
   let queue: TerminalDiagnosticEvent[] = []
   let burstAt = 0
   let burstCount = 0
+  let attentionBurstCount = 0
   const position = (): DiagnosticPosition => {
     const buffer = terminal.buffer.active
     return {
@@ -41,9 +42,10 @@ export function attachTerminalDiagnostics(
   const record = (reason: DiagnosticReason, value?: number): void => {
     if (disposed) return
     const now = performance.now()
-    if (now - burstAt >= 500) { burstAt = now; burstCount = 0 }
+    if (now - burstAt >= 500) { burstAt = now; burstCount = 0; attentionBurstCount = 0 }
     // Keep diagnostic work bounded even for rapidly scrolling output.
-    if (burstCount >= 40 && reason !== 'user-mark' && reason !== 'disposed') { dropped++; dirty = true; return }
+    const attentionSlot = reason === 'attention' && attentionBurstCount++ < 10
+    if (burstCount >= 40 && !attentionSlot && reason !== 'user-mark' && reason !== 'disposed') { dropped++; dirty = true; return }
     burstCount++
     const current = position()
     const jump = isUpwardJump(previous, current)

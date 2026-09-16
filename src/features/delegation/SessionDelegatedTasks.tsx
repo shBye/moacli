@@ -44,6 +44,7 @@ export function SessionDelegatedTasks({ api, source, changes, onReviewApproval }
           }}>Cancel task</button>}
         </div>
       </header>
+      {task.model !== undefined && <p className="review-muted">Requested model: {task.model || 'CLI default'}</p>}
       <p className="review-path">{task.cwd}</p>
       <details><summary>Task brief</summary><pre className="review-patch">{task.promptPreview}</pre></details>
       {task.error && <p role="alert" className="review-error">{task.error}</p>}

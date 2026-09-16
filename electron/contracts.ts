@@ -117,6 +117,7 @@ export type NotificationActivation =
 export type DelegationTaskStatus = 'awaiting_approval' | 'queued' | 'running' | 'completed' | 'failed' | 'rejected' | 'cancelled'
 
 export interface DelegationTask {
+  model?: string
   source?: import('./review-contracts').ReviewSource
   mode?: import('./delegation-policy').DelegationMode
   role?: string
@@ -146,6 +147,7 @@ export interface DelegationTask {
 }
 
 export interface DelegationServerStatus {
+  defaultModels: import('../src/features/delegation/model-policy').DelegationModels
   enabled: boolean
   running: boolean
   // Independent automatic approval for new analysis and edit requests.
@@ -166,6 +168,7 @@ export interface DelegationSnapshot {
 }
 
 export interface DelegationApproval {
+  model?: string
   taskId: string
   account?: AgentAccount
 }
@@ -243,6 +246,8 @@ export interface AppUpdateInfo {
 }
 
 export interface CliAgentApi {
+  getTerminalPermissions: () => Promise<import('../src/features/settings/terminal-permissions').TerminalPermissions>
+  setCodexPermissionMode: (mode: import('../src/features/settings/terminal-permissions').CodexPermissionMode) => Promise<import('../src/features/settings/terminal-permissions').TerminalPermissions>
   prepareReview: (cwd: string) => Promise<import('./review-contracts').ReviewSnapshot>
   startReview: (request: import('./review-contracts').StartReviewRequest) => Promise<string>
   listReviews: (source: import('./review-contracts').ReviewSource) => Promise<import('./review-contracts').ReviewEntry[]>
@@ -281,6 +286,8 @@ export interface CliAgentApi {
   onNotificationActivated: (callback: (activation: NotificationActivation) => void) => () => void
   getDelegationSnapshot: () => Promise<DelegationSnapshot>
   approveDelegation: (approval: DelegationApproval) => Promise<DelegationSnapshot>
+  setDelegationModel: (agent: string, model: string) => Promise<DelegationSnapshot>
+  getDelegationModel: (agent: string, account?: AgentAccount) => Promise<string>
   rejectDelegation: (taskId: string) => Promise<DelegationSnapshot>
   cancelDelegation: (taskId: string) => Promise<DelegationSnapshot>
   retryDelegation: (taskId: string) => Promise<DelegationSnapshot>

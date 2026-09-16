@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 export const diagnosticReason = z.enum([
+  'redraw-arm', 'redraw-follow', 'redraw-cancel',
   'attached', 'disposed', 'sample', 'scroll', 'dom-scroll', 'buffer-change',
   'output-settled', 'input', 'wheel-up', 'wheel-down', 'pointer', 'navigation',
   'erase-display', 'alternate-on', 'alternate-off', 'reset', 'sync-on', 'sync-off',

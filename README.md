@@ -195,6 +195,8 @@ The detailed product flow, data model, failure handling, and acceptance criteria
 - [macOS support scope (planning only)](./docs/MACOS_SUPPORT.md)
 - [Automatic and custom session titles](./docs/SESSION_TITLES.md)
 - [Terminal scroll diagnostics](./docs/TERMINAL_DIAGNOSTICS.md)
+- [Delegation model selection](./docs/DELEGATION_MODELS.md)
+- [Codex permissions and scroll correction](./docs/CODEX_TERMINAL_BEHAVIOR.md)
 
 | Command | Purpose |
 | --- | --- |

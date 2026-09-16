@@ -1074,8 +1074,8 @@ export function App() {
   const acknowledgeDelegationNotification = (taskId: string): void => {
     void window.cliAgent.acknowledgeSessionNotification(`delegation:${taskId}`).then(acceptNotificationSnapshot)
   }
-  const approveDelegation = (taskId: string, account?: AgentAccount): void => {
-    runDelegationAction(() => window.cliAgent.approveDelegation(account ? { taskId, account } : { taskId }))
+  const approveDelegation = (taskId: string, account?: AgentAccount, model?: string): void => {
+    runDelegationAction(() => window.cliAgent.approveDelegation({ taskId, account, model }))
     acknowledgeDelegationNotification(taskId)
   }
   const rejectDelegation = (taskId: string): void => {
@@ -1959,6 +1959,7 @@ export function App() {
 
       {settingsOpen && (
         <SettingsModal
+          terminalApi={window.cliAgent}
           section={settingsSection}
           theme={theme}
           appearance={appearance}
@@ -2001,6 +2002,7 @@ export function App() {
           onDelegationEnabledChange={setDelegationEnabled}
             onDelegationAutoApproveChange={setDelegationAutoApprove}
             onDelegationAutoApproveEditsChange={setDelegationAutoApproveEdits}
+            onDelegationModelChange={async (agent, model) => { setDelegationSnapshot(await window.cliAgent.setDelegationModel(agent, model)) }}
           onRegenerateDelegationToken={regenerateDelegationToken}
           onReviewDelegation={openDelegationTask}
           onCancelDelegation={cancelDelegation}
@@ -2044,6 +2046,7 @@ export function App() {
           resolvedAgentIcon={resolvedAgentIcon}
           busy={approvalBusy}
           error={approvalError}
+          getDefaultModel={window.cliAgent.getDelegationModel}
           onApprove={approveDelegation}
           onReject={rejectDelegation}
           onDismiss={dismissApproval}

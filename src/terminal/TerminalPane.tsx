@@ -1,3 +1,4 @@
+import { attachCodexRedrawFollow } from './attach-codex-redraw-follow'
 import { attachTerminalDiagnostics } from './attach-terminal-diagnostics'
 import type { DiagnosticReason } from '../shared/terminal-diagnostics'
 import { memo, useEffect, useRef, useState } from 'react'
@@ -13,7 +14,7 @@ import { isTerminalPasteShortcut } from './terminal-clipboard'
 import { createTerminalOptions } from './terminal-options'
 import { attachTerminalPaste } from './terminal-paste'
 import type { AgentAccount } from '../../electron/contracts'
-import { agentEventInteractionState, agentEventLabel } from '../features/sessions/agent-event'
+import { agentEventInteractionState, agentEventLabel, type AgentEventKind } from '../features/sessions/agent-event'
 
 interface TerminalPaneProps {
   historyKey?: string
@@ -152,6 +153,9 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
       send: (events) => window.cliAgent.recordTerminalDiagnostics(events),
     })
     diagnosticRef.current = diagnostics.record
+    const disposeRedrawFollow = agentId === 'codex'
+      ? attachCodexRedrawFollow(terminal, container, { active: () => activeRef.current, record: diagnostics.record })
+      : undefined
     let lastActivityReport = 0
     const reportActivity = (): void => {
       const now = Date.now()
@@ -160,12 +164,16 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
       activityRef.current()
     }
     let interactionState: 'running' | 'processing' | 'needs_attention' = 'running'
+    let structuredAttention = false
+    let codexHooksConnected = false
     const inputDisposable = terminal.onData((data) => {
       reportActivity()
       window.cliAgent.writePty(id, data)
       if (!activityStatusEnabledRef.current || purpose !== 'session') return
-      if (/[\r\n]/.test(data)) reportInteractionState('processing', 'Request submitted')
-      else if (interactionState === 'needs_attention') reportInteractionState('running')
+      if (/[\r\n]/.test(data) && (!codexHooksConnected || structuredAttention)) {
+        structuredAttention = false
+        reportInteractionState('processing', 'Request submitted')
+      } else if (interactionState === 'needs_attention' && !structuredAttention && !codexHooksConnected) reportInteractionState('running')
     })
     let started = false
     let disposed = false
@@ -198,7 +206,7 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
       stateChangeRef.current(state, detail)
     }
     clearAttentionRef.current = () => {
-      if (interactionState === 'needs_attention') reportInteractionState('running')
+      if (interactionState === 'needs_attention' && !structuredAttention) reportInteractionState('running')
     }
     let pendingInactiveOutput = ''
     let pendingInactiveFlushTimer: ReturnType<typeof setTimeout> | undefined
@@ -244,7 +252,11 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
       stateChangeRef.current('stopped', `exit ${exitCode}`)
     })
     const offAttention = window.cliAgent.onPtyAttention(id, (event) => {
-      diagnostics.record('attention')
+      const eventCodes: Record<AgentEventKind, number> = { ready: 0, processing: 1, approval_required: 2,
+        input_required: 3, response_completed: 4, response_failed: 5, response_interrupted: 6, attention: 7 }
+      diagnostics.record('attention', eventCodes[event.kind])
+      if (event.source === 'codex-hooks' && event.name === 'UserPromptSubmit') codexHooksConnected = true
+      structuredAttention = event.kind === 'approval_required' || event.kind === 'input_required' || event.name === 'HookSetupRequired'
       reportInteractionState(agentEventInteractionState(event), agentEventLabel(event))
     })
     const cancelBottomLock = (): void => {
@@ -421,6 +433,7 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
     })
 
     return () => {
+      disposeRedrawFollow?.()
       diagnostics.dispose()
       diagnosticRef.current = () => undefined
       disposed = true
@@ -507,7 +520,7 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
     terminal.options.cursorBlink = active
     if (!active) return
     flushInactiveOutputRef.current()
-    // Opening the session answers its pending attention signal.
+    // Viewing clears generic attention, but not a structured approval/input request.
     clearAttentionRef.current()
 
     let cancelFocus = (): void => undefined

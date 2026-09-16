@@ -14,6 +14,7 @@ import type {
 } from './contracts'
 import type { DelegationTaskEvent } from './delegation-tasks'
 import type { AgentEvent } from '../src/features/sessions/agent-event'
+import type { NotificationTrace } from './attention-diagnostics'
 import { compactNotificationText, delegatedNotificationContent, desktopNotificationBody, sessionNotificationContent, type NotificationContent } from './notification-content'
 import { agentEventNotificationType, DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_PRIORITY as PRIORITY, notificationTypeEnabled, parseNotificationSettings as parseSettings } from '../src/features/notifications/notification-policy'
 
@@ -58,6 +59,7 @@ export class NotificationCenter {
   constructor(
     private readonly settingsPath: string,
     private readonly getWindow: () => BrowserWindow | null,
+    private readonly trace?: (terminal: string, stage: NotificationTrace, name: string) => void,
   ) {
     this.settings = this.readSettings()
   }
@@ -99,8 +101,9 @@ export class NotificationCenter {
     // of display priority. Clear even when that new category is muted.
     this.acknowledgeSession(request.sessionId)
     const type = agentEventNotificationType(event)
-    if (!type) return
-    this.createForSession(request, type, `event:${request.id}:${generation}`, event)
+    if (!type) { this.trace?.(request.id, 'notification-state-only', event.name); return }
+    const result = this.createForSession(request, type, `event:${request.id}:${generation}`, event)
+    if (result) this.trace?.(request.id, result, event.name)
   }
 
   handleExit(request: StartPtyRequest, exitCode: number, intentional: boolean): void {
@@ -180,9 +183,9 @@ export class NotificationCenter {
     this.closeAllNativeNotifications()
   }
 
-  private createForSession(request: StartPtyRequest, type: AppNotificationType, dedupeKey: string, event?: AgentEvent, exitCode?: number): void {
+  private createForSession(request: StartPtyRequest, type: AppNotificationType, dedupeKey: string, event?: AgentEvent, exitCode?: number): NotificationTrace | undefined {
     if (request.purpose === 'login') return
-    this.create({
+    return this.create({
       sessionId: request.sessionId,
       agentId: request.agentId,
       accountId: request.account?.id ?? '',
@@ -197,26 +200,26 @@ export class NotificationCenter {
     })
   }
 
-  private create(input: CreateNotificationInput): void {
-    if (!this.settings.enabled || !notificationTypeEnabled(this.settings, input.type)) return
-    if (this.mutedSessionIds.has(input.sessionId)) return
+  private create(input: CreateNotificationInput): NotificationTrace {
+    if (!this.settings.enabled || !notificationTypeEnabled(this.settings, input.type)) return 'notification-disabled'
+    if (this.mutedSessionIds.has(input.sessionId)) return 'notification-muted'
 
     const window = this.getWindow()
     const viewingSameSession = input.skipWhenViewingCli
       && window?.isFocused()
       && this.context.activeSessionId === input.sessionId
       && this.context.activeView === 'cli'
-    if (viewingSameSession) return
+    if (viewingSameSession) return 'notification-viewing'
 
     const existing = this.active.get(input.sessionId)
-    if (existing?.dedupeKey === input.dedupeKey) return
-    if (existing && PRIORITY[existing.type] > PRIORITY[input.type]) return
+    if (existing?.dedupeKey === input.dedupeKey) return 'notification-deduplicated'
+    if (existing && PRIORITY[existing.type] > PRIORITY[input.type]) return 'notification-capacity'
 
     if (!existing && this.active.size >= MAX_ACTIVE_NOTIFICATIONS) {
       const replacement = [...this.active.values()].sort((left, right) => (
         PRIORITY[left.type] - PRIORITY[right.type] || left.createdAt - right.createdAt
       ))[0]
-      if (replacement && PRIORITY[replacement.type] > PRIORITY[input.type]) return
+      if (replacement && PRIORITY[replacement.type] > PRIORITY[input.type]) return 'notification-capacity'
       if (replacement) {
         this.active.delete(replacement.sessionId)
         this.pendingDesktopSessionIds.delete(replacement.sessionId)
@@ -247,6 +250,7 @@ export class NotificationCenter {
       this.pendingDesktopSessionIds.add(input.sessionId)
       this.scheduleDesktopDelivery()
     }
+    return 'notification-shown'
   }
 
   private scheduleDesktopDelivery(): void {

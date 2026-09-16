@@ -1,4 +1,4 @@
-import { Bell, BellOff } from 'lucide-react'
+import { Bell, BellOff, Check } from 'lucide-react'
 import { AgentAvatar } from '../../components/AgentAvatar'
 import type { AgentIconPreference } from '../agent-icons/types'
 import { sessionStateLabel } from './session-display'
@@ -35,7 +35,10 @@ export function SessionHeader({
         <AgentAvatar agentId={session.agentId} className="header" color={profileColor} preference={iconPreference} />
         <h1 title={session.title}>{session.title}</h1>
         <span className={`state-chip ${session.state}`} title={session.statusDetail}>
-          <span />{sessionStateLabel(session.state)}
+          {session.state === 'running' && session.statusDetail === 'Response finished'
+            ? <><Check size={12} aria-hidden="true" />Completed</>
+            : <><span />{session.state === 'needs_attention' && session.statusDetail === 'Approval required'
+              ? 'Approval required' : sessionStateLabel(session.state)}</>}
         </span>
         <span className="session-cwd" title={session.cwd}>{session.cwd}</span>
         {notificationsEnabled && session.purpose === 'session' && (
