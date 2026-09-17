@@ -18,7 +18,7 @@ function sendToRenderer(message: HostToRendererMessage): void {
 }
 
 const manager = new PtyManager({
-  data: (id, data) => sendToRenderer({ type: 'data', id, data }),
+  data: (id, data, through) => sendToRenderer({ type: 'data', id, data, through }),
   exit: (id, exitCode, intentional) => {
     sendToRenderer({ type: 'exit', id, exitCode })
     sendToMain({ type: 'exit', id, exitCode, intentional })
@@ -28,15 +28,24 @@ const manager = new PtyManager({
 
 function handleRendererMessage(message: RendererToHostMessage): void {
   if (message.type === 'write') manager.write(message.id, message.data)
+  else if (message.type === 'output-ack') manager.acknowledgeOutput(message.id, message.through)
   else if (message.type === 'resize') manager.resize(message.id, message.cols, message.rows)
   else if (message.type === 'stop') manager.stop(message.id)
 }
 
 function attachRendererPort(port: MessagePortMain | undefined): void {
+  // A replaced renderer has lost its xterm buffers and cannot acknowledge the
+  // old stream. Release those PTYs instead of leaving them paused indefinitely.
+  if (rendererPort) manager.stopAll()
   rendererPort?.close()
   rendererPort = port ?? null
   if (!rendererPort) return
   rendererPort.on('message', (portEvent) => handleRendererMessage(portEvent.data as RendererToHostMessage))
+  rendererPort.on('close', () => {
+    if (rendererPort !== port) return
+    rendererPort = null
+    manager.stopAll()
+  })
   rendererPort.start()
 }
 

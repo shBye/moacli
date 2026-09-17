@@ -271,7 +271,8 @@ export interface CliAgentApi {
   writePty: (id: string, data: string) => void
   resizePty: (id: string, cols: number, rows: number) => void
   stopPty: (id: string) => void
-  onPtyData: (id: string, callback: (data: string) => void) => () => void
+  acknowledgePtyOutput: (id: string, through: number) => void
+  onPtyData: (id: string, callback: (data: string, through: number) => void) => () => void
   onPtyExit: (id: string, callback: (exitCode: number) => void) => () => void
   onPtyAttention: (id: string, callback: (event: AgentEvent) => void) => () => void
   onHistoryChanged: (callback: () => void) => () => void

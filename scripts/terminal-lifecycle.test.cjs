@@ -53,6 +53,9 @@ function harness() {
   }
   const imports = {
     react,
+    './terminal-output-scheduler': { terminalOutputScheduler: { register: port => ({
+      enqueue: data => port.write(data, noop), noteInput: noop, wake: noop, dispose: noop,
+    }) } },
     './attach-codex-redraw-follow': { attachCodexRedrawFollow: () => () => {} },
     './attach-terminal-diagnostics': { attachTerminalDiagnostics: () => ({ record: noop, output: noop, dispose: noop }) },
     'react/jsx-runtime': { jsx: noop, jsxs: noop },

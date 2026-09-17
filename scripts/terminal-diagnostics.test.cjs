@@ -126,6 +126,11 @@ test('collector is observational, batches output, removes listeners, and never r
  const { attachTerminalDiagnostics } = loadTs('src/terminal/attach-terminal-diagnostics.ts')
  const listeners = new Map(); const parsers=[]; const sent=[]; let disposed=0; let marked; let scrolled; let parsed; let changed
  const viewport = { scrollTop: 2000, scrollHeight: 2480, clientHeight: 480, addEventListener: (n,cb)=>listeners.set('v'+n,cb), removeEventListener: n=>listeners.delete('v'+n) }
+ let layoutReads = 0
+ for (const key of ['scrollTop', 'scrollHeight', 'clientHeight']) {
+  const value = viewport[key]
+  Object.defineProperty(viewport, key, { get: () => { layoutReads++; return value } })
+ }
  const container = { querySelector: ()=>viewport, addEventListener:(n,cb)=>listeners.set(n,cb), removeEventListener:n=>listeners.delete(n) }
  const subscription = cb => { parsers.push(cb); return {dispose:()=>disposed++} }
  const terminal = { rows:24, cols:80, textarea:{}, buffer:{ active:{baseY:100,viewportY:100,cursorY:23,type:'normal'}, onBufferChange: cb=>{changed=cb;return {dispose:()=>disposed++}} },
@@ -141,7 +146,9 @@ test('collector is observational, batches output, removes listeners, and never r
   collector.record('attention', 4)
   for(const parser of parsers) assert.equal(parser([3,1049,2026]),false)
   terminal.buffer.active.viewportY=0;scrolled()
+  assert.equal(layoutReads, 0, 'input, parser and scroll callbacks must not force layout')
   await new Promise(r=>setTimeout(r,300))
+  assert.equal(layoutReads, 3, 'visible geometry is sampled once at the diagnostic cadence')
   collector.dispose()
   assert.equal(listeners.size,0)
   assert.equal(disposed,7)

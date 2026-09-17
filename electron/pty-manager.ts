@@ -1,3 +1,4 @@
+import { PtyOutputBuffer, PTY_OUTPUT_HIGH, PTY_OUTPUT_LOW } from './pty-output-buffer'
 import { constants as osConstants, setPriority } from 'node:os'
 import * as pty from 'node-pty'
 import type { IPty } from 'node-pty'
@@ -9,7 +10,7 @@ const OUTPUT_BATCH_DELAY_MS = 8
 const MAX_OUTPUT_BATCH_LENGTH = 16 * 1024
 
 export interface PtySinks {
-  data: (id: string, data: string) => void
+  data: (id: string, data: string, through: number) => void
   exit: (id: string, exitCode: number, intentional: boolean) => void
   attention: (id: string, reason: string) => void
 }
@@ -18,7 +19,9 @@ export interface PtySinks {
 // output batching so terminal bytes never touch the Electron main process.
 export class PtyManager {
   private readonly processes = new Map<string, IPty>()
-  private readonly pendingOutput = new Map<string, string>()
+  private readonly pendingOutput = new Map<string, PtyOutputBuffer>()
+  private readonly pausedOutput = new Set<string>()
+  private readonly pendingExits = new Map<string, number>()
   private readonly intentionalStops = new Set<string>()
   private readonly oscCarry = new Map<string, string>()
   private outputTimer: ReturnType<typeof setTimeout> | undefined
@@ -26,7 +29,7 @@ export class PtyManager {
   constructor(private readonly sinks: PtySinks) {}
 
   spawn(spec: PtySpawnSpec): void {
-    if (this.processes.has(spec.id)) throw new Error('Session is already running')
+    if (this.processes.has(spec.id) || this.pendingOutput.has(spec.id)) throw new Error('Session is already running')
     if (this.processes.size >= MAX_PTY_PROCESSES) {
       throw new Error(`At most ${MAX_PTY_PROCESSES} CLI sessions can run at once`)
     }
@@ -42,6 +45,7 @@ export class PtyManager {
     } as pty.IPtyForkOptions & { useConpty: boolean; useConptyDll: boolean })
 
     this.processes.set(spec.id, instance)
+    this.pendingOutput.set(spec.id, new PtyOutputBuffer())
     try {
       // Agent processes can saturate every core while working; below-normal
       // priority (inherited by their children) keeps the UI responsive then.
@@ -50,16 +54,35 @@ export class PtyManager {
       // Best-effort: the process may have exited before the priority applied.
     }
     instance.onData((data) => {
+      if (this.intentionalStops.has(spec.id)) return
       if (spec.scanOsc9) this.observeOsc9(spec.id, data)
       this.queueOutput(spec.id, data)
     })
     instance.onExit(({ exitCode }) => {
-      this.flushOutput(spec.id, true)
       this.processes.delete(spec.id)
       this.oscCarry.delete(spec.id)
-      const intentional = this.intentionalStops.delete(spec.id)
-      this.sinks.exit(spec.id, exitCode, intentional)
+      this.pausedOutput.delete(spec.id)
+      if (this.intentionalStops.delete(spec.id)) {
+        this.pendingOutput.delete(spec.id)
+        this.sinks.exit(spec.id, exitCode, true)
+      } else {
+        this.pendingExits.set(spec.id, exitCode)
+        this.finishOutput(spec.id)
+        this.scheduleOutputFlush()
+      }
     })
+  }
+
+  acknowledgeOutput(id: string, through: number): void {
+    const output = this.pendingOutput.get(id)
+    if (!output) return
+    output.acknowledge(through)
+    if (this.pausedOutput.has(id) && output.backlog <= PTY_OUTPUT_LOW) {
+      this.pausedOutput.delete(id)
+      this.processes.get(id)?.resume()
+    }
+    this.finishOutput(id)
+    this.scheduleOutputFlush()
   }
 
   write(id: string, data: string): void {
@@ -75,16 +98,23 @@ export class PtyManager {
 
   stop(id: string): void {
     const instance = this.processes.get(id)
-    if (!instance) return
+    if (!instance) {
+      const exitCode = this.pendingExits.get(id)
+      this.pendingExits.delete(id)
+      this.pendingOutput.delete(id)
+      if (exitCode !== undefined) this.sinks.exit(id, exitCode, true)
+      return
+    }
+    if (this.intentionalStops.has(id)) return
     this.intentionalStops.add(id)
-    instance.kill()
-    this.processes.delete(id)
+    if (this.pausedOutput.delete(id)) instance.resume()
     this.pendingOutput.delete(id)
     this.oscCarry.delete(id)
+    instance.kill()
   }
 
   stopAll(): void {
-    for (const id of [...this.processes.keys()]) this.stop(id)
+    for (const id of new Set([...this.processes.keys(), ...this.pendingOutput.keys()])) this.stop(id)
     if (this.outputTimer) clearTimeout(this.outputTimer)
     this.outputTimer = undefined
     this.pendingOutput.clear()
@@ -98,31 +128,34 @@ export class PtyManager {
   }
 
   private queueOutput(id: string, data: string): void {
-    const output = (this.pendingOutput.get(id) ?? '') + data
-    this.pendingOutput.set(id, output)
+    const output = this.pendingOutput.get(id)
+    if (!output) return
+    output.enqueue(data)
+    if (output.backlog >= PTY_OUTPUT_HIGH && !this.pausedOutput.has(id)) {
+      this.pausedOutput.add(id)
+      this.processes.get(id)?.pause()
+    }
     this.scheduleOutputFlush()
   }
 
   private scheduleOutputFlush(): void {
-    if (this.outputTimer || this.pendingOutput.size === 0) return
+    if (this.outputTimer || ![...this.pendingOutput.values()].some(output => output.canSend)) return
     this.outputTimer = setTimeout(() => {
       this.outputTimer = undefined
-      for (const pendingId of [...this.pendingOutput.keys()]) this.flushOutput(pendingId)
+      for (const [id, output] of this.pendingOutput) {
+        const chunk = output.take(MAX_OUTPUT_BATCH_LENGTH)
+        if (chunk) this.sinks.data(id, chunk.data, chunk.through)
+      }
       this.scheduleOutputFlush()
     }, OUTPUT_BATCH_DELAY_MS)
   }
 
-  private flushOutput(id: string, drain = false): void {
-    let data = this.pendingOutput.get(id)
-    if (!data) return
-
-    do {
-      const chunk = data.slice(0, MAX_OUTPUT_BATCH_LENGTH)
-      data = data.slice(chunk.length)
-      this.sinks.data(id, chunk)
-    } while (drain && data.length > 0)
-
-    if (data.length > 0) this.pendingOutput.set(id, data)
-    else this.pendingOutput.delete(id)
+  private finishOutput(id: string): void {
+    const exitCode = this.pendingExits.get(id)
+    const output = this.pendingOutput.get(id)
+    if (exitCode === undefined || (output && output.backlog > 0)) return
+    this.pendingExits.delete(id)
+    this.pendingOutput.delete(id)
+    this.sinks.exit(id, exitCode, false)
   }
 }

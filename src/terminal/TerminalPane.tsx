@@ -1,3 +1,4 @@
+import { terminalOutputScheduler } from './terminal-output-scheduler'
 import { attachCodexRedrawFollow } from './attach-codex-redraw-follow'
 import { attachTerminalDiagnostics } from './attach-terminal-diagnostics'
 import type { DiagnosticReason } from '../shared/terminal-diagnostics'
@@ -41,7 +42,6 @@ interface TerminalPaneProps {
 }
 
 const MIN_STARTING_INDICATOR_MS = 650
-const INACTIVE_OUTPUT_FLUSH_MS = 250
 const STARTUP_FOLLOW_WINDOW_MS = 15_000
 const STARTUP_FOLLOW_EXTEND_MS = 1200
 const TERMINAL_ZOOM_KEYS = new Set(['=', '+', '-', '_', '0'])
@@ -56,7 +56,7 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
   const fitAddonRef = useRef<FitAddon | null>(null)
   const searchAddonRef = useRef<SearchAddon | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const flushInactiveOutputRef = useRef<() => void>(() => undefined)
+  const wakeOutputRef = useRef<() => void>(() => undefined)
   const clearAttentionRef = useRef<() => void>(() => undefined)
   const openSearchRef = useRef<() => void>(() => undefined)
   const ptyIdRef = useRef('')
@@ -143,10 +143,26 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
         })
       : undefined
 
+    const output = terminalOutputScheduler.register({
+      active: () => activeRef.current,
+      write: (data, parsed) => terminal.write(data, parsed),
+      acknowledge: (through) => window.cliAgent.acknowledgePtyOutput(id, through),
+      failed: () => {
+        window.cliAgent.stopPty(id)
+        stateChangeRef.current('stopped', 'Terminal output could not be processed')
+      },
+    })
+    wakeOutputRef.current = output.wake
     const disposeIme = attachImeLifecycle(terminal.textarea, {
       begin: () => beginTerminalComposition(id),
       end: () => endTerminalComposition(id),
-      refresh: () => terminal.refresh(0, Math.max(0, terminal.rows - 1)),
+      activity: output.noteInput,
+      refresh: () => {
+        if (!activeRef.current) return
+        const buffer = terminal.buffer.active
+        const row = buffer.baseY + buffer.cursorY - buffer.viewportY
+        if (row >= 0 && row < terminal.rows) terminal.refresh(Math.max(0, row - 1), Math.min(terminal.rows - 1, row + 1))
+      },
     })
     const diagnostics = attachTerminalDiagnostics(terminal, container, {
       id, agent: agentId, active: () => activeRef.current,
@@ -166,6 +182,7 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
     let interactionState: 'running' | 'processing' | 'needs_attention' = 'running'
     let structuredAttention = false
     const inputDisposable = terminal.onData((data) => {
+      output.noteInput()
       reportActivity()
       window.cliAgent.writePty(id, data)
       if (!activityStatusEnabledRef.current || purpose !== 'session') return
@@ -209,18 +226,7 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
     clearAttentionRef.current = () => {
       if (interactionState === 'needs_attention' && !structuredAttention) reportInteractionState('running')
     }
-    let pendingInactiveOutput = ''
-    let pendingInactiveFlushTimer: ReturnType<typeof setTimeout> | undefined
-    const flushInactiveOutput = (): void => {
-      clearTimeout(pendingInactiveFlushTimer)
-      pendingInactiveFlushTimer = undefined
-      if (disposed || !pendingInactiveOutput) return
-      const output = pendingInactiveOutput
-      pendingInactiveOutput = ''
-      terminal.write(output)
-    }
-    flushInactiveOutputRef.current = flushInactiveOutput
-    const offData = window.cliAgent.onPtyData(id, (data) => {
+    const offData = window.cliAgent.onPtyData(id, (data, through) => {
       reportActivity()
       diagnostics.output(data.length)
       if (!receivedData) {
@@ -232,24 +238,15 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
       if (performance.now() <= startupFollowDeadline) {
         keepBottomUntil = Math.max(keepBottomUntil, performance.now() + STARTUP_FOLLOW_EXTEND_MS)
       }
-      if (activeRef.current) {
-        flushInactiveOutput()
-        terminal.write(data)
-      } else {
-        // Hidden terminals coalesce output so busy background sessions do not
-        // steal frame time from the session being typed into.
-        pendingInactiveOutput += data
-        pendingInactiveFlushTimer ??= setTimeout(flushInactiveOutput, INACTIVE_OUTPUT_FLUSH_MS)
-      }
+      output.enqueue(data, through)
       if (started) reportRunning()
     })
     const writeParsedDisposable = terminal.onWriteParsed(() => {
-      if (performance.now() <= keepBottomUntil) { diagnostics.record('startup-follow'); terminal.scrollToBottom() }
+      if (activeRef.current && performance.now() <= keepBottomUntil) { diagnostics.record('startup-follow'); terminal.scrollToBottom() }
     })
     const offExit = window.cliAgent.onPtyExit(id, (exitCode) => {
       diagnostics.record('exit')
-      flushInactiveOutput()
-      terminal.write(`\r\n\x1b[90m[process exited: ${exitCode}]\x1b[0m\r\n`)
+      output.enqueue(`\r\n\x1b[90m[process exited: ${exitCode}]\x1b[0m\r\n`)
       stateChangeRef.current('stopped', `exit ${exitCode}`)
     })
     const offAttention = window.cliAgent.onPtyAttention(id, (event) => {
@@ -442,8 +439,8 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
       if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame)
       clearTimeout(fallbackReadyTimer)
       clearTimeout(minimumIndicatorTimer)
-      clearTimeout(pendingInactiveFlushTimer)
-      flushInactiveOutputRef.current = () => undefined
+      output.dispose()
+      wakeOutputRef.current = () => undefined
       clearAttentionRef.current = () => undefined
       resizeObserver.disconnect()
       cursorStyleDisposable?.dispose()
@@ -520,7 +517,7 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
     if (!terminal) return
     terminal.options.cursorBlink = active
     if (!active) return
-    flushInactiveOutputRef.current()
+    wakeOutputRef.current()
     // Viewing clears generic attention, but not a structured approval/input request.
     clearAttentionRef.current()
 

@@ -16,11 +16,12 @@ export interface PtySpawnSpec {
 
 export type RendererToHostMessage =
   | { type: 'write'; id: string; data: string }
+  | { type: 'output-ack'; id: string; through: number }
   | { type: 'resize'; id: string; cols: number; rows: number }
   | { type: 'stop'; id: string }
 
 export type HostToRendererMessage =
-  | { type: 'data'; id: string; data: string }
+  | { type: 'data'; id: string; data: string; through: number }
   | { type: 'exit'; id: string; exitCode: number }
 
 export type MainToHostMessage =

@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { CliAgentApi, DelegationSnapshot, NotificationActivation, NotificationSnapshot, PtyAttentionEvent, PtyExitEvent, SearchIndexState, StartPtyRequest } from './contracts'
 import type { HostToRendererMessage, RendererToHostMessage } from './pty-host-protocol'
 
-type PtyDataCallback = (data: string) => void
+type PtyDataCallback = (data: string, through: number) => void
 type PtyExitCallback = (exitCode: number) => void
 type PtyAttentionCallback = (event: PtyAttentionEvent['event']) => void
 
@@ -38,7 +38,7 @@ ipcRenderer.on('pty-host:port', (event) => {
   port.onmessage = (messageEvent: MessageEvent) => {
     const message = messageEvent.data as HostToRendererMessage
     if (message.type === 'data') {
-      for (const callback of ptyDataCallbacks.get(message.id) ?? []) callback(message.data)
+      for (const callback of ptyDataCallbacks.get(message.id) ?? []) callback(message.data, message.through)
     } else if (message.type === 'exit') {
       for (const callback of ptyExitCallbacks.get(message.id) ?? []) callback(message.exitCode)
     }
@@ -81,6 +81,7 @@ const api: CliAgentApi = {
   writeTerminalClipboard: (text: string) => ipcRenderer.send('clipboard:write-terminal', text),
   startPty: (request: StartPtyRequest) => ipcRenderer.invoke('pty:start', request),
   writePty: (id, data) => postToPtyHost({ type: 'write', id, data }),
+  acknowledgePtyOutput: (id, through) => postToPtyHost({ type: 'output-ack', id, through }),
   resizePty: (id, cols, rows) => postToPtyHost({ type: 'resize', id, cols, rows }),
   stopPty: (id) => postToPtyHost({ type: 'stop', id }),
   onPtyData: (id, callback) => subscribe(ptyDataCallbacks, id, callback),

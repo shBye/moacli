@@ -23,14 +23,18 @@ export function attachTerminalDiagnostics(
   let burstAt = 0
   let burstCount = 0
   let attentionBurstCount = 0
+  let layout = { scrollTop: -1, scrollHeight: -1, clientHeight: -1 }
+  const sampleLayout = (): void => {
+    if (!options.active() || !viewport) return
+    layout = { scrollTop: viewport.scrollTop, scrollHeight: viewport.scrollHeight, clientHeight: viewport.clientHeight }
+  }
   const position = (): DiagnosticPosition => {
     const buffer = terminal.buffer.active
     return {
       base: buffer.baseY, viewport: buffer.viewportY, cursor: buffer.cursorY,
       rows: terminal.rows, cols: terminal.cols, buffer: buffer.type,
       active: options.active(), focused: document.activeElement === terminal.textarea,
-      scrollTop: viewport?.scrollTop ?? -1, scrollHeight: viewport?.scrollHeight ?? -1,
-      clientHeight: viewport?.clientHeight ?? -1,
+      ...layout,
     }
   }
   const flush = (): void => {
@@ -80,6 +84,9 @@ export function attachTerminalDiagnostics(
   container.addEventListener('keydown', onKey, true)
   viewport?.addEventListener('scroll', onDomScroll, { passive: true })
   const timer = setInterval(() => {
+    // Geometry reads can force layout. Keep them out of keydown and ANSI parser
+    // callbacks; only sample the visible viewport at the diagnostic cadence.
+    sampleLayout()
     if (dirty) {
       dirty = false
       const bufferChanged = previous && previous.buffer !== terminal.buffer.active.type
