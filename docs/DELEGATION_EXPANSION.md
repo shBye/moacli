@@ -51,9 +51,9 @@ Test model migration, saved-ID preservation, each structured event decoder, frag
 
 Unauthenticated HEAD requests returned HTTP 200 for the repository, v0.1.33 release and latest installer on 2026-09-17:
 
-- https://github.com/shBye/moacli
-- https://github.com/shBye/moacli/releases/tag/v0.1.33
-- https://github.com/shBye/moacli/releases/latest/download/MoaCLI-Setup.exe
+- https://github.com/shb990407-cyber/moacli
+- https://github.com/shb990407-cyber/moacli/releases/tag/v0.1.33
+- https://github.com/shb990407-cyber/moacli/releases/latest/download/MoaCLI-Setup.exe
 
 An independent web fetch also displayed the repository as Public without signing in. No transfer is indicated by these checks. This is a point-in-time accessibility check, not a guarantee for every network.
 

@@ -150,7 +150,7 @@ With GitHub CLI installed and authenticated:
 
 ```powershell
 gh release create v0.1.1 .\out\MoaCLI-Setup.exe `
-  --repo shBye/moacli `
+  --repo shb990407-cyber/moacli `
   --title "MoaCLI v0.1.1" `
   --notes "Windows installer release. This build is not code-signed."
 ```
@@ -162,7 +162,7 @@ Verify the stable README URL after publishing:
 ```powershell
 $response = Invoke-WebRequest `
   -Method Head `
-  -Uri 'https://github.com/shBye/moacli/releases/latest/download/MoaCLI-Setup.exe' `
+  -Uri 'https://github.com/shb990407-cyber/moacli/releases/latest/download/MoaCLI-Setup.exe' `
   -UseBasicParsing
 $response.StatusCode
 $response.Headers['Content-Length']

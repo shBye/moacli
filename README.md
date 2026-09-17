@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/shBye/moacli/releases/latest/download/MoaCLI-Setup.exe">
+  <a href="https://github.com/shb990407-cyber/moacli/releases/latest/download/MoaCLI-Setup.exe">
     <img alt="Download MoaCLI for Windows" src="https://img.shields.io/badge/Download-Windows%20installer-ff7eb6?style=for-the-badge&logo=windows" />
   </a>
 </p>
@@ -59,7 +59,7 @@ MoaCLI uses each agent's installed executable and native resume command. It does
 
 ### Windows installer
 
-[Download the latest MoaCLI installer](https://github.com/shBye/moacli/releases/latest/download/MoaCLI-Setup.exe), run it, and choose the installation directory. The installer creates Start menu and desktop shortcuts with the MoaCLI icon.
+[Download the latest MoaCLI installer](https://github.com/shb990407-cyber/moacli/releases/latest/download/MoaCLI-Setup.exe), run it, and choose the installation directory. The installer creates Start menu and desktop shortcuts with the MoaCLI icon.
 
 The first public build is not code-signed, so Windows SmartScreen may display an `Unknown publisher` warning.
 
@@ -74,7 +74,7 @@ Requirements:
 #### Install and run
 
 ```powershell
-git clone https://github.com/shBye/moacli.git
+git clone https://github.com/shb990407-cyber/moacli.git
 cd moacli
 npm.cmd install
 npm.cmd run dev
@@ -179,9 +179,9 @@ The renderer is built with React 18 and TypeScript. Privileged filesystem, proce
 
 | Feature | Status | Development branch |
 | --- | --- | --- |
-| Unified notification center | In progress | [`feature/notification-center`](https://github.com/shBye/moacli/tree/feature/notification-center) |
-| Session restoration after restart | Planned | [`feature/session-restore`](https://github.com/shBye/moacli/tree/feature/session-restore) |
-| Full conversation search with SQLite FTS5 | Shipped in v0.1.3 | [`main`](https://github.com/shBye/moacli) |
+| Unified notification center | In progress | [`feature/notification-center`](https://github.com/shb990407-cyber/moacli/tree/feature/notification-center) |
+| Session restoration after restart | Planned | [`feature/session-restore`](https://github.com/shb990407-cyber/moacli/tree/feature/session-restore) |
+| Full conversation search with SQLite FTS5 | Shipped in v0.1.3 | [`main`](https://github.com/shb990407-cyber/moacli) |
 
 The detailed product flow, data model, failure handling, and acceptance criteria are documented in [ROADMAP.md](./ROADMAP.md). See [Local Conversation Search](./docs/CONVERSATION_SEARCH.md) and [Notification Center Design](./docs/NOTIFICATION_CENTER_DESIGN.md) for implementation-specific notes. Completed work and resolved implementation issues are tracked in [PROGRESS.md](./PROGRESS.md).
 

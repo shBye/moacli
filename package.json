@@ -5,10 +5,10 @@
   "private": true,
   "description": "A desktop workspace that brings CLI coding agents, accounts, sessions, and conversations together",
   "author": "shBye",
-  "homepage": "https://github.com/shBye/moacli",
+  "homepage": "https://github.com/shb990407-cyber/moacli",
   "repository": {
     "type": "git",
-    "url": "https://github.com/shBye/moacli.git"
+    "url": "https://github.com/shb990407-cyber/moacli.git"
   },
   "main": "./dist/main/main.js",
   "scripts": {

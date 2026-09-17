@@ -1,7 +1,7 @@
 import { app, net, shell } from 'electron'
 import type { AppUpdateInfo } from './contracts'
 
-const RELEASE_API_URL = 'https://api.github.com/repos/shBye/moacli/releases/latest'
+const RELEASE_API_URL = 'https://api.github.com/repos/shb990407-cyber/moacli/releases/latest'
 const RELEASE_CACHE_MS = 15 * 60 * 1000
 const REQUEST_TIMEOUT_MS = 10_000
 
