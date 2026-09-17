@@ -1,3 +1,4 @@
+import { isWorkerAgent, WORKER_AGENTS, type WorkerModelAgent } from '../src/features/delegation/model-policy'
 import { parseDelegationModels, validateModel, type DelegationModels } from '../src/features/delegation/model-policy'
 import { randomBytes } from 'node:crypto'
 import { AGENT_ROLES, AGENT_ROLE_IDS, roleTaskPrompt, type AgentRoleId } from './agent-roles'
@@ -159,7 +160,7 @@ export class DelegationServer {
   }
 
   defaultModel(agent: string): string {
-    if (agent !== 'claude' && agent !== 'codex') throw new Error('Unsupported worker agent')
+    if (!isWorkerAgent(agent)) throw new Error('Unsupported worker agent')
     return this.defaultModels[agent]
   }
 
@@ -305,7 +306,7 @@ export class DelegationServer {
       role: z.enum(AGENT_ROLE_IDS).optional().describe('Optional role preset. Role and execution mode are independent. Use list_roles for details.'),
       mode: z.enum(['analyze', 'edit']).default('analyze').describe('Default analyze. Edit requests require approval unless the user enabled edit auto-approval; do not edit the same files yourself while the worker runs.'),
       delegation_depth: z.literal(0).optional().describe('Only original CLIs may submit tasks (depth 0). Mini agents must return to the original caller, never submit tasks.'),
-      agent: z.enum(['claude', 'codex']).describe('Which agent executes the task'),
+      agent: z.enum(WORKER_AGENTS).describe('Which agent executes the task'),
       prompt: z.string().min(1).max(100_000).describe('Complete, self-contained task description'),
       cwd: z.string().optional().describe('Absolute working directory for the task (defaults to the user home directory)'),
       timeout_seconds: z.number().int().min(10).max(MAX_TIMEOUT_SECONDS).optional()
@@ -325,7 +326,7 @@ export class DelegationServer {
         ...(task.detail ? { detail: task.detail } : {}),
       }
     }
-    const createTask = (input: { agent: 'claude' | 'codex'; prompt: string; cwd?: string; timeout_seconds?: number; role?: AgentRoleId; mode?: DelegationMode; delegation_depth?: number }, extra: CallerInfo) => {
+    const createTask = (input: { agent: WorkerModelAgent; prompt: string; cwd?: string; timeout_seconds?: number; role?: AgentRoleId; mode?: DelegationMode; delegation_depth?: number }, extra: CallerInfo) => {
       assertRootCaller(input.delegation_depth ?? 0)
       if (input.mode === 'edit' && !input.cwd) throw new Error('Edit tasks require an explicit project directory')
       if (input.cwd && !isAbsolute(input.cwd)) throw new Error('The working directory must be an absolute path')
@@ -345,7 +346,7 @@ export class DelegationServer {
     }
 
     server.registerTool('list_roles', {
-      description: 'List the specialist roles available for delegate_task and start_task. A role defines the task focus; agent selects Claude or Codex, not the role.',
+      description: 'List the specialist roles available for delegate_task and start_task. A role defines the task focus; agent selects Claude, Codex, Gemini or OpenCode, not the role.',
       annotations: { readOnlyHint: true, openWorldHint: false },
     }, () => jsonResult(AGENT_ROLES.map(({ id, label, description }) => ({ id, label, description }))))
 
@@ -405,7 +406,7 @@ export class DelegationServer {
         return jsonResult({
           task_id: task.id,
           status: task.status,
-          worker_policy: describeWorkerPolicy(task.agent === 'codex' ? 'codex' : 'claude', task.mode),
+          worker_policy: describeWorkerPolicy(isWorkerAgent(task.agent) ? task.agent : 'claude', task.mode),
           note: 'Use wait_task (up to 30 seconds) instead of frequent polling. The user may need to approve first.',
         })
       } catch (error) {

@@ -98,7 +98,7 @@ export class AttentionBridge {
             env.MOACLI_CODEX_HOOK_ENDPOINT = `http://127.0.0.1:${this.port}/attention/${this.token}/${encodeURIComponent(request.id)}`
             env.MOACLI_HOOK_EXECUTABLE = process.execPath
             this.diagnostics.record(request.id, 'hooks-installed')
-            this.emitSignal(registration, { source: 'codex-hooks', kind: 'attention', name: 'HookSetupRequired' })
+            this.emitSignal(registration, { source: 'codex-hooks', kind: 'ready', name: 'HookSetupRequired' })
           } catch { this.diagnostics.record(request.id, 'hooks-unavailable') }
         }
         return {

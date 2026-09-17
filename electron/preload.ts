@@ -112,6 +112,7 @@ const api: CliAgentApi = {
   getTerminalPermissions: () => ipcRenderer.invoke('terminal:permissions'),
   setCodexPermissionMode: (mode) => ipcRenderer.invoke('terminal:set-codex-permission', mode),
   setDelegationModel: (agent, model) => ipcRenderer.invoke('delegation:set-model', agent, model),
+  getWorkerModelCatalog: (agent, account) => ipcRenderer.invoke('delegation:model-catalog', agent, account),
   getDelegationModel: (agent, account) => ipcRenderer.invoke('delegation:get-model', agent, account),
   approveDelegation: (approval) => ipcRenderer.invoke('delegation:approve', approval),
   rejectDelegation: (taskId) => ipcRenderer.invoke('delegation:reject', taskId),

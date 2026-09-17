@@ -28,7 +28,7 @@ export interface StartReviewRequest {
   role?: import('./agent-roles').AgentRoleId
   snapshotId: string
   source: ReviewSource
-  agent: 'claude' | 'codex'
+  agent: import('../src/features/delegation/model-policy').WorkerModelAgent
   account?: AgentAccount
   instructions: string
 }

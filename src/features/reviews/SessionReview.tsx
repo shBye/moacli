@@ -1,3 +1,4 @@
+import { isWorkerAgent, type WorkerModelAgent } from '../delegation/model-policy'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCheck, RefreshCw, X } from 'lucide-react'
 import type { AgentAccount, AgentHealth, CliAgentApi, DelegationSnapshot } from '../../../electron/contracts'
@@ -28,7 +29,7 @@ function message(error: unknown): string {
 
 export function SessionReview({ source, sourceAgent, api, profiles, accounts, changes, canPaste, onPaste, onReviewApproval }: Props) {
   const { entries, error: loadError, refresh } = useSessionReviews(api, source, changes)
-  const reviewers = profiles.filter((profile) => profile.available && (profile.id === 'claude' || profile.id === 'codex'))
+  const reviewers = profiles.filter((profile) => profile.available && isWorkerAgent(profile.id))
   const [agent, setAgent] = useState(() => reviewers.find((profile) => profile.id !== sourceAgent)?.id ?? reviewers[0]?.id ?? 'codex')
   const [role, setRole] = useState<AgentRoleId>('reviewer')
   const [accountId, setAccountId] = useState('')
@@ -63,7 +64,7 @@ export function SessionReview({ source, sourceAgent, api, profiles, accounts, ch
     setStarting(true); setError('')
     try {
       const account = availableAccounts.find((item) => item.id === accountId)
-      const id = await api.startReview({ snapshotId: snapshot.id, source, agent: agent as 'claude' | 'codex', account, instructions, role })
+      const id = await api.startReview({ snapshotId: snapshot.id, source, agent: agent as WorkerModelAgent, account, instructions, role })
       if (live.current) { setSelectedId(id); setSnapshot(null); refresh() }
     } catch (reason) { if (live.current) setError(message(reason)) }
     finally { if (live.current) setStarting(false) }

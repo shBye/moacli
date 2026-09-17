@@ -54,6 +54,8 @@ test('real HTTP delivery, continuation, stale turns, OSC fallback and release', 
   t.after(() => bridge.dispose())
   const options = await bridge.prepare({ id: 'pty', purpose: 'session', agentId: 'codex' }, { attention_adapter: 'codex-osc9', attention_min_version: '0.148.0' }, 'unused')
   const endpoint = options.env.MOACLI_CODEX_HOOK_ENDPOINT
+  assert.equal(events[0].kind, 'ready')
+  assert.equal(events[0].name, 'HookSetupRequired')
   const send = async (name, turn = 'turn1', extra = {}) => {
     const response = await fetch(endpoint, { method: 'POST', body: JSON.stringify({ session_id: 'session', turn_id: turn, hook_event_name: name, ...extra }) })
     assert.deepEqual(await response.json(), {})

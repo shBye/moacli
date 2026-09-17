@@ -1,3 +1,5 @@
+import { readWorkerModelCatalog } from './read-worker-model-catalog'
+import { isWorkerAgent } from '../src/features/delegation/model-policy'
 import { TerminalPermissionStore } from './terminal-permission-store'
 import { installCodexHooks } from './install-codex-hooks'
 import { codexPermissionArgs, type CodexPermissionMode } from '../src/features/settings/terminal-permissions'
@@ -91,7 +93,7 @@ const CLIPBOARD_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.
 function delegationSnapshot(): DelegationSnapshot {
   return {
     server: delegationServer?.status() ?? {
-      defaultModels: { claude: '', codex: '' }, enabled: false, running: false, autoApprove: false, autoApproveEdits: false, port: 0, url: '', token: '', claudeRegisterCommand: '', codexConfigSnippet: '', codexConfigPath: '',
+      defaultModels: { claude: '', codex: '', gemini: '', opencode: '' }, enabled: false, running: false, autoApprove: false, autoApproveEdits: false, port: 0, url: '', token: '', claudeRegisterCommand: '', codexConfigSnippet: '', codexConfigPath: '',
     },
     tasks: delegationRegistry?.snapshot() ?? [],
   }
@@ -312,9 +314,14 @@ ipcMain.handle('delegation:set-model', (event, agent: string, model: string) => 
   delegationServer.setDefaultModel(agent, model)
   return delegationSnapshot()
 })
+ipcMain.handle('delegation:model-catalog', (event, agent: string, account?: AgentAccount) => {
+  if (event.sender !== mainWindow?.webContents || !isWorkerAgent(agent)) throw new Error('Invalid model catalog caller')
+  if (account && account.agentId !== agent) throw new Error('Account does not match agent')
+  return readWorkerModelCatalog(agent, account)
+})
 ipcMain.handle('delegation:get-model', (event, agent: string, account?: AgentAccount) => {
   if (event.sender !== mainWindow?.webContents) throw new Error('Invalid task caller')
-  if (agent !== 'claude' && agent !== 'codex') throw new Error('Unsupported worker agent')
+  if (!isWorkerAgent(agent)) throw new Error('Unsupported worker agent')
   if (account && account.agentId !== agent) throw new Error('Account does not match agent')
   return readWorkerModel(agent, delegationServer?.defaultModel(agent) ?? '', account)
 })

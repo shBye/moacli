@@ -287,6 +287,7 @@ export interface CliAgentApi {
   getDelegationSnapshot: () => Promise<DelegationSnapshot>
   approveDelegation: (approval: DelegationApproval) => Promise<DelegationSnapshot>
   setDelegationModel: (agent: string, model: string) => Promise<DelegationSnapshot>
+  getWorkerModelCatalog: (agent: string, account?: AgentAccount) => Promise<import('../src/features/delegation/model-catalog').WorkerModelCatalog>
   getDelegationModel: (agent: string, account?: AgentAccount) => Promise<string>
   rejectDelegation: (taskId: string) => Promise<DelegationSnapshot>
   cancelDelegation: (taskId: string) => Promise<DelegationSnapshot>

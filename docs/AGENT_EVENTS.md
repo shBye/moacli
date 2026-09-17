@@ -58,8 +58,9 @@ installation failure falls back to OSC9 and is recorded in diagnostics.
 On first use, open **`/hooks` in Codex and trust the MoaCLI observer entries**.
 No trust-bypass flag or trust database edits are used. CLI permissions Full access
 does not substitute for hook trust. Project/organization policies may prevent
-non-managed hooks from running. A pending setup attention message links the
-diagnosis to `/hooks`; settings also explain this requirement. New code applies
+non-managed hooks from running. A neutral `Status unconfirmed` header links the
+diagnosis to `/hooks` through its tooltip; settings also explain this requirement.
+Installing hooks does not generate an approval/attention notification. New code applies
 to new or resumed terminals, not an already-running CLI process.
 
 The stable command runs an app-owned relay under `userData/codex-observer`.
@@ -83,7 +84,9 @@ continue work, and subsequent tool activity returns the status to Processing.
 
 Confirmed completion displays a check and Completed in the session header.
 Opening a tab no longer clears a structured approval/input waiting status.
-Slash-command Enter does not infer a new model turn once Codex hooks connect.
+Codex Enter, including resume menus and slash commands, does not infer a model
+turn or approve a waiting action. Structured events own these transitions;
+after accepting approval, PostToolUse updates processing when the tool returns.
 Interrupt returns the terminal to running with an interrupted detail, without a
 success notification. OSC9 remains a generic fallback while processing; it
 cannot overwrite a structured approval, completion or interruption outcome.

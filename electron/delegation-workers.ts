@@ -1,17 +1,18 @@
+import { WORKER_AGENTS, type WorkerModelAgent } from '../src/features/delegation/model-policy'
+import { runWorkerProcess } from './run-worker-process'
+import { startFileWorker } from './start-file-worker'
 import { workerModelArgs } from '../src/features/delegation/model-policy'
-import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, rmdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { detectBinary, executableCommand } from './agent-profiles'
+import { detectBinary } from './agent-profiles'
 import type { AgentAccount } from './contracts'
 import { reviewWorkerArgs } from './review-worker-policy'
 import { delegatedWorkerArgs, type DelegationMode } from './delegation-policy'
 
-export type WorkerAgentId = 'claude' | 'codex'
-
-export const WORKER_AGENT_IDS: readonly WorkerAgentId[] = ['claude', 'codex']
+export type WorkerAgentId = WorkerModelAgent
+export const WORKER_AGENT_IDS = WORKER_AGENTS
 
 export interface WorkerStart {
   model?: string
@@ -38,14 +39,6 @@ export interface WorkerHandle {
   cancel: () => void
 }
 
-interface ProcessOutcome {
-  stdout: string
-  stderr: string
-  exitCode: number
-  timedOut: boolean
-  cancelled: boolean
-}
-
 const PROGRESS_LINE_CHARS = 240
 
 function truncateOutput(value: string, limit: number): string {
@@ -55,100 +48,6 @@ function truncateOutput(value: string, limit: number): string {
 function compactLine(value: string): string {
   const compact = value.replace(/\s+/g, ' ').trim()
   return compact.length <= PROGRESS_LINE_CHARS ? compact : `${compact.slice(0, PROGRESS_LINE_CHARS)}…`
-}
-
-function quoteForShell(argument: string): string {
-  if (!argument) return '""'
-  return /[\s"]/.test(argument) ? `"${argument.replace(/"/g, '""')}"` : argument
-}
-
-function killWorkerTree(pid: number | undefined): void {
-  if (!pid) return
-  if (process.platform === 'win32') {
-    execFile('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true }, () => {})
-  } else {
-    try { process.kill(pid, 'SIGKILL') } catch { /* already gone */ }
-  }
-}
-
-function workerEnvironment(start: WorkerStart): NodeJS.ProcessEnv {
-  const environment: NodeJS.ProcessEnv = { ...process.env, MOACLI_DELEGATED: '1', MOACLI_DELEGATION_DEPTH: '1' }
-  const account = start.account
-  delete environment.MOACLI_TOKEN
-  delete environment.MOACLI_DELEGATION_TOKEN
-  if (account?.configDir && !account.detected) {
-    if (start.agent === 'claude') environment.CLAUDE_CONFIG_DIR = account.configDir
-    if (start.agent === 'codex') environment.CODEX_HOME = account.configDir
-  }
-  return environment
-}
-
-// Feeds newline-delimited stdout to `onLine` as it arrives; the full stdout is
-// still collected for the final result.
-function runWorkerProcess(
-  binary: string,
-  args: string[],
-  start: WorkerStart,
-  onLine: (line: string) => void,
-): { outcome: Promise<ProcessOutcome>; cancel: () => void } {
-  const command = executableCommand(binary, args)
-  const finalArgs = command.shell ? command.args.map(quoteForShell) : command.args
-  let child: ChildProcess | undefined
-  let cancelled = false
-  const outcome = new Promise<ProcessOutcome>((resolve, reject) => {
-    const spawned = spawn(command.file, finalArgs, {
-      cwd: start.cwd,
-      env: workerEnvironment(start),
-      shell: command.shell,
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-    child = spawned
-    let stdout = ''
-    let stderr = ''
-    let pendingLine = ''
-    let settled = false
-    let timedOut = false
-    const timer = setTimeout(() => {
-      timedOut = true
-      killWorkerTree(spawned.pid)
-    }, start.timeoutMs)
-    spawned.stdout?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString('utf8')
-      stdout += text
-      pendingLine += text
-      let newline = pendingLine.indexOf('\n')
-      while (newline >= 0) {
-        const line = pendingLine.slice(0, newline).trim()
-        pendingLine = pendingLine.slice(newline + 1)
-        if (line) onLine(line)
-        newline = pendingLine.indexOf('\n')
-      }
-    })
-    spawned.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf8') })
-    spawned.on('error', (error) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      reject(error)
-    })
-    spawned.on('close', (code) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      if (pendingLine.trim()) onLine(pendingLine.trim())
-      resolve({ stdout, stderr, exitCode: code ?? -1, timedOut, cancelled })
-    })
-    spawned.stdin?.on('error', () => { /* the worker may exit before reading its prompt */ })
-    spawned.stdin?.write(start.prompt, () => spawned.stdin?.end())
-  })
-  return {
-    outcome,
-    cancel: () => {
-      cancelled = true
-      killWorkerTree(child?.pid)
-    },
-  }
 }
 
 function parseJsonLine(line: string): Record<string, unknown> | null {
@@ -288,9 +187,12 @@ function startCodexWorker(start: WorkerStart): WorkerHandle {
 const WORKER_STARTERS: Record<WorkerAgentId, (start: WorkerStart) => WorkerHandle> = {
   claude: startClaudeWorker,
   codex: startCodexWorker,
+  gemini: startFileWorker,
+  opencode: startFileWorker,
 }
 
 export function describeWorkerPolicy(agent: WorkerAgentId, mode: DelegationMode = 'analyze'): string {
+  if (agent === 'gemini' || agent === 'opencode') return `${agent} ${mode === 'edit' ? 'file editing' : 'read/search only'}; no shell or further delegation`
   return agent === 'claude'
     ? `Claude ${mode === 'edit' ? 'file editing' : 'analysis'}; MCP and agent delegation disabled`
     : `Codex ${mode === 'edit' ? 'workspace-write' : 'read-only'} sandbox; MCP and agent delegation disabled`

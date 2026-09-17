@@ -755,9 +755,20 @@ body.folder-pane-resizing, body.folder-pane-resizing * { cursor: row-resize !imp
 .status-diagnostics:disabled { opacity: .5; cursor: default; }
 .status-diagnostics-message { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.delegation-model-settings { display: grid; gap: 12px; }
-.delegation-model-setting { display: grid; gap: 6px; }
-.delegation-model-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.delegation-model-controls > strong { min-width: 56px; }
+.delegation-model-settings { display: grid; gap: 12px; margin-top: 10px; padding: 12px 13px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; background: rgba(0,0,0,.13); }
+.delegation-model-settings > h4 { margin: 0; color: rgba(255,255,255,.75); font-size: 11px; font-weight: 600; }
+.delegation-model-settings > p { margin: 0; color: rgba(255,255,255,.48); font-size: 10px; line-height: 1.5; }
+.delegation-model-setting { display: grid; gap: 5px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.05); }
+.delegation-model-setting > small { padding-left: 82px; color: rgba(255,255,255,.42); font-size: 10px; overflow-wrap: anywhere; }
+.delegation-model-controls { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 8px 10px; }
+.delegation-model-controls > strong { color: rgba(255,255,255,.62); font-size: 11px; font-weight: 500; }
+.delegation-model-controls > input { grid-column: 2; grid-row: 1; width: 100%; box-sizing: border-box; font-size: 11px; }
+.delegation-model-controls > button { grid-column: 3; grid-row: 1; }
+.terminal-settings > .delegation-register-block { margin-top: 12px; }
+.terminal-permission-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; align-items: center; color: rgba(255,255,255,.62); font-size: 11px; }
 .delegation-model-choice { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .delegation-model-controls input, .delegation-model-choice input { min-width: 140px; max-width: 100%; padding: 7px 9px; border: 1px solid rgba(255,255,255,.14); border-radius: 6px; color: inherit; background: rgba(0,0,0,.18); }
+
+.worker-model-picker { min-width: 0; display: grid; gap: 4px; }
+.worker-model-picker small { margin: 0; color: rgba(255,255,255,.42); font-size: 10px; line-height: 1.4; }
+.delegation-model-controls > button { align-self: start; }

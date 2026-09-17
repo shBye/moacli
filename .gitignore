@@ -3,4 +3,5 @@ dist/
 out/
 *.log
 .DS_Store
-
+/.tmp-release-smoke.*
+/Microsoft/Windows/PowerShell/ModuleAnalysisCache

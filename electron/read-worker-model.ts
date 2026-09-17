@@ -24,6 +24,8 @@ export function readWorkerModel(agent: WorkerModelAgent, selected: string, accou
   if (selected) return validateModel(selected)
   const customHome = account?.configDir && !account.detected ? account.configDir : undefined
   try {
+    // These CLIs resolve their own native defaults; don't interpret another CLI's config.
+    if (agent === 'gemini' || agent === 'opencode') return ''
     if (agent === 'claude') {
       if (env.ANTHROPIC_MODEL) return validateModel(env.ANTHROPIC_MODEL)
       const text = read(join(customHome || env.CLAUDE_CONFIG_DIR || join(home, '.claude'), 'settings.json'))

@@ -50,7 +50,9 @@ test('legacy settings keep edit approval off and persist both switches independe
   assert.equal(server.autoApprove, true)
   assert.equal(server.autoApproveEdits, false)
   server.setDefaultModel('codex', 'configured-model')
-  assert.throws(() => server.setDefaultModel('gemini', 'model'))
+  server.setDefaultModel('gemini', 'model')
+  server.setDefaultModel('opencode', 'provider/model')
+  assert.throws(() => server.setDefaultModel('external', 'model'))
   assert.throws(() => server.setDefaultModel('codex', 'bad;arg'))
   server.setAutoApproveEdits(true)
   server.setAutoApprove(false)
@@ -289,3 +291,16 @@ test('session list carries bounded summaries while result retrieval preserves fu
   const bad=create();assert.throws(()=>registry.approve(bad.id,undefined,'bad;arg'))
   assert.equal(registry.get(bad.id).status,'awaiting_approval')
  })
+
+test('Gemini and OpenCode retain their agent and requested model after database reopening', async t => {
+ const {registry,workers,directory,databasePath}=fixture(t)
+ const tasks=['gemini','opencode'].map(agent=>registry.create({agent,prompt:'file task',cwd:directory,mode:'analyze',timeoutMs:1000,caller:'test'}))
+ tasks.forEach(task=>registry.approve(task.id,undefined,task.agent==='gemini'?'gemini-2.5-pro':'provider/model'))
+ assert.deepEqual(workers.map(worker=>worker.start.agent),['gemini','opencode'])
+ workers.forEach(worker=>worker.resolve({text:'done',detail:'file tools'}));await tick()
+ registry.close(); registry.close=()=>{}
+ const reopened=new DelegationTaskRegistry(databasePath,()=>{},()=>{})
+ try {
+  for(const task of tasks){assert.equal(reopened.get(task.id).agent,task.agent);assert.equal(reopened.get(task.id).status,'completed')}
+ }finally{reopened.close()}
+})

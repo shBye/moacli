@@ -25,7 +25,7 @@ export function agentEventLabel(event: AgentEvent): string {
     case 'response_failed': return event.errorCode ? `Response failed (${event.errorCode})` : 'Response failed'
     case 'response_interrupted': return 'Response interrupted'
     case 'processing': return 'Processing request'
-    case 'ready': return 'Ready'
+    case 'ready': return event.name === 'HookSetupRequired' ? 'Status unconfirmed: review MoaCLI entries in /hooks' : 'Ready'
     case 'attention': return event.name === 'HookSetupRequired' ? 'Codex status hooks: review with /hooks' : 'Session needs attention'
   }
 }

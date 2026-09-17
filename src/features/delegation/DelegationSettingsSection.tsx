@@ -1,3 +1,4 @@
+import { WORKER_AGENTS } from './model-policy'
 import { DelegationModelSetting } from './DelegationModelSetting'
 import { useEffect, useState } from 'react'
 import { Ban, Check, Copy, RefreshCw, RotateCcw } from 'lucide-react'
@@ -25,7 +26,6 @@ interface DelegationSettingsSectionProps {
 }
 
 // The two CLIs that can run as delegation workers today.
-const WORKER_AGENTS = ['claude', 'codex'] as const
 
 const COPIED_RESET_MS = 1600
 
@@ -130,10 +130,10 @@ export function DelegationSettingsSection({
 
       <div className="delegation-model-settings">
         <h4>Default worker models</h4>
-        <p>Automatic approvals always use these defaults. You can change the model for one task in its approval dialog.</p>
+        <p>Automatic tasks use these defaults. Override the model for an individual task in its approval dialog.</p>
         {WORKER_AGENTS.map(agent => <DelegationModelSetting key={agent} agent={agent}
           value={server?.defaultModels?.[agent] ?? ''} disabled={!available} onSave={onModelChange} />)}
-        <p>CLI default reads the selected account's user model setting when available. Otherwise the CLI chooses. Model availability depends on your CLI and account.</p>
+        <p>CLI default lets the worker choose. Gemini/OpenCode workers use file tools only; tests stay with the original agent. OpenCode uses isolated configuration, so set provider/model to pin your choice.</p>
       </div>
 
       <div className="delegation-fallback">
@@ -165,7 +165,7 @@ export function DelegationSettingsSection({
       </div>
 
       <div className="delegation-register">
-        <SettingsDescription>MoaCLI sessions connect automatically. Use the setup below only for external terminals; their tasks appear in the global list.</SettingsDescription>
+        <SettingsDescription>Claude and Codex sessions connect automatically. Use the setup below only for external terminals; their tasks appear in the global list.</SettingsDescription>
         <div className="delegation-register-block">
           <div className="delegation-register-title">
             <strong>Claude Code</strong>

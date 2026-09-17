@@ -165,20 +165,21 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
     }
     let interactionState: 'running' | 'processing' | 'needs_attention' = 'running'
     let structuredAttention = false
-    let codexHooksConnected = false
     const inputDisposable = terminal.onData((data) => {
       reportActivity()
       window.cliAgent.writePty(id, data)
       if (!activityStatusEnabledRef.current || purpose !== 'session') return
-      if (/[\r\n]/.test(data) && (!codexHooksConnected || structuredAttention)) {
+      if (agentId === 'codex') return // Menu/approval Enter is not proof a model turn started.
+      if (/[\r\n]/.test(data)) {
         structuredAttention = false
         reportInteractionState('processing', 'Request submitted')
-      } else if (interactionState === 'needs_attention' && !structuredAttention && !codexHooksConnected) reportInteractionState('running')
+      } else if (interactionState === 'needs_attention' && !structuredAttention) reportInteractionState('running')
     })
     let started = false
     let disposed = false
     let receivedData = false
     let runningReported = false
+    let receivedInteractionEvent = false
     let resizeTimer: ReturnType<typeof setTimeout> | undefined
     let resizeFrame: number | undefined
     let lastObservedWidth = 0
@@ -198,7 +199,7 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
       }
       runningReported = true
       clearTimeout(fallbackReadyTimer)
-      if (interactionState === 'running') stateChangeRef.current('running')
+      if (interactionState === 'running' && !receivedInteractionEvent) stateChangeRef.current('running')
     }
     const reportInteractionState = (state: typeof interactionState, detail?: string): void => {
       if (!activityStatusEnabledRef.current || purpose !== 'session' || disposed) return
@@ -255,8 +256,8 @@ function TerminalPaneComponent({ active, sessionId, historyKey, agentId, cwd, ti
       const eventCodes: Record<AgentEventKind, number> = { ready: 0, processing: 1, approval_required: 2,
         input_required: 3, response_completed: 4, response_failed: 5, response_interrupted: 6, attention: 7 }
       diagnostics.record('attention', eventCodes[event.kind])
-      if (event.source === 'codex-hooks' && event.name === 'UserPromptSubmit') codexHooksConnected = true
-      structuredAttention = event.kind === 'approval_required' || event.kind === 'input_required' || event.name === 'HookSetupRequired'
+      receivedInteractionEvent = true
+      structuredAttention = event.kind === 'approval_required' || event.kind === 'input_required'
       reportInteractionState(agentEventInteractionState(event), agentEventLabel(event))
     })
     const cancelBottomLock = (): void => {

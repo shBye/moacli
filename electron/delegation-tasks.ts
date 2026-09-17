@@ -1,4 +1,4 @@
-import { validateModel } from '../src/features/delegation/model-policy'
+import { isWorkerAgent, validateModel } from '../src/features/delegation/model-policy'
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -501,7 +501,7 @@ export class DelegationTaskRegistry {
       mode: row.mode === 'edit' ? 'edit' : 'analyze',
       ...(row.role ? { role: row.role } : {}),
       id: row.id,
-      agent: row.agent === 'codex' ? 'codex' : 'claude',
+      agent: isWorkerAgent(row.agent) ? row.agent : 'claude',
       caller: row.caller,
       prompt: row.prompt,
       cwd: row.cwd,

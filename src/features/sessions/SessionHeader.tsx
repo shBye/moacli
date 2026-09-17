@@ -29,15 +29,16 @@ export function SessionHeader({
   onShowReview,
   reviewCount,
 }: SessionHeaderProps) {
+  const statusUnconfirmed = session.state === 'running' && session.statusDetail.startsWith('Status unconfirmed:')
   return (
     <header className="session-context">
       <div className="session-summary">
         <AgentAvatar agentId={session.agentId} className="header" color={profileColor} preference={iconPreference} />
         <h1 title={session.title}>{session.title}</h1>
-        <span className={`state-chip ${session.state}`} title={session.statusDetail}>
+        <span className={`state-chip ${statusUnconfirmed ? 'unconfirmed' : session.state}`} title={session.statusDetail}>
           {session.state === 'running' && session.statusDetail === 'Response finished'
             ? <><Check size={12} aria-hidden="true" />Completed</>
-            : <><span />{session.state === 'needs_attention' && session.statusDetail === 'Approval required'
+            : <><span />{statusUnconfirmed ? 'Status unconfirmed' : session.state === 'needs_attention' && session.statusDetail === 'Approval required'
               ? 'Approval required' : sessionStateLabel(session.state)}</>}
         </span>
         <span className="session-cwd" title={session.cwd}>{session.cwd}</span>

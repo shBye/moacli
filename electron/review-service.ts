@@ -1,3 +1,4 @@
+import { WORKER_AGENTS } from '../src/features/delegation/model-policy'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -14,7 +15,7 @@ export const reviewSourceSchema = z.object({
 })
 const requestSchema = z.object({
   snapshotId: z.string().uuid(), source: reviewSourceSchema,
-  agent: z.enum(['claude', 'codex']), instructions: z.string().max(8000),
+  agent: z.enum(WORKER_AGENTS), instructions: z.string().max(8000),
   role: z.enum(AGENT_ROLE_IDS).optional(),
   account: z.object({ id: z.string(), agentId: z.string(), email: z.string(), configDir: z.string(), detected: z.boolean().optional() }).optional(),
 })

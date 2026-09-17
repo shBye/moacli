@@ -1,3 +1,4 @@
+import { WorkerModelPicker } from './WorkerModelPicker'
 import { validateModel } from './model-policy'
 import { useDefaultWorkerModel } from './useDefaultWorkerModel'
 import { useEffect, useMemo, useState } from 'react'
@@ -84,7 +85,7 @@ export function DelegationApprovalModal({
   const selectedAccount = accounts.find((account) => account.id === accountId)
   const defaultModel = useDefaultWorkerModel(task.agent, selectedAccount, getDefaultModel, task.id)
   let modelError = ''
-  if (customModel) { try { if (!validateModel(model)) modelError = 'Enter a model ID.' } catch { modelError = 'Invalid model ID.' } }
+  if (customModel) { try { validateModel(model) } catch { modelError = 'Invalid model ID.' } }
   const selectedAuth = selectedAccount ? authById.get(selectedAccount.id) : undefined
   const timeoutMinutes = Math.round(task.timeoutMs / 60_000)
 
@@ -116,8 +117,7 @@ export function DelegationApprovalModal({
             <SelectBox ariaLabel="Worker model mode" value={customModel ? 'custom' : 'default'} disabled={busy}
               options={[{ value: 'default', label: 'Use default setting' }, { value: 'custom', label: 'Change for this task' }]}
               onChange={value => { setCustomModel(value === 'custom'); if (!model) setModel(defaultModel.model) }} />
-            {customModel ? <input aria-label="Worker model ID" value={model} maxLength={160} disabled={busy}
-              placeholder="Model ID" onChange={event => setModel(event.target.value)} />
+            {customModel ? <WorkerModelPicker agent={task.agent} value={model} disabled={busy} account={selectedAccount} onChange={setModel} />
               : <span>{defaultModel.loading ? 'Reading default...' : defaultModel.error || defaultModel.model || 'CLI default (resolved at startup)'}</span>}
             {modelError && <small role="alert">{modelError}</small>}
           </dd>
