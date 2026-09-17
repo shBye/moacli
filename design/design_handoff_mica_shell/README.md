@@ -356,11 +356,7 @@ new Terminal({
 - `CLI-Agent-Manager-final.dc.html` — 확정 화면 2장 (빈 상태 `#3a`, 활성 세션 `#2a`)
 - `CLI-Agent-Manager-explorations.dc.html` — 옵션 보드. Start 3안, 계정 설정 모달(`#2e`), 사이드바 디테일(`#2f`), 현재 UI 재현본(`#1a`, `#1b`)
 - `support.js` — 위 두 파일 렌더링용 런타임 (구현 대상 아님)
-- `screens/` — 확정 화면 스크린샷 (2x)
-  - `01-empty-state-launcher-amber.png`
-  - `02-active-session-amber.png`
-  - `03-empty-state-launcher-periwinkle.png`
-  - `04-active-session-periwinkle.png`
+- Legacy `screens/` PNGs are local-only and excluded from Git because they contain account labels. Use the anonymized HTML files above as the public design reference.
 
 대상 코드베이스에서 손댈 파일:
 

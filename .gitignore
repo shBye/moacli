@@ -5,3 +5,4 @@ out/
 .DS_Store
 /.tmp-release-smoke.*
 /Microsoft/Windows/PowerShell/ModuleAnalysisCache
+/design/design_handoff_mica_shell/screens/
